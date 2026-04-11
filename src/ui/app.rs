@@ -594,19 +594,7 @@ impl eframe::App for LiteRequestApp {
 
                     ui.separator();
 
-                    // Import / Export buttons
-                    if ui.button("Import").clicked() {
-                        if let Some(path) = rfd_open_file("Import .lreq", &["lreq", "json"]) {
-                            match super::import_export::import_from_file(&self.db, &path) {
-                                Ok(_id) => {
-                                    self.set_status("Collection imported successfully");
-                                    self.refresh_all_data();
-                                }
-                                Err(e) => self.error_message = Some(format!("Import failed: {e}")),
-                            }
-                        }
-                    }
-
+                    // Export (only when viewing a collection config)
                     if let CenterView::CollectionConfig(ref cid) = self.center_view {
                         let cid = cid.clone();
                         if ui.button("Export").clicked() {
@@ -908,24 +896,6 @@ impl eframe::App for LiteRequestApp {
             }
         }
 
-        // ── Environment management window ────────────────────────
-        let mut env_show = self.env_panel_state.show_panel;
-        if env_show {
-            let mut env_action = EnvAction::None;
-            egui::Window::new("Environments")
-                .open(&mut env_show)
-                .default_width(550.0)
-                .show(ui.ctx(), |ui| {
-                    env_action = render_environment_panel(
-                        ui,
-                        &self.environments,
-                        &mut self.env_variables,
-                        &mut self.env_panel_state,
-                    );
-                });
-            self.env_panel_state.show_panel = env_show;
-            self.handle_env_action(env_action);
-        }
     }
 }
 

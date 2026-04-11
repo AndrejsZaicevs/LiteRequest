@@ -51,10 +51,6 @@ pub fn render_env_selector(
                     }
                 }
             });
-
-        if ui.small_button("...").on_hover_text("Manage environments").clicked() {
-            state.show_panel = !state.show_panel;
-        }
     });
 
     action

@@ -10,6 +10,9 @@ pub const TEXT_PRIMARY: egui::Color32 = egui::Color32::from_rgb(228, 228, 231);
 pub const TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(140, 140, 150);
 pub const TEXT_MUTED: egui::Color32 = egui::Color32::from_rgb(90, 90, 100);
 
+/// Standard height for single-line inputs, dropdowns, and buttons.
+pub const INPUT_HEIGHT: f32 = 28.0;
+
 pub fn apply_theme(ctx: &egui::Context) {
     // Load Phosphor icon font
     let mut fonts = egui::FontDefinitions::default();
@@ -43,6 +46,7 @@ pub fn apply_theme(ctx: &egui::Context) {
     style.spacing.button_padding = egui::vec2(10.0, 5.0);
     style.spacing.window_margin = egui::Margin::same(12);
     style.spacing.indent = 16.0;
+    style.spacing.interact_size = egui::vec2(40.0, INPUT_HEIGHT);
 
     // Bigger text
     use egui::FontFamily::Proportional;
