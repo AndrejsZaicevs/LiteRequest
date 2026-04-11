@@ -30,28 +30,54 @@ impl Default for EnvironmentPanelState {
 pub fn render_env_selector(
     ui: &mut egui::Ui,
     environments: &[Environment],
-    state: &mut EnvironmentPanelState,
+    _state: &mut EnvironmentPanelState,
 ) -> EnvAction {
     let mut action = EnvAction::None;
 
-    let active_name = environments
-        .iter()
-        .find(|e| e.is_active)
-        .map(|e| e.name.as_str())
-        .unwrap_or("No Environment");
+    // "None" chip — active when no environment is selected
+    let none_active = !environments.iter().any(|e| e.is_active);
+    let chip = env_chip(ui, "None", none_active);
+    if chip.clicked() {
+        // Deselect all — send empty id
+        action = EnvAction::SelectEnvironment(String::new());
+    }
 
-    ui.label("Env:");
-    egui::ComboBox::from_id_salt("env_selector")
-        .selected_text(active_name)
-        .show_ui(ui, |ui| {
-            for env in environments {
-                if ui.selectable_label(env.is_active, &env.name).clicked() {
-                    action = EnvAction::SelectEnvironment(env.id.clone());
-                }
-            }
-        });
+    for env in environments {
+        let chip = env_chip(ui, &env.name, env.is_active);
+        if chip.clicked() {
+            action = EnvAction::SelectEnvironment(env.id.clone());
+        }
+    }
 
     action
+}
+
+fn env_chip(ui: &mut egui::Ui, label: &str, active: bool) -> egui::Response {
+    let (fill, text_color, stroke) = if active {
+        (
+            super::theme::ACCENT.gamma_multiply(0.20),
+            super::theme::ACCENT,
+            egui::Stroke::new(1.0, super::theme::ACCENT.gamma_multiply(0.5)),
+        )
+    } else {
+        (
+            egui::Color32::TRANSPARENT,
+            super::theme::TEXT_SECONDARY,
+            egui::Stroke::new(1.0, super::theme::BORDER),
+        )
+    };
+
+    ui.add(
+        egui::Button::new(
+            egui::RichText::new(label)
+                .size(12.0)
+                .color(text_color),
+        )
+        .fill(fill)
+        .stroke(stroke)
+        .corner_radius(egui::CornerRadius::same(12))
+        .min_size(egui::vec2(0.0, 22.0)),
+    )
 }
 
 pub fn render_environment_panel(
