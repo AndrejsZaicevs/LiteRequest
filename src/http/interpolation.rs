@@ -88,4 +88,31 @@ mod tests {
         let refs = extract_variable_refs("{{host}}/{{version}}/users");
         assert_eq!(refs, vec!["host", "version"]);
     }
+
+    #[test]
+    fn test_collection_vars_override_globals() {
+        let mut globals = HashMap::new();
+        globals.insert("host".to_string(), "global.example.com".to_string());
+        globals.insert("version".to_string(), "v1".to_string());
+
+        // Simulate collection variable overriding "host"
+        globals.insert("host".to_string(), "billing.example.com".to_string());
+
+        assert_eq!(
+            interpolate("https://{{host}}/{{version}}/charges", &globals),
+            "https://billing.example.com/v1/charges"
+        );
+    }
+
+    #[test]
+    fn test_base_path_with_instance_variable() {
+        let mut vars = HashMap::new();
+        vars.insert("host".to_string(), "api.example.com".to_string());
+        vars.insert("instance_id".to_string(), "inst-123".to_string());
+
+        assert_eq!(
+            resolve_url("https://{{host}}/{{instance_id}}/v1", "/charges", &vars),
+            "https://api.example.com/inst-123/v1/charges"
+        );
+    }
 }

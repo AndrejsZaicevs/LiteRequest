@@ -376,6 +376,81 @@ impl Database {
         rows.collect()
     }
 
+    // ── Collection Variables (Matrix model) ──────────────────────
+
+    pub fn insert_collection_variable(&self, v: &CollectionVariable) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO collection_variables (id, collection_id, environment_id, key, value, is_secret)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![v.id, v.collection_id, v.environment_id, v.key, v.value, v.is_secret],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_collection_variables(
+        &self,
+        collection_id: &str,
+        environment_id: &str,
+    ) -> rusqlite::Result<Vec<CollectionVariable>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, collection_id, environment_id, key, value, is_secret
+             FROM collection_variables
+             WHERE collection_id=?1 AND environment_id=?2
+             ORDER BY key",
+        )?;
+        let rows = stmt.query_map(params![collection_id, environment_id], |row| {
+            let is_secret: i32 = row.get(5)?;
+            Ok(CollectionVariable {
+                id: row.get(0)?,
+                collection_id: row.get(1)?,
+                environment_id: row.get(2)?,
+                key: row.get(3)?,
+                value: row.get(4)?,
+                is_secret: is_secret != 0,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// Get collection variables for the active environment (used at request time)
+    pub fn get_active_collection_variables(
+        &self,
+        collection_id: &str,
+    ) -> rusqlite::Result<Vec<CollectionVariable>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT cv.id, cv.collection_id, cv.environment_id, cv.key, cv.value, cv.is_secret
+             FROM collection_variables cv
+             JOIN environments e ON cv.environment_id = e.id
+             WHERE cv.collection_id=?1 AND e.is_active = 1
+             ORDER BY cv.key",
+        )?;
+        let rows = stmt.query_map(params![collection_id], |row| {
+            let is_secret: i32 = row.get(5)?;
+            Ok(CollectionVariable {
+                id: row.get(0)?,
+                collection_id: row.get(1)?,
+                environment_id: row.get(2)?,
+                key: row.get(3)?,
+                value: row.get(4)?,
+                is_secret: is_secret != 0,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn update_collection_variable(&self, v: &CollectionVariable) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE collection_variables SET key=?2, value=?3, is_secret=?4 WHERE id=?1",
+            params![v.id, v.key, v.value, v.is_secret],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_collection_variable(&self, id: &str) -> rusqlite::Result<()> {
+        self.conn.execute("DELETE FROM collection_variables WHERE id=?1", params![id])?;
+        Ok(())
+    }
+
     // ── Move / Rename helpers ────────────────────────────────────
 
     pub fn move_request(&self, id: &str, collection_id: &str, folder_id: Option<&str>) -> rusqlite::Result<()> {

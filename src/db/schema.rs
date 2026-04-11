@@ -72,6 +72,16 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_executions_request ON request_executions(request_id);
         CREATE INDEX IF NOT EXISTS idx_executions_version ON request_executions(version_id);
         CREATE INDEX IF NOT EXISTS idx_env_vars_env ON env_variables(environment_id);
+
+        CREATE TABLE IF NOT EXISTS collection_variables (
+            id             TEXT PRIMARY KEY,
+            collection_id  TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+            environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+            key            TEXT NOT NULL,
+            value          TEXT NOT NULL DEFAULT '',
+            is_secret      INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_coll_vars_coll_env ON collection_variables(collection_id, environment_id);
         ",
     )?;
 

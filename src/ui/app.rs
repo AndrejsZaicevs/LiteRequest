@@ -218,9 +218,21 @@ impl LiteRequestApp {
         let version_id = vid.clone();
         let tx = self.http_tx.clone();
 
+        // Start with global environment variables
         let mut variables: HashMap<String, String> = HashMap::new();
         for v in &self.env_variables {
             variables.insert(v.key.clone(), v.value.clone());
+        }
+
+        // Overlay collection-scoped variables (override globals with same key)
+        let collection_vars = self
+            .db
+            .get_active_collection_variables(&req.collection_id)
+            .unwrap_or_default();
+        for cv in &collection_vars {
+            if !cv.key.is_empty() {
+                variables.insert(cv.key.clone(), cv.value.clone());
+            }
         }
 
         // Find collection and inject auth headers
@@ -468,10 +480,9 @@ impl eframe::App for LiteRequestApp {
                                 ui,
                                 &mut self.collection_config_state,
                                 &collection,
+                                &self.environments,
                             );
-                            if matches!(config_action, ConfigAction::Save) {
-                                self.save_collection_config(&cid);
-                            }
+                            self.handle_config_action(config_action, &cid);
                         }
                     }
                     CenterView::RequestEditor(_) => {
@@ -620,6 +631,45 @@ impl LiteRequestApp {
             self.collection_config_state.dirty = false;
             self.set_status("Collection saved");
             self.refresh_all_data();
+        }
+    }
+
+    fn handle_config_action(&mut self, action: ConfigAction, collection_id: &str) {
+        match action {
+            ConfigAction::None => {}
+            ConfigAction::Save => {
+                self.save_collection_config(collection_id);
+            }
+            ConfigAction::LoadVars(cid, env_id) => {
+                self.collection_config_state.collection_vars = self
+                    .db
+                    .list_collection_variables(&cid, &env_id)
+                    .unwrap_or_default();
+                self.collection_config_state.vars_dirty = false;
+            }
+            ConfigAction::SaveVars => {
+                for var in &self.collection_config_state.collection_vars {
+                    let _ = self.db.update_collection_variable(var);
+                }
+                self.collection_config_state.vars_dirty = false;
+                self.set_status("Variables saved");
+            }
+            ConfigAction::AddVar(cid, env_id) => {
+                let var = CollectionVariable {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    collection_id: cid,
+                    environment_id: env_id,
+                    key: String::new(),
+                    value: String::new(),
+                    is_secret: false,
+                };
+                let _ = self.db.insert_collection_variable(&var);
+                self.collection_config_state.collection_vars.push(var);
+            }
+            ConfigAction::DeleteVar(var_id) => {
+                let _ = self.db.delete_collection_variable(&var_id);
+                self.collection_config_state.vars_dirty = false;
+            }
         }
     }
 
