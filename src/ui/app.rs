@@ -426,12 +426,13 @@ impl LiteRequestApp {
             .unwrap_or_default();
         // Global app-level headers (injected before collection headers)
         let global_headers: Vec<KeyValuePair> = self.global_settings.headers.clone();
+        let client_certs: Vec<ClientCertEntry> = self.global_settings.client_certs.clone();
 
         self.is_loading = true;
 
         self.tokio_rt.spawn(async move {
             let result =
-                execute_with_auth(data, &variables, &base_path, auth_config.as_ref(), &global_headers, &collection_headers).await;
+                execute_with_auth(data, &variables, &base_path, auth_config.as_ref(), &global_headers, &collection_headers, &client_certs).await;
             let _ = tx.send(HttpResult {
                 request_id,
                 version_id,
@@ -1267,6 +1268,7 @@ async fn execute_with_auth(
     auth: Option<&CollectionAuthConfig>,
     global_headers: &[KeyValuePair],
     collection_headers: &[KeyValuePair],
+    client_certs: &[ClientCertEntry],
 ) -> Result<(ResponseData, u64), String> {
     // Inject global app-level headers first (lowest priority)
     for h in global_headers {
@@ -1347,7 +1349,7 @@ async fn execute_with_auth(
         }
     }
 
-    crate::http::client::execute_request(&data, variables, base_path).await
+    crate::http::client::execute_request(&data, variables, base_path, client_certs).await
 }
 
 fn base64_encode(input: &str) -> String {

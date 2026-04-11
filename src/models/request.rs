@@ -73,6 +73,63 @@ impl Default for KeyValuePair {
     }
 }
 
+// ── Client certificate configuration ────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum CertType {
+    Pem,
+    Pkcs12,
+}
+
+impl CertType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            CertType::Pem => "PEM (CRT + KEY)",
+            CertType::Pkcs12 => "PKCS12 (PFX)",
+        }
+    }
+    pub fn all() -> &'static [CertType] {
+        &[CertType::Pem, CertType::Pkcs12]
+    }
+}
+
+impl Default for CertType {
+    fn default() -> Self {
+        CertType::Pem
+    }
+}
+
+/// Per-host client certificate configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ClientCertEntry {
+    pub enabled: bool,
+    /// Host pattern: exact (`api.example.com`) or wildcard (`*.example.com`)
+    pub host: String,
+    pub cert_type: CertType,
+    /// PEM: path to certificate file. PKCS12: path to .pfx/.p12 file.
+    pub cert_path: String,
+    /// PEM only: path to private key file.
+    pub key_path: String,
+    /// Optional CA certificate path (PEM format).
+    pub ca_path: String,
+    /// Passphrase for PKCS12 file or encrypted private key.
+    pub passphrase: String,
+}
+
+impl Default for ClientCertEntry {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            host: String::new(),
+            cert_type: CertType::Pem,
+            cert_path: String::new(),
+            key_path: String::new(),
+            ca_path: String::new(),
+            passphrase: String::new(),
+        }
+    }
+}
+
 /// The mutable data of a request at a point in time
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RequestData {
