@@ -61,7 +61,7 @@ pub fn render_request_editor(
     ui.add_space(6.0);
 
     // ── URL bar: [Method] [resolved_base + path in one frame] [Send] ──
-    ui.horizontal(|ui| {
+    let url_row = ui.horizontal(|ui| {
         let method_text = state.data.method.as_str();
         let [r, g, b] = state.data.method.color();
         let method_color = egui::Color32::from_rgb(r, g, b);
@@ -160,10 +160,10 @@ pub fn render_request_editor(
             action = EditorAction::Send;
         }
 
-        // cURL dropdown menu
+        // cURL dropdown menu button (popup rendered outside horizontal)
         let menu_btn = ui.add(
             egui::Button::new(
-                egui::RichText::new("⋮")
+                egui::RichText::new(egui_phosphor::regular::DOTS_THREE_VERTICAL)
                     .size(16.0)
                     .color(super::theme::TEXT_SECONDARY),
             )
@@ -174,17 +174,21 @@ pub fn render_request_editor(
         if menu_btn.clicked() {
             ui.memory_mut(|m| m.toggle_popup(menu_btn.id));
         }
-        egui::popup_below_widget(ui, menu_btn.id, &menu_btn, egui::PopupCloseBehavior::CloseOnClick, |ui| {
-            ui.set_min_width(160.0);
-            if ui.button("📋 Copy as cURL").clicked() {
-                action = EditorAction::CopyCurl;
-            }
-            if ui.button("📥 Import from cURL").clicked() {
-                state.show_curl_import = !state.show_curl_import;
-                state.curl_import_buf.clear();
-                state.curl_import_error = None;
-            }
-        });
+        menu_btn
+    });
+
+    // Popup must be outside the horizontal layout to avoid layer_id conflict
+    let menu_btn_resp = url_row.inner;
+    egui::popup_below_widget(ui, menu_btn_resp.id, &menu_btn_resp, egui::PopupCloseBehavior::CloseOnClick, |ui| {
+        ui.set_min_width(160.0);
+        if ui.button(format!("{} Copy as cURL", egui_phosphor::regular::COPY)).clicked() {
+            action = EditorAction::CopyCurl;
+        }
+        if ui.button(format!("{} Import from cURL", egui_phosphor::regular::TERMINAL)).clicked() {
+            state.show_curl_import = !state.show_curl_import;
+            state.curl_import_buf.clear();
+            state.curl_import_error = None;
+        }
     });
 
     // ── cURL import panel (collapsible) ──
