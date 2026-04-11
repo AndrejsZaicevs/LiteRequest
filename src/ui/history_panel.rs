@@ -212,7 +212,7 @@ pub fn render_execution_list_filtered(
 
         // Mini-collapsible sub-header for the time group
         let expanded = &mut time_expanded[idx];
-        if time_group_header(ui, bucket_type.label(), items.len(), expanded) {
+        if time_group_header(ui, bucket_type.label(), items.len(), expanded, "exec_group") {
             for exec in items {
                 if let Some(eid) = render_single_execution(
                     ui,
@@ -236,6 +236,7 @@ fn time_group_header(
     label: &str,
     count: usize,
     expanded: &mut bool,
+    namespace: &str,
 ) -> bool {
     let icon = if *expanded {
         egui_phosphor::regular::CARET_DOWN
@@ -265,7 +266,7 @@ fn time_group_header(
 
     let click = ui.interact(
         resp.response.rect,
-        ui.id().with(("time_group", label)),
+        ui.id().with((namespace, label)),
         egui::Sense::click(),
     );
     if click.clicked() {
@@ -403,7 +404,7 @@ pub fn render_version_list(
         }
 
         let expanded = &mut time_expanded[idx];
-        if time_group_header(ui, bucket_type.label(), items.len(), expanded) {
+        if time_group_header(ui, bucket_type.label(), items.len(), expanded, "ver_group") {
             for version in items {
                 if let Some(vid) = render_single_version(ui, version, selected_version_id) {
                     selected = Some(vid);
