@@ -263,6 +263,7 @@ fn render_kv_table(
     let mut to_remove: Option<usize> = None;
     let row_h = 26.0;
     let n_rows = pairs.len();
+    let input_fill = super::theme::SURFACE_0;
 
     TableBuilder::new(ui)
         .id_salt(id)
@@ -289,32 +290,44 @@ fn render_kv_table(
                         }
                     });
                     row.col(|ui| {
-                        let mut layouter = super::var_highlight::var_text_layouter;
-                        let resp = ui.add(
-                            egui::TextEdit::singleline(&mut pairs[i].key)
-                                .desired_width(ui.available_width())
-                                .frame(egui::Frame::NONE)
-                                .font(egui::TextStyle::Monospace)
-                                .layouter(&mut layouter),
-                        );
-                        if resp.changed() { changed = true; }
-                        super::var_highlight::show_variable_tooltip(
-                            ui, &resp, &pairs[i].key, variables,
-                        );
+                        egui::Frame::none()
+                            .fill(input_fill)
+                            .corner_radius(egui::CornerRadius::same(2))
+                            .inner_margin(egui::Margin::symmetric(4, 0))
+                            .show(ui, |ui| {
+                                let mut layouter = super::var_highlight::var_text_layouter;
+                                let resp = ui.add(
+                                    egui::TextEdit::singleline(&mut pairs[i].key)
+                                        .desired_width(ui.available_width())
+                                        .frame(egui::Frame::NONE)
+                                        .font(egui::TextStyle::Monospace)
+                                        .layouter(&mut layouter),
+                                );
+                                if resp.changed() { changed = true; }
+                                super::var_highlight::show_variable_tooltip(
+                                    ui, &resp, &pairs[i].key, variables,
+                                );
+                            });
                     });
                     row.col(|ui| {
-                        let mut layouter = super::var_highlight::var_text_layouter;
-                        let resp = ui.add(
-                            egui::TextEdit::singleline(&mut pairs[i].value)
-                                .desired_width(ui.available_width())
-                                .frame(egui::Frame::NONE)
-                                .font(egui::TextStyle::Monospace)
-                                .layouter(&mut layouter),
-                        );
-                        if resp.changed() { changed = true; }
-                        super::var_highlight::show_variable_tooltip(
-                            ui, &resp, &pairs[i].value, variables,
-                        );
+                        egui::Frame::none()
+                            .fill(input_fill)
+                            .corner_radius(egui::CornerRadius::same(2))
+                            .inner_margin(egui::Margin::symmetric(4, 0))
+                            .show(ui, |ui| {
+                                let mut layouter = super::var_highlight::var_text_layouter;
+                                let resp = ui.add(
+                                    egui::TextEdit::singleline(&mut pairs[i].value)
+                                        .desired_width(ui.available_width())
+                                        .frame(egui::Frame::NONE)
+                                        .font(egui::TextStyle::Monospace)
+                                        .layouter(&mut layouter),
+                                );
+                                if resp.changed() { changed = true; }
+                                super::var_highlight::show_variable_tooltip(
+                                    ui, &resp, &pairs[i].value, variables,
+                                );
+                            });
                     });
                     row.col(|ui| {
                         if !is_last_empty {
@@ -358,6 +371,7 @@ fn render_path_params_table(
     let mut changed = false;
     let row_h = 26.0;
     let n_rows = pairs.len();
+    let input_fill = super::theme::SURFACE_0;
 
     TableBuilder::new(ui)
         .id_salt("path_params_table")
@@ -368,6 +382,7 @@ fn render_path_params_table(
         .column(Column::exact(20.0))               // checkbox
         .column(Column::remainder().at_least(50.0)) // key (read-only)
         .column(Column::remainder().at_least(50.0)) // value (editable)
+        .column(Column::exact(18.0))               // spacer (aligns with KV remove col)
         .body(|mut body| {
             for i in 0..n_rows {
                 body.row(row_h, |mut row| {
@@ -385,19 +400,26 @@ fn render_path_params_table(
                         );
                     });
                     row.col(|ui| {
-                        let mut layouter = super::var_highlight::var_text_layouter;
-                        let resp = ui.add(
-                            egui::TextEdit::singleline(&mut pairs[i].value)
-                                .desired_width(ui.available_width())
-                                .frame(egui::Frame::NONE)
-                                .font(egui::TextStyle::Monospace)
-                                .layouter(&mut layouter),
-                        );
-                        if resp.changed() { changed = true; }
-                        super::var_highlight::show_variable_tooltip(
-                            ui, &resp, &pairs[i].value, variables,
-                        );
+                        egui::Frame::none()
+                            .fill(input_fill)
+                            .corner_radius(egui::CornerRadius::same(2))
+                            .inner_margin(egui::Margin::symmetric(4, 0))
+                            .show(ui, |ui| {
+                                let mut layouter = super::var_highlight::var_text_layouter;
+                                let resp = ui.add(
+                                    egui::TextEdit::singleline(&mut pairs[i].value)
+                                        .desired_width(ui.available_width())
+                                        .frame(egui::Frame::NONE)
+                                        .font(egui::TextStyle::Monospace)
+                                        .layouter(&mut layouter),
+                                );
+                                if resp.changed() { changed = true; }
+                                super::var_highlight::show_variable_tooltip(
+                                    ui, &resp, &pairs[i].value, variables,
+                                );
+                            });
                     });
+                    row.col(|_ui| {}); // spacer
                 });
             }
         });
