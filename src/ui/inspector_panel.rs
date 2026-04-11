@@ -272,6 +272,7 @@ fn render_kv_table(
     TableBuilder::new(ui)
         .id_salt(id)
         .striped(false)
+        .min_scrolled_height(0.0)
         .max_scroll_height(n_rows as f32 * row_h + 4.0)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(Column::exact(22.0))           // checkbox
@@ -390,6 +391,7 @@ fn render_path_params_table(
     TableBuilder::new(ui)
         .id_salt("path_params_table")
         .striped(false)
+        .min_scrolled_height(0.0)
         .max_scroll_height(n_rows as f32 * row_h + 4.0)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(Column::exact(22.0))               // checkbox
