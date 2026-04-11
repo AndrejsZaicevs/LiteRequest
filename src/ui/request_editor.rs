@@ -76,6 +76,7 @@ pub fn render_request_editor(
                     if ui.selectable_label(state.data.method == *m, label).clicked() {
                         state.data.method = m.clone();
                         state.dirty = true;
+                        action = EditorAction::DataChanged;
                     }
                 }
             });

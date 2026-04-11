@@ -234,6 +234,11 @@ impl LiteRequestApp {
     }
 
     fn select_collection(&mut self, collection_id: &str) {
+        // Autosave current request before switching away
+        if self.editor_state.dirty && self.current_request.is_some() {
+            self.save_version();
+        }
+
         if let Some(collection) = self.collections.iter().find(|c| c.id == collection_id) {
             self.collection_config_state.load_from(collection);
             self.tree_state.selected_collection_id = Some(collection_id.to_string());
@@ -244,6 +249,11 @@ impl LiteRequestApp {
     }
 
     fn select_request(&mut self, request_id: &str) {
+        // Autosave current request before switching away
+        if self.editor_state.dirty && self.current_request.is_some() {
+            self.save_version();
+        }
+
         if let Some(req) = self.requests.iter().find(|r| r.id == request_id).cloned() {
             if let Some(vid) = &req.current_version_id {
                 if let Ok(version) = self.db.get_version(vid) {
