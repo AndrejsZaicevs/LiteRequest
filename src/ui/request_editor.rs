@@ -6,7 +6,6 @@ pub struct RequestEditorState {
     pub data: RequestData,
     pub dirty: bool,
     pub json_error: Option<String>,
-    pub show_body: bool,
 }
 
 impl Default for RequestEditorState {
@@ -15,7 +14,6 @@ impl Default for RequestEditorState {
             data: RequestData::default(),
             dirty: false,
             json_error: None,
-            show_body: true,
         }
     }
 }
@@ -24,19 +22,6 @@ pub enum EditorAction {
     None,
     Send,
     DataChanged,
-}
-
-/// Join base_path and url without producing double slashes.
-fn join_display_path(base: &str, path: &str) -> String {
-    if base.is_empty() {
-        return path.to_string();
-    }
-    let base_trimmed = base.trim_end_matches('/');
-    if path.is_empty() || path.starts_with('/') {
-        format!("{base_trimmed}{path}")
-    } else {
-        format!("{base_trimmed}/{path}")
-    }
 }
 
 pub fn render_request_editor(
@@ -162,142 +147,143 @@ pub fn render_request_editor(
     ui.add_space(6.0);
 
     // ── Flat scrollable view: Body ──
-    egui::ScrollArea::vertical()
-        .id_salt("editor_flat_scroll")
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            // ── BODY ──
-            let body_count = if state.data.body_type != BodyType::None { 1 } else { 0 };
-            if collapsible_section(ui, "Body", body_count, &mut state.show_body) {
-                ui.horizontal(|ui| {
-                    for bt in BodyType::all() {
-                        let is_active = state.data.body_type == *bt;
-                        let rt = if is_active {
-                            egui::RichText::new(bt.as_str())
-                                .strong()
-                                .size(13.0)
-                                .color(super::theme::ACCENT)
+    // ── Body type selector row ──
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new("BODY")
+                .strong()
+                .size(11.0)
+                .color(super::theme::TEXT_SECONDARY),
+        );
+        ui.add_space(8.0);
+        for bt in BodyType::all() {
+            let is_active = state.data.body_type == *bt;
+            let rt = if is_active {
+                egui::RichText::new(bt.as_str())
+                    .strong()
+                    .size(12.0)
+                    .color(super::theme::ACCENT)
+            } else {
+                egui::RichText::new(bt.as_str())
+                    .size(12.0)
+                    .color(super::theme::TEXT_SECONDARY)
+            };
+            if ui
+                .add(
+                    egui::Button::new(rt)
+                        .fill(if is_active {
+                            super::theme::ACCENT.gamma_multiply(0.15)
                         } else {
-                            egui::RichText::new(bt.as_str())
-                                .size(13.0)
-                                .color(super::theme::TEXT_SECONDARY)
-                        };
-                        if ui
-                            .add(
-                                egui::Button::new(rt)
-                                    .fill(if is_active {
-                                        super::theme::ACCENT.gamma_multiply(0.15)
-                                    } else {
-                                        egui::Color32::TRANSPARENT
-                                    })
-                                    .stroke(if is_active {
-                                        egui::Stroke::new(
-                                            1.0,
-                                            super::theme::ACCENT.gamma_multiply(0.4),
-                                        )
-                                    } else {
-                                        egui::Stroke::NONE
-                                    })
-                                    .corner_radius(egui::CornerRadius::same(4)),
+                            egui::Color32::TRANSPARENT
+                        })
+                        .stroke(if is_active {
+                            egui::Stroke::new(
+                                1.0,
+                                super::theme::ACCENT.gamma_multiply(0.4),
                             )
-                            .clicked()
-                        {
-                            state.data.body_type = bt.clone();
-                            state.dirty = true;
-                            action = EditorAction::DataChanged;
-                        }
+                        } else {
+                            egui::Stroke::NONE
+                        })
+                        .corner_radius(egui::CornerRadius::same(4)),
+                )
+                .clicked()
+            {
+                state.data.body_type = bt.clone();
+                state.dirty = true;
+                action = EditorAction::DataChanged;
+            }
+        }
+
+        // JSON validation indicator inline
+        if state.data.body_type == BodyType::Json {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if let Some(err) = &state.json_error {
+                    ui.label(
+                        egui::RichText::new(format!("! {err}"))
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(249, 62, 62)),
+                    );
+                } else if !state.data.body.is_empty() {
+                    ui.label(
+                        egui::RichText::new("✓ Valid JSON")
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(73, 204, 144)),
+                    );
+                }
+            });
+        }
+    });
+
+    // ── Body editor filling all remaining space ──
+    if state.data.body_type != BodyType::None {
+        let remaining = ui.available_height();
+        let vars_clone = variables.clone();
+
+        if state.data.body_type == BodyType::Json {
+            let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(
+                ui.ctx(),
+                ui.style(),
+            );
+            let mut layouter =
+                move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+                    let text = buf.as_str();
+                    let mut job = egui_extras::syntax_highlighting::highlight(
+                        ui.ctx(),
+                        ui.style(),
+                        &theme,
+                        text,
+                        "json",
+                    );
+                    patch_variable_colors(text, &mut job);
+                    job.wrap.max_width = wrap_width;
+                    ui.fonts_mut(|f| f.layout_job(job))
+                };
+
+            let response = ui.add_sized(
+                egui::vec2(ui.available_width(), remaining),
+                egui::TextEdit::multiline(&mut state.data.body)
+                    .desired_width(f32::INFINITY)
+                    .font(egui::TextStyle::Monospace)
+                    .code_editor()
+                    .margin(egui::Margin::same(2))
+                    .layouter(&mut layouter),
+            );
+
+            if response.changed() {
+                state.dirty = true;
+                action = EditorAction::DataChanged;
+                if !state.data.body.is_empty() {
+                    match serde_json::from_str::<serde_json::Value>(&state.data.body) {
+                        Ok(_) => state.json_error = None,
+                        Err(e) => state.json_error = Some(e.to_string()),
                     }
-                });
-
-                if state.data.body_type != BodyType::None {
-                    ui.add_space(4.0);
-
-                    if state.data.body_type == BodyType::Json {
-                        if let Some(err) = &state.json_error {
-                            ui.label(
-                                egui::RichText::new(format!("! {err}"))
-                                    .size(12.0)
-                                    .color(egui::Color32::from_rgb(249, 62, 62)),
-                            );
-                        } else if !state.data.body.is_empty() {
-                            ui.label(
-                                egui::RichText::new("Valid JSON")
-                                    .size(12.0)
-                                    .color(egui::Color32::from_rgb(73, 204, 144)),
-                            );
-                        }
-                    }
-
-                    // Use combined syntax highlighting + variable highlighting for JSON
-                    // For other body types, just variable highlighting
-                    let vars_clone = variables.clone();
-                    if state.data.body_type == BodyType::Json {
-                        let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(
-                            ui.ctx(),
-                            ui.style(),
-                        );
-                        let mut layouter =
-                            move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
-                                let text = buf.as_str();
-                                // First do JSON syntax highlighting, then overlay variable colors
-                                let mut job = egui_extras::syntax_highlighting::highlight(
-                                    ui.ctx(),
-                                    ui.style(),
-                                    &theme,
-                                    text,
-                                    "json",
-                                );
-                                // Patch variable spans with VAR_COLOR
-                                patch_variable_colors(text, &mut job);
-                                job.wrap.max_width = wrap_width;
-                                ui.fonts_mut(|f| f.layout_job(job))
-                            };
-
-                        let response = ui.add(
-                            egui::TextEdit::multiline(&mut state.data.body)
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(6)
-                                .font(egui::TextStyle::Monospace)
-                                .code_editor()
-                                .layouter(&mut layouter),
-                        );
-
-                        if response.changed() {
-                            state.dirty = true;
-                            action = EditorAction::DataChanged;
-                            if !state.data.body.is_empty() {
-                                match serde_json::from_str::<serde_json::Value>(&state.data.body) {
-                                    Ok(_) => state.json_error = None,
-                                    Err(e) => state.json_error = Some(e.to_string()),
-                                }
-                            } else {
-                                state.json_error = None;
-                            }
-                        }
-                        super::var_highlight::show_variable_tooltip(
-                            ui, &response, &state.data.body, &vars_clone,
-                        );
-                    } else {
-                        let mut layouter = super::var_highlight::var_text_layouter;
-                        let response = ui.add(
-                            egui::TextEdit::multiline(&mut state.data.body)
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(6)
-                                .font(egui::TextStyle::Monospace)
-                                .code_editor()
-                                .layouter(&mut layouter),
-                        );
-                        if response.changed() {
-                            state.dirty = true;
-                            action = EditorAction::DataChanged;
-                        }
-                        super::var_highlight::show_variable_tooltip(
-                            ui, &response, &state.data.body, &vars_clone,
-                        );
-                    }
+                } else {
+                    state.json_error = None;
                 }
             }
-        });
+            super::var_highlight::show_variable_tooltip(
+                ui, &response, &state.data.body, &vars_clone,
+            );
+        } else {
+            let mut layouter = super::var_highlight::var_text_layouter;
+            let response = ui.add_sized(
+                egui::vec2(ui.available_width(), remaining),
+                egui::TextEdit::multiline(&mut state.data.body)
+                    .desired_width(f32::INFINITY)
+                    .font(egui::TextStyle::Monospace)
+                    .code_editor()
+                    .margin(egui::Margin::same(2))
+                    .layouter(&mut layouter),
+            );
+            if response.changed() {
+                state.dirty = true;
+                action = EditorAction::DataChanged;
+            }
+            super::var_highlight::show_variable_tooltip(
+                ui, &response, &state.data.body, &vars_clone,
+            );
+        }
+    }
 
     action
 }
@@ -338,162 +324,9 @@ fn patch_variable_colors(text: &str, job: &mut egui::text::LayoutJob) {
     }
 }
 
-/// Collapsible section header. Returns true if section is expanded.
-pub(crate) fn collapsible_section(ui: &mut egui::Ui, label: &str, count: usize, expanded: &mut bool) -> bool {
-    let icon = if *expanded { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_RIGHT };
-    let count_text = if count > 0 {
-        format!(" ({count})")
-    } else {
-        String::new()
-    };
-
-    ui.horizontal(|ui| {
-        let resp = ui.add(
-            egui::Label::new(
-                egui::RichText::new(format!("{icon}  {label}{count_text}"))
-                    .strong()
-                    .size(13.0)
-                    .color(if *expanded {
-                        super::theme::TEXT_PRIMARY
-                    } else {
-                        super::theme::TEXT_SECONDARY
-                    }),
-            )
-            .sense(egui::Sense::click()),
-        );
-        if resp.clicked() {
-            *expanded = !*expanded;
-        }
-
-        let rect = resp.rect;
-        let line_y = rect.center().y;
-        ui.painter().line_segment(
-            [
-                egui::pos2(rect.right() + 8.0, line_y),
-                egui::pos2(ui.available_rect_before_wrap().right(), line_y),
-            ],
-            egui::Stroke::new(1.0, super::theme::BORDER),
-        );
-    });
-
-    ui.add_space(2.0);
-    *expanded
-}
-
 pub(crate) fn count_active_pairs(pairs: &[KeyValuePair]) -> usize {
     pairs
         .iter()
         .filter(|p| p.enabled && !p.key.is_empty())
         .count()
-}
-
-/// KV editor using egui_extras table with variable highlighting.
-pub(crate) fn render_kv_table(
-    ui: &mut egui::Ui,
-    pairs: &mut Vec<KeyValuePair>,
-    id: &str,
-    variables: &HashMap<String, String>,
-) -> bool {
-    use egui_extras::{TableBuilder, Column};
-
-    let mut changed = false;
-    let mut to_remove: Option<usize> = None;
-    let row_h = 22.0;
-    let n_rows = pairs.len();
-
-    TableBuilder::new(ui)
-        .id_salt(id)
-        .striped(true)
-        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(Column::exact(20.0))           // checkbox
-        .column(Column::remainder().at_least(80.0)) // key
-        .column(Column::remainder().at_least(80.0)) // value
-        .column(Column::exact(20.0))           // remove btn
-        .body(|mut body| {
-            for i in 0..n_rows {
-                body.row(row_h, |mut row| {
-                    // Checkbox
-                    row.col(|ui| {
-                        if ui.checkbox(&mut pairs[i].enabled, "").changed() {
-                            changed = true;
-                        }
-                    });
-                    // Key (with variable highlighting)
-                    row.col(|ui| {
-                        let mut layouter = super::var_highlight::var_text_layouter;
-                        let resp = ui.add(
-                            egui::TextEdit::singleline(&mut pairs[i].key)
-                                .desired_width(ui.available_width())
-                                .frame(egui::Frame::NONE)
-                                .font(egui::TextStyle::Monospace)
-                                .layouter(&mut layouter),
-                        );
-                        if resp.changed() {
-                            changed = true;
-                        }
-                        super::var_highlight::show_variable_tooltip(
-                            ui, &resp, &pairs[i].key, variables,
-                        );
-                    });
-                    // Value (with variable highlighting)
-                    row.col(|ui| {
-                        let mut layouter = super::var_highlight::var_text_layouter;
-                        let resp = ui.add(
-                            egui::TextEdit::singleline(&mut pairs[i].value)
-                                .desired_width(ui.available_width())
-                                .frame(egui::Frame::NONE)
-                                .font(egui::TextStyle::Monospace)
-                                .layouter(&mut layouter),
-                        );
-                        if resp.changed() {
-                            changed = true;
-                        }
-                        super::var_highlight::show_variable_tooltip(
-                            ui, &resp, &pairs[i].value, variables,
-                        );
-                    });
-                    // Remove
-                    row.col(|ui| {
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    egui::RichText::new(egui_phosphor::regular::X)
-                                        .size(11.0)
-                                        .color(super::theme::TEXT_MUTED),
-                                )
-                                .frame(false)
-                                .min_size(egui::vec2(16.0, 16.0)),
-                            )
-                            .on_hover_text("Remove")
-                            .clicked()
-                        {
-                            to_remove = Some(i);
-                        }
-                    });
-                });
-            }
-        });
-
-    if let Some(idx) = to_remove {
-        pairs.remove(idx);
-        changed = true;
-    }
-
-    // "+ Add" button
-    if ui
-        .add(
-            egui::Button::new(
-                egui::RichText::new("+ Add")
-                    .size(12.0)
-                    .color(super::theme::TEXT_SECONDARY),
-            )
-            .frame(false),
-        )
-        .clicked()
-    {
-        pairs.push(KeyValuePair::default());
-        changed = true;
-    }
-
-    changed
 }
