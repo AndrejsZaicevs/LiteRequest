@@ -257,6 +257,15 @@ impl Database {
         Ok(())
     }
 
+    /// Delete a version by id (used to clean up empty drafts during dedup).
+    pub fn delete_version(&self, version_id: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "DELETE FROM request_versions WHERE id=?1",
+            params![version_id],
+        )?;
+        Ok(())
+    }
+
     // ── Request Executions ───────────────────────────────────────
 
     fn body_hash(body: &str) -> String {

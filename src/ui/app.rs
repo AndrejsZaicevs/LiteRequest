@@ -347,10 +347,32 @@ impl LiteRequestApp {
 
         let now = chrono::Utc::now().to_rfc3339();
 
-        // If the current version has no executions, overwrite it in place
-        // (this is the "autosave draft" behaviour — edits don't pile up versions).
+        // If the current version has no executions, it's a draft.
+        // Before overwriting, check if another version already has identical data.
         if let Some(current_vid) = self.selected_version_id.clone() {
             if !self.db.version_has_executions(&current_vid) {
+                // Check for an existing version with identical data (excluding this draft)
+                let dedup_match = self.versions.iter()
+                    .find(|v| v.id != current_vid && data_equal(&v.data, &self.editor_state.data))
+                    .map(|v| v.id.clone());
+
+                if let Some(match_id) = dedup_match {
+                    // Another version already has this data — delete the draft and switch
+                    let _ = self.db.delete_version(&current_vid);
+                    let _ = self.db.update_request_version(&req_id, &match_id);
+                    if let Some(r) = self.requests.iter_mut().find(|r| r.id == req_id) {
+                        r.current_version_id = Some(match_id.clone());
+                    }
+                    if let Some(cr) = &mut self.current_request {
+                        cr.current_version_id = Some(match_id.clone());
+                    }
+                    self.selected_version_id = Some(match_id);
+                    self.versions = self.db.list_versions_by_request(&req_id).unwrap_or_default();
+                    self.editor_state.dirty = false;
+                    return;
+                }
+
+                // No match — overwrite the draft in place
                 let _ = self.db.update_version_data(
                     &current_vid,
                     &self.editor_state.data,
