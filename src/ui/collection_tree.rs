@@ -10,10 +10,12 @@ enum RenameTarget {
 }
 
 /// Payload carried during a drag operation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct DragPayload {
     /// Index into the flat render order so we can show insertion indicators.
     source_idx: usize,
+    /// Display name for the floating drag preview.
+    label: String,
 }
 
 pub struct CollectionTreeState {
@@ -127,12 +129,15 @@ pub fn render_collection_tree(
                         merge_action(&mut action, a);
                     }
                     RowItem::CollectionEnd(collection_id) => {
-                        // Invisible drop zone at the end of a collection
-                        let drop_frame = egui::Frame::default().inner_margin(egui::Margin::symmetric(0, 1));
-                        let (_, dropped) = ui.dnd_drop_zone::<DragPayload, ()>(drop_frame, |ui| {
-                            ui.allocate_space(egui::vec2(ui.available_width(), 2.0));
-                        });
-                        if let Some(payload) = dropped {
+                        // Invisible drop zone at the end of a collection (manual detection)
+                        let (space_rect, _) = ui.allocate_exact_size(
+                            egui::vec2(ui.available_width(), 4.0),
+                            egui::Sense::hover(),
+                        );
+                        let drop_id = egui::Id::new(("coll_end_drop", collection_id));
+                        let drop_resp = ui.interact(space_rect, drop_id, egui::Sense::hover());
+
+                        if let Some(payload) = drop_resp.dnd_release_payload::<DragPayload>() {
                             pending_drops.push(PendingDrop {
                                 source_idx: payload.source_idx,
                                 target_collection_id: collection_id.clone(),
@@ -155,6 +160,26 @@ pub fn render_collection_tree(
                 pd.target_folder_id,
             );
             break;
+        }
+    }
+
+    // Floating drag preview near cursor
+    if let Some(payload) = egui::DragAndDrop::payload::<DragPayload>(ui.ctx()) {
+        if let Some(pointer) = ui.input(|i| i.pointer.interact_pos()) {
+            let layer = egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("drag_preview"));
+            let painter = ui.ctx().layer_painter(layer);
+            let pos = pointer + egui::vec2(14.0, 14.0);
+            let font = egui::FontId::new(12.0, egui::FontFamily::Proportional);
+            let bg = egui::Frame::default()
+                .fill(super::theme::SURFACE_1)
+                .stroke(egui::Stroke::new(1.0, super::theme::ACCENT))
+                .corner_radius(egui::CornerRadius::same(4))
+                .inner_margin(egui::Margin::symmetric(6, 3));
+            let galley = painter.layout_no_wrap(payload.label.clone(), font, super::theme::TEXT_PRIMARY);
+            let text_size = galley.size();
+            let rect = egui::Rect::from_min_size(pos, text_size + egui::vec2(12.0, 6.0));
+            painter.add(bg.paint(rect));
+            painter.galley(pos + egui::vec2(6.0, 3.0), galley, super::theme::TEXT_PRIMARY);
         }
     }
 
@@ -272,13 +297,13 @@ fn render_collection_row(
     let cid = collection.id.clone();
     let cname = collection.name.clone();
 
-    // Wrap collection in a drop zone so requests can be dropped onto the collection root
-    let drop_frame = egui::Frame::default()
+    // Normal frame (no dnd_drop_zone — we detect drops manually to avoid the outline artifact)
+    let frame = egui::Frame::default()
         .fill(frame_fill)
         .corner_radius(egui::CornerRadius::same(6))
         .inner_margin(egui::Margin::symmetric(6, 3));
 
-    let (_, dropped_payload) = ui.dnd_drop_zone::<DragPayload, ()>(drop_frame, |ui| {
+    let frame_resp = frame.show(ui, |ui| {
         ui.horizontal(|ui| {
             // Expand arrow
             let icon = if is_expanded {
@@ -355,11 +380,28 @@ fn render_collection_row(
         });
     });
 
-    let pending = dropped_payload.map(|p| PendingDrop {
-        source_idx: p.source_idx,
-        target_collection_id: collection.id.clone(),
-        target_folder_id: None,
-    });
+    // Manual drop detection on the frame area (hover-only sense won't steal clicks)
+    let drop_id = egui::Id::new(("coll_drop", &collection.id));
+    let drop_resp = ui.interact(frame_resp.response.rect, drop_id, egui::Sense::hover());
+
+    let mut pending = None;
+    if let Some(payload) = drop_resp.dnd_release_payload::<DragPayload>() {
+        pending = Some(PendingDrop {
+            source_idx: payload.source_idx,
+            target_collection_id: collection.id.clone(),
+            target_folder_id: None,
+        });
+    }
+
+    // Subtle highlight when a drag payload hovers over this collection
+    if drop_resp.dnd_hover_payload::<DragPayload>().is_some() {
+        ui.painter().rect_stroke(
+            frame_resp.response.rect,
+            egui::CornerRadius::same(6),
+            egui::Stroke::new(1.5, super::theme::ACCENT),
+            egui::StrokeKind::Outside,
+        );
+    }
 
     (action, pending)
 }
@@ -386,12 +428,12 @@ fn render_folder_row(
 
     ui.add_space(1.0);
 
-    // Folder is a drop zone
-    let drop_frame = egui::Frame::default()
+    // Normal frame (no dnd_drop_zone — we detect drops manually)
+    let frame = egui::Frame::default()
         .corner_radius(egui::CornerRadius::same(4))
         .inner_margin(egui::Margin { left: indent as i8 + 4, right: 4, top: 2, bottom: 2 });
 
-    let (_, dropped_payload) = ui.dnd_drop_zone::<DragPayload, ()>(drop_frame, |ui| {
+    let frame_resp = frame.show(ui, |ui| {
         ui.horizontal(|ui| {
             let icon = if is_expanded {
                 egui_phosphor::regular::CARET_DOWN
@@ -464,11 +506,28 @@ fn render_folder_row(
         });
     });
 
-    let pending = dropped_payload.map(|p| PendingDrop {
-        source_idx: p.source_idx,
-        target_collection_id: collection_id.to_string(),
-        target_folder_id: Some(folder.id.clone()),
-    });
+    // Manual drop detection on the folder area
+    let drop_id = egui::Id::new(("folder_drop", &folder.id));
+    let drop_resp = ui.interact(frame_resp.response.rect, drop_id, egui::Sense::hover());
+
+    let mut pending = None;
+    if let Some(payload) = drop_resp.dnd_release_payload::<DragPayload>() {
+        pending = Some(PendingDrop {
+            source_idx: payload.source_idx,
+            target_collection_id: collection_id.to_string(),
+            target_folder_id: Some(folder.id.clone()),
+        });
+    }
+
+    // Subtle highlight when a drag payload hovers over this folder
+    if drop_resp.dnd_hover_payload::<DragPayload>().is_some() {
+        ui.painter().rect_stroke(
+            frame_resp.response.rect,
+            egui::CornerRadius::same(4),
+            egui::Stroke::new(1.5, super::theme::ACCENT),
+            egui::StrokeKind::Outside,
+        );
+    }
 
     (action, pending)
 }
@@ -490,7 +549,13 @@ fn render_request_item(
     let is_selected = state.selected_request_id.as_deref() == Some(&req.id);
     let is_renaming = matches!(&state.rename_target, Some(RenameTarget::Request(id)) if id == &req.id);
 
-    let fill = if is_selected {
+    // Dim the item if it is currently being dragged
+    let is_being_dragged = egui::DragAndDrop::payload::<DragPayload>(ui.ctx())
+        .map_or(false, |p| p.source_idx == row_idx);
+
+    let fill = if is_being_dragged {
+        super::theme::ACCENT.gamma_multiply(0.06)
+    } else if is_selected {
         super::theme::ACCENT.gamma_multiply(0.15)
     } else {
         egui::Color32::TRANSPARENT
@@ -506,86 +571,89 @@ fn render_request_item(
     let rname = req.name.clone();
     let indent = (depth as f32) * 16.0;
 
-    let item_id = egui::Id::new(("req_drag", &req.id));
-    let payload = DragPayload { source_idx: row_idx };
+    let payload = DragPayload { source_idx: row_idx, label: req.name.clone() };
 
-    // Render the request as a drag source
-    let drag_resp = ui.dnd_drag_source(item_id, payload, |ui| {
-        let frame = egui::Frame::default()
-            .fill(fill)
-            .stroke(stroke)
-            .corner_radius(egui::CornerRadius::same(5))
-            .inner_margin(egui::Margin { left: indent as i8 + 8, right: 8, top: 3, bottom: 3 });
+    // Render frame normally (no dnd_drag_source — we handle drag via click_and_drag sense)
+    let frame = egui::Frame::default()
+        .fill(fill)
+        .stroke(stroke)
+        .corner_radius(egui::CornerRadius::same(5))
+        .inner_margin(egui::Margin { left: indent as i8 + 8, right: 8, top: 3, bottom: 3 });
 
-        frame.show(ui, |ui| {
-            ui.horizontal(|ui| {
-                let method = method_map.get(&req.id);
-                render_method_badge(ui, method);
+    let frame_resp = frame.show(ui, |ui| {
+        ui.horizontal(|ui| {
+            let method = method_map.get(&req.id);
+            render_method_badge(ui, method);
 
-                if is_renaming {
-                    let a = inline_rename_edit(ui, state, &req.id, RenameType::Request);
-                    if !matches!(a, TreeAction::None) {
-                        action = a;
-                    }
-                } else {
-                    let text_color = if is_selected {
-                        egui::Color32::WHITE
-                    } else {
-                        super::theme::TEXT_PRIMARY
-                    };
-
-                    let resp = ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(&req.name).size(13.0).color(text_color),
-                        )
-                        .sense(egui::Sense::click()),
-                    );
-                    let full_rect = resp.rect.with_max_x(ui.max_rect().right());
-                    let full_resp = ui.interact(full_rect, resp.id.with("full"), egui::Sense::click());
-
-                    if resp.clicked() || full_resp.clicked() {
-                        action = TreeAction::SelectRequest(req.id.clone());
-                    }
-                    if resp.double_clicked() || full_resp.double_clicked() {
-                        start_rename(state, &req.id, &req.name, RenameTarget::Request(req.id.clone()));
-                    }
-                    full_resp.context_menu(|ui| {
-                        if ui.button(format!("{} Rename", egui_phosphor::regular::PENCIL_SIMPLE)).clicked() {
-                            start_rename(state, &rid, &rname, RenameTarget::Request(rid.clone()));
-                            ui.close();
-                        }
-                        if ui.button(format!("{} Clone", egui_phosphor::regular::COPY)).clicked() {
-                            action = TreeAction::CloneRequest(rid.clone());
-                            ui.close();
-                        }
-                        ui.separator();
-                        if ui.button(format!("{} Delete", egui_phosphor::regular::TRASH)).clicked() {
-                            action = TreeAction::DeleteRequest(rid.clone());
-                            ui.close();
-                        }
-                    });
+            if is_renaming {
+                let a = inline_rename_edit(ui, state, &req.id, RenameType::Request);
+                if !matches!(a, TreeAction::None) {
+                    action = a;
                 }
-            });
+            } else {
+                let text_color = if is_being_dragged {
+                    super::theme::TEXT_MUTED
+                } else if is_selected {
+                    egui::Color32::WHITE
+                } else {
+                    super::theme::TEXT_PRIMARY
+                };
+
+                // Label without click sense — all interactions handled by full_resp below
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(&req.name).size(13.0).color(text_color),
+                    ),
+                );
+            }
         });
     });
 
-    let response = drag_resp.response;
+    // Single interaction for click + drag on the frame area (only when not renaming)
+    if !is_renaming {
+        let item_id = egui::Id::new(("req_item", &req.id));
+        let resp = ui.interact(frame_resp.response.rect, item_id, egui::Sense::click_and_drag());
+
+        // Drag: sets payload only on drag_started(), cursor stays default until actually dragging
+        resp.dnd_set_drag_payload(payload);
+
+        if resp.clicked() {
+            action = TreeAction::SelectRequest(req.id.clone());
+        }
+        if resp.double_clicked() {
+            start_rename(state, &req.id, &req.name, RenameTarget::Request(req.id.clone()));
+        }
+        resp.context_menu(|ui| {
+            if ui.button(format!("{} Rename", egui_phosphor::regular::PENCIL_SIMPLE)).clicked() {
+                start_rename(state, &rid, &rname, RenameTarget::Request(rid.clone()));
+                ui.close();
+            }
+            if ui.button(format!("{} Clone", egui_phosphor::regular::COPY)).clicked() {
+                action = TreeAction::CloneRequest(rid.clone());
+                ui.close();
+            }
+            ui.separator();
+            if ui.button(format!("{} Delete", egui_phosphor::regular::TRASH)).clicked() {
+                action = TreeAction::DeleteRequest(rid.clone());
+                ui.close();
+            }
+        });
+    }
+
+    let response = frame_resp.response;
 
     // Show drop indicator when another request is hovering over this one
     if let (Some(pointer), Some(hovered_payload)) = (
         ui.input(|i| i.pointer.interact_pos()),
         response.dnd_hover_payload::<DragPayload>(),
     ) {
-        // Don't show indicator if dragging onto itself
         if hovered_payload.source_idx != row_idx {
             let rect = response.rect;
             let stroke = egui::Stroke::new(2.0, super::theme::ACCENT);
 
             if pointer.y < rect.center().y {
-                // Insert above
                 ui.painter().hline(rect.x_range(), rect.top(), stroke);
             } else {
-                // Insert below
                 ui.painter().hline(rect.x_range(), rect.bottom(), stroke);
             }
         }
@@ -593,9 +661,7 @@ fn render_request_item(
         // Check for release
         if let Some(dropped) = response.dnd_release_payload::<DragPayload>() {
             if dropped.source_idx != row_idx {
-                // Resolve the source request from the flat rows list
                 if let Some(RowItem::Request { request: src_req, .. }) = rows.get(dropped.source_idx) {
-                    // Drop onto the same container as the target request
                     action = TreeAction::MoveRequest(
                         src_req.id.clone(),
                         collection_id.to_string(),
