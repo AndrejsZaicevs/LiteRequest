@@ -61,7 +61,7 @@ pub fn render_request_editor(
     ui.add_space(6.0);
 
     // ── URL bar: [Method] [resolved_base + path in one frame] [Send] ──
-    let url_row = ui.horizontal(|ui| {
+    ui.horizontal(|ui| {
         let method_text = state.data.method.as_str();
         let [r, g, b] = state.data.method.color();
         let method_color = egui::Color32::from_rgb(r, g, b);
@@ -87,7 +87,7 @@ pub fn render_request_editor(
                 }
             });
 
-        let send_btn_w = 140.0; // Send + cURL menu
+        let send_btn_w = 160.0; // Send + copy + import buttons
         let available_for_url = (ui.available_width() - send_btn_w - 8.0).max(200.0);
 
         if !base_path.is_empty() {
@@ -160,31 +160,34 @@ pub fn render_request_editor(
             action = EditorAction::Send;
         }
 
-        // cURL dropdown menu button (popup rendered outside horizontal)
-        let menu_btn = ui.add(
+        // Copy as cURL button
+        let copy_btn = ui.add(
             egui::Button::new(
-                egui::RichText::new(egui_phosphor::regular::DOTS_THREE_VERTICAL)
-                    .size(16.0)
+                egui::RichText::new(egui_phosphor::regular::COPY)
+                    .size(15.0)
                     .color(super::theme::TEXT_SECONDARY),
             )
             .fill(super::theme::SURFACE_1)
             .stroke(egui::Stroke::new(1.0, super::theme::BORDER))
             .corner_radius(egui::CornerRadius::same(4)),
-        );
-        if menu_btn.clicked() {
-            ui.memory_mut(|m| m.toggle_popup(menu_btn.id));
-        }
-        menu_btn
-    });
-
-    // Popup must be outside the horizontal layout to avoid layer_id conflict
-    let menu_btn_resp = url_row.inner;
-    egui::popup_below_widget(ui, menu_btn_resp.id, &menu_btn_resp, egui::PopupCloseBehavior::CloseOnClick, |ui| {
-        ui.set_min_width(160.0);
-        if ui.button(format!("{} Copy as cURL", egui_phosphor::regular::COPY)).clicked() {
+        ).on_hover_text("Copy as cURL");
+        if copy_btn.clicked() {
             action = EditorAction::CopyCurl;
         }
-        if ui.button(format!("{} Import from cURL", egui_phosphor::regular::TERMINAL)).clicked() {
+
+        // Toggle Import from cURL panel
+        let import_active = state.show_curl_import;
+        let import_btn = ui.add(
+            egui::Button::new(
+                egui::RichText::new(egui_phosphor::regular::TERMINAL)
+                    .size(15.0)
+                    .color(if import_active { super::theme::ACCENT } else { super::theme::TEXT_SECONDARY }),
+            )
+            .fill(if import_active { super::theme::ACCENT.gamma_multiply(0.15) } else { super::theme::SURFACE_1 })
+            .stroke(egui::Stroke::new(1.0, super::theme::BORDER))
+            .corner_radius(egui::CornerRadius::same(4)),
+        ).on_hover_text("Import from cURL");
+        if import_btn.clicked() {
             state.show_curl_import = !state.show_curl_import;
             state.curl_import_buf.clear();
             state.curl_import_error = None;
@@ -208,7 +211,7 @@ pub fn render_request_editor(
                             .color(super::theme::TEXT_SECONDARY),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("✕").clicked() {
+                        if ui.small_button(egui_phosphor::regular::X).clicked() {
                             state.show_curl_import = false;
                         }
                     });
