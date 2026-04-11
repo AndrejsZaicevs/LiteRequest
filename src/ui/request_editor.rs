@@ -22,6 +22,7 @@ pub enum EditorAction {
     None,
     Send,
     DataChanged,
+    UrlCommitted, // URL field lost focus or Enter pressed — trigger query param sync
 }
 
 pub fn render_request_editor(
@@ -117,6 +118,10 @@ pub fn render_request_editor(
                         );
                         if resp.changed() {
                             state.dirty = true;
+                            action = EditorAction::DataChanged;
+                        }
+                        if resp.lost_focus() {
+                            action = EditorAction::UrlCommitted;
                         }
                         super::var_highlight::show_variable_tooltip(
                             ui, &resp, &state.data.url, variables,
@@ -133,6 +138,10 @@ pub fn render_request_editor(
             );
             if resp.changed() {
                 state.dirty = true;
+                action = EditorAction::DataChanged;
+            }
+            if resp.lost_focus() {
+                action = EditorAction::UrlCommitted;
             }
             super::var_highlight::show_variable_tooltip(
                 ui, &resp, &state.data.url, variables,

@@ -645,6 +645,9 @@ impl eframe::App for LiteRequestApp {
                                     match action {
                                         EditorAction::Send => self.send_request(),
                                         EditorAction::DataChanged => {
+                                            self.sync_path_params();
+                                        }
+                                        EditorAction::UrlCommitted => {
                                             self.sync_query_params_from_url();
                                             self.sync_path_params();
                                         }
