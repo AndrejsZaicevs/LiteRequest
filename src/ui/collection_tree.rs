@@ -9,6 +9,13 @@ enum RenameTarget {
     Collection(String),
 }
 
+/// Payload carried during a drag operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DragPayload {
+    /// Index into the flat render order so we can show insertion indicators.
+    source_idx: usize,
+}
+
 pub struct CollectionTreeState {
     pub expanded_collections: std::collections::HashSet<String>,
     pub expanded_folders: std::collections::HashSet<String>,
@@ -17,7 +24,6 @@ pub struct CollectionTreeState {
     pub rename_id: Option<String>,
     pub rename_buf: String,
     rename_target: Option<RenameTarget>,
-    drag_request_id: Option<String>,
 }
 
 impl Default for CollectionTreeState {
@@ -30,7 +36,6 @@ impl Default for CollectionTreeState {
             rename_id: None,
             rename_buf: String::new(),
             rename_target: None,
-            drag_request_id: None,
         }
     }
 }
@@ -50,6 +55,14 @@ pub enum TreeAction {
     RenameCollection(String, String),
     CloneRequest(String),
     MoveRequest(String, String, Option<String>),
+}
+
+/// Pending drop from a container (collection or folder).
+/// Contains the DragPayload source_idx and the target container info.
+struct PendingDrop {
+    source_idx: usize,
+    target_collection_id: String,
+    target_folder_id: Option<String>,
 }
 
 pub fn render_collection_tree(
@@ -81,18 +94,160 @@ pub fn render_collection_tree(
     ui.separator();
     ui.add_space(4.0);
 
+    // Build flat row list for ordered rendering + DnD
+    let rows = build_row_list(collections, folders, requests, state);
+
+    // Collect pending drops to resolve after rendering
+    let mut pending_drops: Vec<PendingDrop> = Vec::new();
+
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            for collection in collections {
-                let a = render_collection_row(ui, collection, folders, requests, state, method_map);
-                if !matches!(a, TreeAction::None) {
-                    action = a;
+            for (idx, row) in rows.iter().enumerate() {
+                match row {
+                    RowItem::Collection(c) => {
+                        let (a, drop) = render_collection_row(ui, c, state, idx);
+                        merge_action(&mut action, a);
+                        if let Some(d) = drop {
+                            pending_drops.push(d);
+                        }
+                    }
+                    RowItem::Folder { folder, collection_id, depth } => {
+                        let (a, drop) = render_folder_row(ui, folder, collection_id, state, idx, *depth);
+                        merge_action(&mut action, a);
+                        if let Some(d) = drop {
+                            pending_drops.push(d);
+                        }
+                    }
+                    RowItem::Request { request, collection_id, folder_id, depth } => {
+                        let a = render_request_item(
+                            ui, request, collection_id, folder_id.as_deref(),
+                            state, method_map, idx, *depth, &rows,
+                        );
+                        merge_action(&mut action, a);
+                    }
+                    RowItem::CollectionEnd(collection_id) => {
+                        // Invisible drop zone at the end of a collection
+                        let drop_frame = egui::Frame::default().inner_margin(egui::Margin::symmetric(0, 1));
+                        let (_, dropped) = ui.dnd_drop_zone::<DragPayload, ()>(drop_frame, |ui| {
+                            ui.allocate_space(egui::vec2(ui.available_width(), 2.0));
+                        });
+                        if let Some(payload) = dropped {
+                            pending_drops.push(PendingDrop {
+                                source_idx: payload.source_idx,
+                                target_collection_id: collection_id.clone(),
+                                target_folder_id: None,
+                            });
+                        }
+
+                        ui.add_space(4.0);
+                    }
                 }
             }
         });
 
+    // Resolve pending drops using the rows list
+    for pd in pending_drops {
+        if let Some(RowItem::Request { request, .. }) = rows.get(pd.source_idx) {
+            action = TreeAction::MoveRequest(
+                request.id.clone(),
+                pd.target_collection_id,
+                pd.target_folder_id,
+            );
+            break;
+        }
+    }
+
     action
+}
+
+fn merge_action(target: &mut TreeAction, source: TreeAction) {
+    if !matches!(source, TreeAction::None) {
+        *target = source;
+    }
+}
+
+// ── Flat row model ─────────────────────────────────────────────
+
+#[derive(Clone)]
+enum RowItem<'a> {
+    Collection(&'a Collection),
+    Folder {
+        folder: &'a Folder,
+        collection_id: String,
+        depth: usize,
+    },
+    Request {
+        request: &'a Request,
+        collection_id: String,
+        folder_id: Option<String>,
+        depth: usize,
+    },
+    /// Marker at end of collection children for bottom drop zone
+    CollectionEnd(String),
+}
+
+fn build_row_list<'a>(
+    collections: &'a [Collection],
+    folders: &'a [Folder],
+    requests: &'a [Request],
+    state: &CollectionTreeState,
+) -> Vec<RowItem<'a>> {
+    let mut rows = Vec::new();
+
+    for collection in collections {
+        rows.push(RowItem::Collection(collection));
+
+        if state.expanded_collections.contains(&collection.id) {
+            // Folders at collection root
+            let child_folders: Vec<&Folder> = folders
+                .iter()
+                .filter(|f| f.collection_id == collection.id && f.parent_folder_id.is_none())
+                .collect();
+
+            for folder in &child_folders {
+                rows.push(RowItem::Folder {
+                    folder,
+                    collection_id: collection.id.clone(),
+                    depth: 1,
+                });
+
+                if state.expanded_folders.contains(&folder.id) {
+                    let folder_requests: Vec<&Request> = requests
+                        .iter()
+                        .filter(|r| r.folder_id.as_deref() == Some(&folder.id))
+                        .collect();
+                    for req in folder_requests {
+                        rows.push(RowItem::Request {
+                            request: req,
+                            collection_id: collection.id.clone(),
+                            folder_id: Some(folder.id.clone()),
+                            depth: 2,
+                        });
+                    }
+                }
+            }
+
+            // Top-level requests (no folder)
+            let orphan_requests: Vec<&Request> = requests
+                .iter()
+                .filter(|r| r.collection_id == collection.id && r.folder_id.is_none())
+                .collect();
+
+            for req in orphan_requests {
+                rows.push(RowItem::Request {
+                    request: req,
+                    collection_id: collection.id.clone(),
+                    folder_id: None,
+                    depth: 1,
+                });
+            }
+
+            rows.push(RowItem::CollectionEnd(collection.id.clone()));
+        }
+    }
+
+    rows
 }
 
 // ── Collection row ──────────────────────────────────────────────
@@ -100,11 +255,9 @@ pub fn render_collection_tree(
 fn render_collection_row(
     ui: &mut egui::Ui,
     collection: &Collection,
-    folders: &[Folder],
-    requests: &[Request],
     state: &mut CollectionTreeState,
-    method_map: &HashMap<String, HttpMethod>,
-) -> TreeAction {
+    _row_idx: usize,
+) -> (TreeAction, Option<PendingDrop>) {
     let mut action = TreeAction::None;
     let is_expanded = state.expanded_collections.contains(&collection.id);
     let is_selected = state.selected_collection_id.as_deref() == Some(&collection.id);
@@ -119,134 +272,96 @@ fn render_collection_row(
     let cid = collection.id.clone();
     let cname = collection.name.clone();
 
-    let frame_resp = egui::Frame::default()
+    // Wrap collection in a drop zone so requests can be dropped onto the collection root
+    let drop_frame = egui::Frame::default()
         .fill(frame_fill)
         .corner_radius(egui::CornerRadius::same(6))
-        .inner_margin(egui::Margin::symmetric(6, 3))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                // Expand arrow
-                let icon = if is_expanded {
-                    egui_phosphor::regular::CARET_DOWN
-                } else {
-                    egui_phosphor::regular::CARET_RIGHT
-                };
-                if ui
-                    .add(
-                        egui::Label::new(
-                            egui::RichText::new(icon).size(12.0).color(super::theme::TEXT_MUTED),
-                        )
-                        .sense(egui::Sense::click()),
+        .inner_margin(egui::Margin::symmetric(6, 3));
+
+    let (_, dropped_payload) = ui.dnd_drop_zone::<DragPayload, ()>(drop_frame, |ui| {
+        ui.horizontal(|ui| {
+            // Expand arrow
+            let icon = if is_expanded {
+                egui_phosphor::regular::CARET_DOWN
+            } else {
+                egui_phosphor::regular::CARET_RIGHT
+            };
+            if ui
+                .add(
+                    egui::Label::new(
+                        egui::RichText::new(icon).size(12.0).color(super::theme::TEXT_MUTED),
                     )
-                    .clicked()
-                {
-                    toggle_set(&mut state.expanded_collections, &collection.id);
+                    .sense(egui::Sense::click()),
+                )
+                .clicked()
+            {
+                toggle_set(&mut state.expanded_collections, &collection.id);
+            }
+
+            // Collection icon
+            ui.add(egui::Label::new(
+                egui::RichText::new(egui_phosphor::regular::FOLDER_SIMPLE)
+                    .size(14.0)
+                    .color(super::theme::ACCENT),
+            ));
+
+            if is_renaming {
+                let a = inline_rename_edit(ui, state, &collection.id, RenameType::Collection);
+                if !matches!(a, TreeAction::None) {
+                    action = a;
                 }
-
-                // Collection icon
-                ui.add(egui::Label::new(
-                    egui::RichText::new(egui_phosphor::regular::FOLDER_SIMPLE)
-                        .size(14.0)
-                        .color(super::theme::ACCENT),
-                ));
-
-                if is_renaming {
-                    let a = inline_rename_edit(ui, state, &collection.id, RenameType::Collection);
-                    if !matches!(a, TreeAction::None) {
-                        action = a;
-                    }
+            } else {
+                let name_color = if is_selected {
+                    super::theme::ACCENT
                 } else {
-                    let name_color = if is_selected {
-                        super::theme::ACCENT
-                    } else {
-                        super::theme::TEXT_PRIMARY
-                    };
-                    // Fill remaining width but stay left-aligned
-                    let resp = ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(&collection.name).strong().size(14.0).color(name_color),
-                        )
-                        .sense(egui::Sense::click()),
-                    );
-                    // Extend interaction area to full row width
-                    let full_rect = resp.rect.with_max_x(ui.max_rect().right());
-                    let full_resp = ui.interact(full_rect, resp.id.with("full"), egui::Sense::click());
+                    super::theme::TEXT_PRIMARY
+                };
+                let resp = ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(&collection.name).strong().size(14.0).color(name_color),
+                    )
+                    .sense(egui::Sense::click()),
+                );
+                let full_rect = resp.rect.with_max_x(ui.max_rect().right());
+                let full_resp = ui.interact(full_rect, resp.id.with("full"), egui::Sense::click());
 
-                    if resp.clicked() || full_resp.clicked() {
-                        action = TreeAction::SelectCollection(collection.id.clone());
-                        state.expanded_collections.insert(collection.id.clone());
+                if resp.clicked() || full_resp.clicked() {
+                    action = TreeAction::SelectCollection(collection.id.clone());
+                    state.expanded_collections.insert(collection.id.clone());
+                }
+                if resp.double_clicked() || full_resp.double_clicked() {
+                    start_rename(state, &collection.id, &collection.name, RenameTarget::Collection(collection.id.clone()));
+                }
+                full_resp.context_menu(|ui| {
+                    if ui.button(format!("{} New Request", egui_phosphor::regular::PLUS)).clicked() {
+                        action = TreeAction::NewRequest(cid.clone(), None);
+                        ui.close();
                     }
-                    if resp.double_clicked() || full_resp.double_clicked() {
-                        start_rename(state, &collection.id, &collection.name, RenameTarget::Collection(collection.id.clone()));
+                    if ui.button(format!("{} New Folder", egui_phosphor::regular::FOLDER_PLUS)).clicked() {
+                        action = TreeAction::NewFolder(cid.clone());
+                        ui.close();
                     }
-                    // Context menu on the full row area
-                    full_resp.context_menu(|ui| {
-                        if ui.button(format!("{} New Request", egui_phosphor::regular::PLUS)).clicked() {
-                            action = TreeAction::NewRequest(cid.clone(), None);
-                            ui.close_menu();
-                        }
-                        if ui.button(format!("{} New Folder", egui_phosphor::regular::FOLDER_PLUS)).clicked() {
-                            action = TreeAction::NewFolder(cid.clone());
-                            ui.close_menu();
-                        }
-                        ui.separator();
-                        if ui.button(format!("{} Rename", egui_phosphor::regular::PENCIL_SIMPLE)).clicked() {
-                            start_rename(state, &cid, &cname, RenameTarget::Collection(cid.clone()));
-                            ui.close_menu();
-                        }
-                        if ui.button(format!("{} Delete", egui_phosphor::regular::TRASH)).clicked() {
-                            action = TreeAction::DeleteCollection(cid.clone());
-                            ui.close_menu();
-                        }
-                    });
-                }
-            });
-        });
-
-    let frame_response = frame_resp.response;
-
-    // Drop target: collection root (move request here → folder_id = None)
-    let is_drop_hover = check_drop_target(ui, &frame_response, state);
-    if is_drop_hover {
-        highlight_drop_target(ui, &frame_response);
-    }
-    if let Some(move_action) = handle_drop(ui, &frame_response, state, &collection.id, None) {
-        action = move_action;
-    }
-
-    // Children
-    if is_expanded {
-        ui.indent(&collection.id, |ui| {
-            // Folders
-            let child_folders: Vec<&Folder> = folders
-                .iter()
-                .filter(|f| f.collection_id == collection.id && f.parent_folder_id.is_none())
-                .collect();
-
-            for folder in &child_folders {
-                let a = render_folder_row(ui, folder, &collection.id, requests, state, method_map);
-                if !matches!(a, TreeAction::None) {
-                    action = a;
-                }
-            }
-
-            // Top-level requests (no folder)
-            let orphan_requests: Vec<&Request> = requests
-                .iter()
-                .filter(|r| r.collection_id == collection.id && r.folder_id.is_none())
-                .collect();
-
-            for req in orphan_requests {
-                let a = render_request_item(ui, req, &collection.id, state, method_map);
-                if !matches!(a, TreeAction::None) {
-                    action = a;
-                }
+                    ui.separator();
+                    if ui.button(format!("{} Rename", egui_phosphor::regular::PENCIL_SIMPLE)).clicked() {
+                        start_rename(state, &cid, &cname, RenameTarget::Collection(cid.clone()));
+                        ui.close();
+                    }
+                    if ui.button(format!("{} Delete", egui_phosphor::regular::TRASH)).clicked() {
+                        action = TreeAction::DeleteCollection(cid.clone());
+                        ui.close();
+                    }
+                });
             }
         });
-    }
+    });
 
-    ui.add_space(4.0);
-    action
+    let pending = dropped_payload.map(|p| PendingDrop {
+        source_idx: p.source_idx,
+        target_collection_id: collection.id.clone(),
+        target_folder_id: None,
+    });
+
+    (action, pending)
 }
 
 // ── Folder row ──────────────────────────────────────────────────
@@ -255,126 +370,107 @@ fn render_folder_row(
     ui: &mut egui::Ui,
     folder: &Folder,
     collection_id: &str,
-    requests: &[Request],
     state: &mut CollectionTreeState,
-    method_map: &HashMap<String, HttpMethod>,
-) -> TreeAction {
+    _row_idx: usize,
+    depth: usize,
+) -> (TreeAction, Option<PendingDrop>) {
     let mut action = TreeAction::None;
     let is_expanded = state.expanded_folders.contains(&folder.id);
     let is_renaming = matches!(&state.rename_target, Some(RenameTarget::Folder(id)) if id == &folder.id);
-
-    ui.add_space(1.0);
 
     let fid = folder.id.clone();
     let fname = folder.name.clone();
     let cid_owned = collection_id.to_string();
 
-    let frame_resp = egui::Frame::default()
+    let indent = (depth as f32) * 16.0;
+
+    ui.add_space(1.0);
+
+    // Folder is a drop zone
+    let drop_frame = egui::Frame::default()
         .corner_radius(egui::CornerRadius::same(4))
-        .inner_margin(egui::Margin::symmetric(4, 2))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                let icon = if is_expanded {
-                    egui_phosphor::regular::CARET_DOWN
-                } else {
-                    egui_phosphor::regular::CARET_RIGHT
-                };
-                let folder_color = egui::Color32::from_rgb(252, 196, 55);
-                if ui
-                    .add(
-                        egui::Label::new(
-                            egui::RichText::new(icon).size(12.0).color(folder_color),
-                        )
-                        .sense(egui::Sense::click()),
+        .inner_margin(egui::Margin { left: indent as i8 + 4, right: 4, top: 2, bottom: 2 });
+
+    let (_, dropped_payload) = ui.dnd_drop_zone::<DragPayload, ()>(drop_frame, |ui| {
+        ui.horizontal(|ui| {
+            let icon = if is_expanded {
+                egui_phosphor::regular::CARET_DOWN
+            } else {
+                egui_phosphor::regular::CARET_RIGHT
+            };
+            let folder_color = egui::Color32::from_rgb(252, 196, 55);
+            if ui
+                .add(
+                    egui::Label::new(
+                        egui::RichText::new(icon).size(12.0).color(folder_color),
                     )
-                    .clicked()
-                {
-                    toggle_set(&mut state.expanded_folders, &folder.id);
-                }
+                    .sense(egui::Sense::click()),
+                )
+                .clicked()
+            {
+                toggle_set(&mut state.expanded_folders, &folder.id);
+            }
 
-                // Folder icon
-                let folder_icon = if is_expanded {
-                    egui_phosphor::regular::FOLDER_OPEN
-                } else {
-                    egui_phosphor::regular::FOLDER
-                };
-                ui.add(egui::Label::new(
-                    egui::RichText::new(folder_icon)
-                        .size(14.0)
-                        .color(folder_color),
-                ));
+            let folder_icon = if is_expanded {
+                egui_phosphor::regular::FOLDER_OPEN
+            } else {
+                egui_phosphor::regular::FOLDER
+            };
+            ui.add(egui::Label::new(
+                egui::RichText::new(folder_icon)
+                    .size(14.0)
+                    .color(folder_color),
+            ));
 
-                if is_renaming {
-                    let a = inline_rename_edit(ui, state, &folder.id, RenameType::Folder);
-                    if !matches!(a, TreeAction::None) {
-                        action = a;
-                    }
-                } else {
-                    let resp = ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(&folder.name)
-                                .size(13.0)
-                                .color(super::theme::TEXT_PRIMARY),
-                        )
-                        .sense(egui::Sense::click()),
-                    );
-                    let full_rect = resp.rect.with_max_x(ui.max_rect().right());
-                    let full_resp = ui.interact(full_rect, resp.id.with("full"), egui::Sense::click());
-
-                    if resp.clicked() || full_resp.clicked() {
-                        toggle_set(&mut state.expanded_folders, &folder.id);
-                    }
-                    if resp.double_clicked() || full_resp.double_clicked() {
-                        start_rename(state, &folder.id, &folder.name, RenameTarget::Folder(folder.id.clone()));
-                    }
-                    full_resp.context_menu(|ui| {
-                        if ui.button(format!("{} New Request", egui_phosphor::regular::PLUS)).clicked() {
-                            action = TreeAction::NewRequest(cid_owned.clone(), Some(fid.clone()));
-                            ui.close_menu();
-                        }
-                        ui.separator();
-                        if ui.button(format!("{} Rename", egui_phosphor::regular::PENCIL_SIMPLE)).clicked() {
-                            start_rename(state, &fid, &fname, RenameTarget::Folder(fid.clone()));
-                            ui.close_menu();
-                        }
-                        if ui.button(format!("{} Delete", egui_phosphor::regular::TRASH)).clicked() {
-                            action = TreeAction::DeleteFolder(fid.clone());
-                            ui.close_menu();
-                        }
-                    });
-                }
-            });
-        });
-
-    let frame_response = frame_resp.response;
-
-    // Drop target: folder
-    let is_drop_hover = check_drop_target(ui, &frame_response, state);
-    if is_drop_hover {
-        highlight_drop_target(ui, &frame_response);
-    }
-    if let Some(move_action) = handle_drop(ui, &frame_response, state, collection_id, Some(&folder.id)) {
-        action = move_action;
-    }
-
-    // Folder children
-    if is_expanded {
-        ui.indent(&folder.id, |ui| {
-            let folder_requests: Vec<&Request> = requests
-                .iter()
-                .filter(|r| r.folder_id.as_deref() == Some(&folder.id))
-                .collect();
-
-            for req in folder_requests {
-                let a = render_request_item(ui, req, collection_id, state, method_map);
+            if is_renaming {
+                let a = inline_rename_edit(ui, state, &folder.id, RenameType::Folder);
                 if !matches!(a, TreeAction::None) {
                     action = a;
                 }
+            } else {
+                let resp = ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(&folder.name)
+                            .size(13.0)
+                            .color(super::theme::TEXT_PRIMARY),
+                    )
+                    .sense(egui::Sense::click()),
+                );
+                let full_rect = resp.rect.with_max_x(ui.max_rect().right());
+                let full_resp = ui.interact(full_rect, resp.id.with("full"), egui::Sense::click());
+
+                if resp.clicked() || full_resp.clicked() {
+                    toggle_set(&mut state.expanded_folders, &folder.id);
+                }
+                if resp.double_clicked() || full_resp.double_clicked() {
+                    start_rename(state, &folder.id, &folder.name, RenameTarget::Folder(folder.id.clone()));
+                }
+                full_resp.context_menu(|ui| {
+                    if ui.button(format!("{} New Request", egui_phosphor::regular::PLUS)).clicked() {
+                        action = TreeAction::NewRequest(cid_owned.clone(), Some(fid.clone()));
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button(format!("{} Rename", egui_phosphor::regular::PENCIL_SIMPLE)).clicked() {
+                        start_rename(state, &fid, &fname, RenameTarget::Folder(fid.clone()));
+                        ui.close();
+                    }
+                    if ui.button(format!("{} Delete", egui_phosphor::regular::TRASH)).clicked() {
+                        action = TreeAction::DeleteFolder(fid.clone());
+                        ui.close();
+                    }
+                });
             }
         });
-    }
+    });
 
-    action
+    let pending = dropped_payload.map(|p| PendingDrop {
+        source_idx: p.source_idx,
+        target_collection_id: collection_id.to_string(),
+        target_folder_id: Some(folder.id.clone()),
+    });
+
+    (action, pending)
 }
 
 // ── Request row ─────────────────────────────────────────────────
@@ -382,18 +478,19 @@ fn render_folder_row(
 fn render_request_item(
     ui: &mut egui::Ui,
     req: &Request,
-    _collection_id: &str,
+    collection_id: &str,
+    folder_id: Option<&str>,
     state: &mut CollectionTreeState,
     method_map: &HashMap<String, HttpMethod>,
+    row_idx: usize,
+    depth: usize,
+    rows: &[RowItem],
 ) -> TreeAction {
     let mut action = TreeAction::None;
     let is_selected = state.selected_request_id.as_deref() == Some(&req.id);
     let is_renaming = matches!(&state.rename_target, Some(RenameTarget::Request(id)) if id == &req.id);
-    let is_being_dragged = state.drag_request_id.as_deref() == Some(&req.id);
 
-    let fill = if is_being_dragged {
-        super::theme::ACCENT.gamma_multiply(0.08)
-    } else if is_selected {
+    let fill = if is_selected {
         super::theme::ACCENT.gamma_multiply(0.15)
     } else {
         egui::Color32::TRANSPARENT
@@ -407,15 +504,21 @@ fn render_request_item(
 
     let rid = req.id.clone();
     let rname = req.name.clone();
+    let indent = (depth as f32) * 16.0;
 
-    let frame_resp = egui::Frame::default()
-        .fill(fill)
-        .stroke(stroke)
-        .corner_radius(egui::CornerRadius::same(5))
-        .inner_margin(egui::Margin::symmetric(8, 3))
-        .show(ui, |ui| {
+    let item_id = egui::Id::new(("req_drag", &req.id));
+    let payload = DragPayload { source_idx: row_idx };
+
+    // Render the request as a drag source
+    let drag_resp = ui.dnd_drag_source(item_id, payload, |ui| {
+        let frame = egui::Frame::default()
+            .fill(fill)
+            .stroke(stroke)
+            .corner_radius(egui::CornerRadius::same(5))
+            .inner_margin(egui::Margin { left: indent as i8 + 8, right: 8, top: 3, bottom: 3 });
+
+        frame.show(ui, |ui| {
             ui.horizontal(|ui| {
-                // Method badge pill
                 let method = method_map.get(&req.id);
                 render_method_badge(ui, method);
 
@@ -435,10 +538,10 @@ fn render_request_item(
                         egui::Label::new(
                             egui::RichText::new(&req.name).size(13.0).color(text_color),
                         )
-                        .sense(egui::Sense::click_and_drag()),
+                        .sense(egui::Sense::click()),
                     );
                     let full_rect = resp.rect.with_max_x(ui.max_rect().right());
-                    let full_resp = ui.interact(full_rect, resp.id.with("full"), egui::Sense::click_and_drag());
+                    let full_resp = ui.interact(full_rect, resp.id.with("full"), egui::Sense::click());
 
                     if resp.clicked() || full_resp.clicked() {
                         action = TreeAction::SelectRequest(req.id.clone());
@@ -446,27 +549,62 @@ fn render_request_item(
                     if resp.double_clicked() || full_resp.double_clicked() {
                         start_rename(state, &req.id, &req.name, RenameTarget::Request(req.id.clone()));
                     }
-                    if resp.drag_started() || full_resp.drag_started() {
-                        state.drag_request_id = Some(req.id.clone());
-                    }
                     full_resp.context_menu(|ui| {
                         if ui.button(format!("{} Rename", egui_phosphor::regular::PENCIL_SIMPLE)).clicked() {
                             start_rename(state, &rid, &rname, RenameTarget::Request(rid.clone()));
-                            ui.close_menu();
+                            ui.close();
                         }
                         if ui.button(format!("{} Clone", egui_phosphor::regular::COPY)).clicked() {
                             action = TreeAction::CloneRequest(rid.clone());
-                            ui.close_menu();
+                            ui.close();
                         }
                         ui.separator();
                         if ui.button(format!("{} Delete", egui_phosphor::regular::TRASH)).clicked() {
                             action = TreeAction::DeleteRequest(rid.clone());
-                            ui.close_menu();
+                            ui.close();
                         }
                     });
                 }
             });
         });
+    });
+
+    let response = drag_resp.response;
+
+    // Show drop indicator when another request is hovering over this one
+    if let (Some(pointer), Some(hovered_payload)) = (
+        ui.input(|i| i.pointer.interact_pos()),
+        response.dnd_hover_payload::<DragPayload>(),
+    ) {
+        // Don't show indicator if dragging onto itself
+        if hovered_payload.source_idx != row_idx {
+            let rect = response.rect;
+            let stroke = egui::Stroke::new(2.0, super::theme::ACCENT);
+
+            if pointer.y < rect.center().y {
+                // Insert above
+                ui.painter().hline(rect.x_range(), rect.top(), stroke);
+            } else {
+                // Insert below
+                ui.painter().hline(rect.x_range(), rect.bottom(), stroke);
+            }
+        }
+
+        // Check for release
+        if let Some(dropped) = response.dnd_release_payload::<DragPayload>() {
+            if dropped.source_idx != row_idx {
+                // Resolve the source request from the flat rows list
+                if let Some(RowItem::Request { request: src_req, .. }) = rows.get(dropped.source_idx) {
+                    // Drop onto the same container as the target request
+                    action = TreeAction::MoveRequest(
+                        src_req.id.clone(),
+                        collection_id.to_string(),
+                        folder_id.map(|s| s.to_string()),
+                    );
+                }
+            }
+        }
+    }
 
     ui.add_space(1.0);
     action
@@ -550,51 +688,6 @@ fn inline_rename_edit(
     }
     resp.request_focus();
     action
-}
-
-// ── Drag & drop helpers ─────────────────────────────────────────
-
-fn check_drop_target(
-    _ui: &mut egui::Ui,
-    resp: &egui::Response,
-    state: &CollectionTreeState,
-) -> bool {
-    resp.hovered() && state.drag_request_id.is_some()
-}
-
-fn highlight_drop_target(ui: &mut egui::Ui, resp: &egui::Response) {
-    let rect = resp.rect;
-    ui.painter().rect_stroke(
-        rect,
-        egui::CornerRadius::same(4),
-        egui::Stroke::new(2.0, super::theme::ACCENT),
-        egui::StrokeKind::Outside,
-    );
-}
-
-fn handle_drop(
-    ui: &mut egui::Ui,
-    resp: &egui::Response,
-    state: &mut CollectionTreeState,
-    collection_id: &str,
-    folder_id: Option<&str>,
-) -> Option<TreeAction> {
-    if state.drag_request_id.is_none() {
-        return None;
-    }
-    if !resp.hovered() {
-        return None;
-    }
-    if ui.input(|i| i.pointer.any_released()) {
-        if let Some(drag_id) = state.drag_request_id.take() {
-            return Some(TreeAction::MoveRequest(
-                drag_id,
-                collection_id.to_string(),
-                folder_id.map(|s| s.to_string()),
-            ));
-        }
-    }
-    None
 }
 
 // ── Utility ─────────────────────────────────────────────────────
