@@ -8,7 +8,7 @@ use crate::ui::collection_tree::*;
 use crate::ui::collection_config::*;
 use crate::ui::request_editor::*;
 use crate::ui::response_view::*;
-use crate::ui::history_panel;
+use crate::ui::inspector_panel::{self, InspectorState, InspectorAction};
 use crate::ui::environment_panel::*;
 
 /// What the center panel should display
@@ -66,6 +66,10 @@ pub struct LiteRequestApp {
     split_ratio: f32,
     is_dragging_split: bool,
 
+    // Inspector panel state
+    inspector_state: InspectorState,
+    path_params: Vec<KeyValuePair>,
+
     // Confirmation modal state
     pending_delete_collection: Option<String>, // collection id awaiting confirmation
 }
@@ -106,6 +110,8 @@ impl LiteRequestApp {
             status_message: None,
             split_ratio: 0.5,
             is_dragging_split: false,
+            inspector_state: InspectorState::default(),
+            path_params: Vec::new(),
             pending_delete_collection: None,
         };
 
@@ -200,7 +206,26 @@ impl LiteRequestApp {
             self.current_execution = self.executions.first().cloned();
             self.selected_execution_id = self.current_execution.as_ref().map(|e| e.id.clone());
             self.response_state = ResponseViewState::default();
+            self.sync_path_params();
         }
+    }
+
+    /// Re-extract `:paramName` path params from the URL, preserving existing values.
+    fn sync_path_params(&mut self) {
+        let new_names = crate::http::interpolation::extract_path_params(&self.editor_state.data.url);
+        let mut new_params = Vec::with_capacity(new_names.len());
+        for name in &new_names {
+            if let Some(existing) = self.path_params.iter().find(|p| &p.key == name) {
+                new_params.push(existing.clone());
+            } else {
+                new_params.push(KeyValuePair {
+                    key: name.clone(),
+                    value: String::new(),
+                    enabled: true,
+                });
+            }
+        }
+        self.path_params = new_params;
     }
 
     fn save_version(&mut self) {
@@ -229,7 +254,17 @@ impl LiteRequestApp {
         let Some(req) = &self.current_request else { return };
         let Some(vid) = &self.selected_version_id else { return };
 
-        let data = self.editor_state.data.clone();
+        let mut data = self.editor_state.data.clone();
+
+        // Resolve :pathParam placeholders in the URL before sending
+        let param_pairs: Vec<(String, String)> = self.path_params.iter()
+            .filter(|p| p.enabled && !p.key.is_empty())
+            .map(|p| (p.key.clone(), p.value.clone()))
+            .collect();
+        if !param_pairs.is_empty() {
+            data.url = crate::http::interpolation::resolve_path_params(&data.url, &param_pairs);
+        }
+
         let request_id = req.id.clone();
         let version_id = vid.clone();
         let tx = self.http_tx.clone();
@@ -428,11 +463,11 @@ impl eframe::App for LiteRequestApp {
                 self.handle_tree_action(action);
             });
 
-        // ── Right panel: History (only when editing a request) ───
+        // ── Right panel: Inspector (params, headers, history) ────
         if matches!(self.center_view, CenterView::RequestEditor(_)) {
-            egui::Panel::right("history_panel")
-                .default_size(260.0)
-                .min_size(220.0)
+            egui::Panel::right("inspector_panel")
+                .default_size(280.0)
+                .min_size(240.0)
                 .frame(
                     egui::Frame::default()
                         .fill(super::theme::SURFACE_1)
@@ -440,38 +475,37 @@ impl eframe::App for LiteRequestApp {
                         .inner_margin(egui::Margin::symmetric(8, 6)),
                 )
                 .show_inside(ui, |ui| {
-                    let available_height = ui.available_height();
-
-                    // Top half: Version history
-                    ui.allocate_ui(
-                        egui::vec2(ui.available_width(), available_height * 0.5),
-                        |ui| {
-                            if let Some(vid) = history_panel::render_version_history(
-                                ui,
-                                &self.versions,
-                                self.selected_version_id.as_deref(),
-                            ) {
-                                self.selected_version_id = Some(vid.clone());
-                                if let Ok(version) = self.db.get_version(&vid) {
-                                    self.editor_state.data = version.data;
-                                    self.editor_state.dirty = false;
-                                }
-                            }
-                        },
+                    let display_vars = self.build_display_variables(
+                        self.current_request.as_ref().map(|r| r.collection_id.as_str()).unwrap_or(""),
                     );
-
-                    ui.separator();
-
-                    // Bottom half: Execution history
-                    if let Some(eid) = history_panel::render_execution_history(
+                    let action = inspector_panel::render_inspector(
                         ui,
+                        &mut self.editor_state.data,
+                        &mut self.editor_state.dirty,
+                        &mut self.path_params,
+                        &self.versions,
                         &self.executions,
+                        self.selected_version_id.as_deref(),
                         self.selected_execution_id.as_deref(),
-                    ) {
-                        self.selected_execution_id = Some(eid.clone());
-                        self.current_execution =
-                            self.executions.iter().find(|e| e.id == eid).cloned();
-                        self.response_state = ResponseViewState::default();
+                        &mut self.inspector_state,
+                        &display_vars,
+                    );
+                    match action {
+                        InspectorAction::SelectVersion(vid) => {
+                            self.selected_version_id = Some(vid.clone());
+                            if let Ok(version) = self.db.get_version(&vid) {
+                                self.editor_state.data = version.data;
+                                self.editor_state.dirty = false;
+                                self.sync_path_params();
+                            }
+                        }
+                        InspectorAction::SelectExecution(eid) => {
+                            self.selected_execution_id = Some(eid.clone());
+                            self.current_execution =
+                                self.executions.iter().find(|e| e.id == eid).cloned();
+                            self.response_state = ResponseViewState::default();
+                        }
+                        InspectorAction::DataChanged | InspectorAction::None => {}
                     }
                 });
         }
@@ -531,7 +565,8 @@ impl eframe::App for LiteRequestApp {
                                     );
                                     match action {
                                         EditorAction::Send => self.send_request(),
-                                        EditorAction::DataChanged | EditorAction::None => {}
+                                        EditorAction::DataChanged => self.sync_path_params(),
+                                        EditorAction::None => {}
                                     }
                                 },
                             );

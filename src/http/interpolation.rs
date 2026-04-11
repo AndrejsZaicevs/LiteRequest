@@ -30,6 +30,27 @@ pub fn resolve_url(base_path: &str, request_url: &str, variables: &HashMap<Strin
     }
 }
 
+/// Replace `:paramName` segments in a URL with their values
+pub fn resolve_path_params(url: &str, params: &[(String, String)]) -> String {
+    let mut result = url.to_string();
+    for (key, value) in params {
+        result = result.replace(&format!(":{}", key), value);
+    }
+    result
+}
+
+/// Extract `:paramName` segments from a URL path
+pub fn extract_path_params(url: &str) -> Vec<String> {
+    // Strip query string and fragment before scanning
+    let path_part = url.split('?').next().unwrap_or(url);
+    let path_part = path_part.split('#').next().unwrap_or(path_part);
+    path_part
+        .split('/')
+        .filter(|seg| seg.starts_with(':') && seg.len() > 1)
+        .map(|seg| seg[1..].to_string())
+        .collect()
+}
+
 /// Extract variable names from {{...}} patterns (for IntelliSense)
 pub fn extract_variable_refs(input: &str) -> Vec<String> {
     let mut vars = Vec::new();
@@ -87,6 +108,45 @@ mod tests {
     fn test_extract_variable_refs() {
         let refs = extract_variable_refs("{{host}}/{{version}}/users");
         assert_eq!(refs, vec!["host", "version"]);
+    }
+
+    #[test]
+    fn test_resolve_path_params() {
+        let params = vec![
+            ("userId".to_string(), "42".to_string()),
+            ("orderId".to_string(), "99".to_string()),
+        ];
+        assert_eq!(
+            resolve_path_params("/users/:userId/orders/:orderId", &params),
+            "/users/42/orders/99"
+        );
+    }
+
+    #[test]
+    fn test_resolve_path_params_no_match() {
+        let params = vec![("id".to_string(), "1".to_string())];
+        assert_eq!(
+            resolve_path_params("/users/:userId", &params),
+            "/users/:userId"
+        );
+    }
+
+    #[test]
+    fn test_extract_path_params_basic() {
+        let params = extract_path_params("/users/:userId/orders/:orderId");
+        assert_eq!(params, vec!["userId", "orderId"]);
+    }
+
+    #[test]
+    fn test_extract_path_params_with_query() {
+        let params = extract_path_params("/users/:id?foo=bar");
+        assert_eq!(params, vec!["id"]);
+    }
+
+    #[test]
+    fn test_extract_path_params_none() {
+        let params = extract_path_params("/users/all");
+        assert!(params.is_empty());
     }
 
     #[test]

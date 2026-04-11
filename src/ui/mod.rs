@@ -4,6 +4,7 @@ pub mod collection_config;
 pub mod request_editor;
 pub mod response_view;
 pub mod history_panel;
+pub mod inspector_panel;
 pub mod environment_panel;
 pub mod import_export;
 pub mod json_tree;

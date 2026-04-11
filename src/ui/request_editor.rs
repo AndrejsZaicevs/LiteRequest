@@ -6,8 +6,6 @@ pub struct RequestEditorState {
     pub data: RequestData,
     pub dirty: bool,
     pub json_error: Option<String>,
-    pub show_params: bool,
-    pub show_headers: bool,
     pub show_body: bool,
 }
 
@@ -17,8 +15,6 @@ impl Default for RequestEditorState {
             data: RequestData::default(),
             dirty: false,
             json_error: None,
-            show_params: true,
-            show_headers: true,
             show_body: true,
         }
     }
@@ -165,35 +161,11 @@ pub fn render_request_editor(
 
     ui.add_space(6.0);
 
-    // ── Flat scrollable view: Params, Headers, Body ──
+    // ── Flat scrollable view: Body ──
     egui::ScrollArea::vertical()
         .id_salt("editor_flat_scroll")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            // ── PARAMS ──
-            let param_count = count_active_pairs(&state.data.query_params);
-            if collapsible_section(ui, "Params", param_count, &mut state.show_params) {
-                ui.push_id("params_section", |ui| {
-                    if render_kv_table(ui, &mut state.data.query_params, "params_table", variables) {
-                        state.dirty = true;
-                        action = EditorAction::DataChanged;
-                    }
-                });
-                ui.add_space(4.0);
-            }
-
-            // ── HEADERS ──
-            let header_count = count_active_pairs(&state.data.headers);
-            if collapsible_section(ui, "Headers", header_count, &mut state.show_headers) {
-                ui.push_id("headers_section", |ui| {
-                    if render_kv_table(ui, &mut state.data.headers, "headers_table", variables) {
-                        state.dirty = true;
-                        action = EditorAction::DataChanged;
-                    }
-                });
-                ui.add_space(4.0);
-            }
-
             // ── BODY ──
             let body_count = if state.data.body_type != BodyType::None { 1 } else { 0 };
             if collapsible_section(ui, "Body", body_count, &mut state.show_body) {
@@ -367,7 +339,7 @@ fn patch_variable_colors(text: &str, job: &mut egui::text::LayoutJob) {
 }
 
 /// Collapsible section header. Returns true if section is expanded.
-fn collapsible_section(ui: &mut egui::Ui, label: &str, count: usize, expanded: &mut bool) -> bool {
+pub(crate) fn collapsible_section(ui: &mut egui::Ui, label: &str, count: usize, expanded: &mut bool) -> bool {
     let icon = if *expanded { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_RIGHT };
     let count_text = if count > 0 {
         format!(" ({count})")
@@ -408,7 +380,7 @@ fn collapsible_section(ui: &mut egui::Ui, label: &str, count: usize, expanded: &
     *expanded
 }
 
-fn count_active_pairs(pairs: &[KeyValuePair]) -> usize {
+pub(crate) fn count_active_pairs(pairs: &[KeyValuePair]) -> usize {
     pairs
         .iter()
         .filter(|p| p.enabled && !p.key.is_empty())
@@ -416,7 +388,7 @@ fn count_active_pairs(pairs: &[KeyValuePair]) -> usize {
 }
 
 /// KV editor using egui_extras table with variable highlighting.
-fn render_kv_table(
+pub(crate) fn render_kv_table(
     ui: &mut egui::Ui,
     pairs: &mut Vec<KeyValuePair>,
     id: &str,
