@@ -377,115 +377,120 @@ impl Database {
         rows.collect()
     }
 
-    // ── Collection Variables (Matrix model) ──────────────────────
+    // ── Collection Variables (split def/value model) ───────────────
 
-    pub fn insert_collection_variable(&self, v: &CollectionVariable) -> rusqlite::Result<()> {
+    pub fn insert_var_def(&self, d: &VarDef) -> rusqlite::Result<()> {
         self.conn.execute(
-            "INSERT INTO collection_variables (id, collection_id, environment_id, key, value, is_secret)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![v.id, v.collection_id, v.environment_id, v.key, v.value, v.is_secret],
+            "INSERT INTO collection_var_defs (id, collection_id, key, sort_order)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![d.id, d.collection_id, d.key, d.sort_order],
         )?;
         Ok(())
     }
 
-    pub fn list_collection_variables(
+    pub fn update_var_def_key(&self, def_id: &str, key: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE collection_var_defs SET key=?2 WHERE id=?1",
+            params![def_id, key],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_var_def(&self, def_id: &str) -> rusqlite::Result<()> {
+        // CASCADE deletes associated var_values
+        self.conn.execute(
+            "DELETE FROM collection_var_defs WHERE id=?1",
+            params![def_id],
+        )?;
+        Ok(())
+    }
+
+    /// List variable definitions for a collection (ordered by sort_order).
+    pub fn list_var_defs(&self, collection_id: &str) -> rusqlite::Result<Vec<VarDef>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, collection_id, key, sort_order
+             FROM collection_var_defs
+             WHERE collection_id=?1
+             ORDER BY sort_order, key",
+        )?;
+        let rows = stmt.query_map(params![collection_id], |row| {
+            Ok(VarDef {
+                id: row.get(0)?,
+                collection_id: row.get(1)?,
+                key: row.get(2)?,
+                sort_order: row.get(3)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// Upsert a variable value for a specific (def, environment) pair.
+    pub fn upsert_var_value(
+        &self,
+        val_id: &str,
+        def_id: &str,
+        environment_id: &str,
+        value: &str,
+        is_secret: bool,
+    ) -> rusqlite::Result<()> {
+        // Try update first by (def_id, environment_id) composite key
+        let updated = self.conn.execute(
+            "UPDATE collection_var_values SET value=?3, is_secret=?4
+             WHERE def_id=?1 AND environment_id=?2",
+            params![def_id, environment_id, value, is_secret as i32],
+        )?;
+        if updated == 0 {
+            self.conn.execute(
+                "INSERT INTO collection_var_values (id, def_id, environment_id, value, is_secret)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![val_id, def_id, environment_id, value, is_secret as i32],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Load VarRows for a collection + environment (joins defs with values).
+    pub fn load_var_rows(
         &self,
         collection_id: &str,
         environment_id: &str,
-    ) -> rusqlite::Result<Vec<CollectionVariable>> {
+    ) -> rusqlite::Result<Vec<VarRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, collection_id, environment_id, key, value, is_secret
-             FROM collection_variables
-             WHERE collection_id=?1 AND environment_id=?2
-             ORDER BY key",
+            "SELECT d.id, d.key, v.value, v.is_secret, v.id
+             FROM collection_var_defs d
+             LEFT JOIN collection_var_values v
+               ON v.def_id = d.id AND v.environment_id = ?2
+             WHERE d.collection_id = ?1
+             ORDER BY d.sort_order, d.key",
         )?;
         let rows = stmt.query_map(params![collection_id, environment_id], |row| {
-            let is_secret: i32 = row.get(5)?;
-            Ok(CollectionVariable {
-                id: row.get(0)?,
-                collection_id: row.get(1)?,
-                environment_id: row.get(2)?,
-                key: row.get(3)?,
-                value: row.get(4)?,
-                is_secret: is_secret != 0,
+            let is_secret: Option<i32> = row.get(3)?;
+            Ok(VarRow {
+                def_id: row.get(0)?,
+                key: row.get(1)?,
+                value: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                is_secret: is_secret.unwrap_or(0) != 0,
+                value_id: row.get(4)?,
             })
         })?;
         rows.collect()
     }
 
-    /// Get collection variables for the active environment (used at request time)
+    /// Get collection variable key-value pairs for the active environment (used at request time).
     pub fn get_active_collection_variables(
         &self,
         collection_id: &str,
-    ) -> rusqlite::Result<Vec<CollectionVariable>> {
+    ) -> rusqlite::Result<Vec<(String, String)>> {
         let mut stmt = self.conn.prepare(
-            "SELECT cv.id, cv.collection_id, cv.environment_id, cv.key, cv.value, cv.is_secret
-             FROM collection_variables cv
-             JOIN environments e ON cv.environment_id = e.id
-             WHERE cv.collection_id=?1 AND e.is_active = 1
-             ORDER BY cv.key",
+            "SELECT d.key, v.value
+             FROM collection_var_defs d
+             JOIN collection_var_values v ON v.def_id = d.id
+             JOIN environments e ON v.environment_id = e.id
+             WHERE d.collection_id = ?1 AND e.is_active = 1
+             ORDER BY d.sort_order",
         )?;
         let rows = stmt.query_map(params![collection_id], |row| {
-            let is_secret: i32 = row.get(5)?;
-            Ok(CollectionVariable {
-                id: row.get(0)?,
-                collection_id: row.get(1)?,
-                environment_id: row.get(2)?,
-                key: row.get(3)?,
-                value: row.get(4)?,
-                is_secret: is_secret != 0,
-            })
-        })?;
-        rows.collect()
-    }
-
-    pub fn update_collection_variable(&self, v: &CollectionVariable) -> rusqlite::Result<()> {
-        self.conn.execute(
-            "UPDATE collection_variables SET key=?2, value=?3, is_secret=?4 WHERE id=?1",
-            params![v.id, v.key, v.value, v.is_secret],
-        )?;
-        Ok(())
-    }
-
-    pub fn delete_collection_variable(&self, id: &str) -> rusqlite::Result<()> {
-        self.conn.execute("DELETE FROM collection_variables WHERE id=?1", params![id])?;
-        Ok(())
-    }
-
-    /// Delete all collection variables with a given key across all environments.
-    pub fn delete_collection_variable_by_key(
-        &self,
-        collection_id: &str,
-        key: &str,
-    ) -> rusqlite::Result<()> {
-        self.conn.execute(
-            "DELETE FROM collection_variables WHERE collection_id=?1 AND key=?2",
-            params![collection_id, key],
-        )?;
-        Ok(())
-    }
-
-    /// List all collection variables for a collection (across all environments).
-    pub fn list_all_collection_variables(
-        &self,
-        collection_id: &str,
-    ) -> rusqlite::Result<Vec<CollectionVariable>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, collection_id, environment_id, key, value, is_secret
-             FROM collection_variables
-             WHERE collection_id=?1
-             ORDER BY key, environment_id",
-        )?;
-        let rows = stmt.query_map(params![collection_id], |row| {
-            let is_secret: i32 = row.get(5)?;
-            Ok(CollectionVariable {
-                id: row.get(0)?,
-                collection_id: row.get(1)?,
-                environment_id: row.get(2)?,
-                key: row.get(3)?,
-                value: row.get(4)?,
-                is_secret: is_secret != 0,
-            })
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
         rows.collect()
     }

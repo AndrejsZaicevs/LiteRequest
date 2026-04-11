@@ -217,9 +217,9 @@ impl LiteRequestApp {
         }
         // 3. Collection variables override env
         if let Ok(cvars) = self.db.get_active_collection_variables(collection_id) {
-            for cv in &cvars {
-                if !cv.key.is_empty() {
-                    vars.insert(cv.key.clone(), cv.value.clone());
+            for (key, value) in &cvars {
+                if !key.is_empty() {
+                    vars.insert(key.clone(), value.clone());
                 }
             }
         }
@@ -404,9 +404,9 @@ impl LiteRequestApp {
             .db
             .get_active_collection_variables(&req.collection_id)
             .unwrap_or_default();
-        for cv in &collection_vars {
-            if !cv.key.is_empty() {
-                variables.insert(cv.key.clone(), cv.value.clone());
+        for (key, value) in &collection_vars {
+            if !key.is_empty() {
+                variables.insert(key.clone(), value.clone());
             }
         }
 
@@ -875,54 +875,45 @@ impl LiteRequestApp {
             .selected_env_id
             .clone()
             .unwrap_or_default();
-        let cid = collection_id.to_string();
 
-        // Get all existing vars across all envs to check which keys already exist
-        let all_vars = self
+        // Get existing defs to know which are already in DB
+        let existing_defs = self
             .db
-            .list_all_collection_variables(&cid)
+            .list_var_defs(collection_id)
             .unwrap_or_default();
+        let existing_def_ids: std::collections::HashSet<String> =
+            existing_defs.iter().map(|d| d.id.clone()).collect();
 
-        // Current env's existing DB ids
-        let existing_ids: std::collections::HashSet<String> = all_vars
-            .iter()
-            .filter(|v| v.environment_id == current_env)
-            .map(|v| v.id.clone())
-            .collect();
-
-        for var in &self.collection_config_state.collection_vars {
-            if var.key.is_empty() && var.value.is_empty() {
+        for (i, row) in self.collection_config_state.var_rows.iter().enumerate() {
+            if row.key.is_empty() && row.value.is_empty() {
                 continue;
             }
 
-            // Update if exists in DB, otherwise insert
-            if existing_ids.contains(&var.id) {
-                let _ = self.db.update_collection_variable(var);
+            // Upsert the definition (key is shared across all envs)
+            if existing_def_ids.contains(&row.def_id) {
+                let _ = self.db.update_var_def_key(&row.def_id, &row.key);
             } else {
-                let _ = self.db.insert_collection_variable(var);
+                let def = VarDef {
+                    id: row.def_id.clone(),
+                    collection_id: collection_id.to_string(),
+                    key: row.key.clone(),
+                    sort_order: i as i32,
+                };
+                let _ = self.db.insert_var_def(&def);
             }
 
-            // Ensure this key exists in ALL other environments
-            if !var.key.is_empty() {
-                for env in &self.environments {
-                    if env.id != current_env {
-                        let key_exists = all_vars
-                            .iter()
-                            .any(|v| v.environment_id == env.id && v.key == var.key);
-                        if !key_exists {
-                            let new_var = CollectionVariable {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                collection_id: cid.clone(),
-                                environment_id: env.id.clone(),
-                                key: var.key.clone(),
-                                value: String::new(),
-                                is_secret: var.is_secret,
-                            };
-                            let _ = self.db.insert_collection_variable(&new_var);
-                        }
-                    }
-                }
-            }
+            // Upsert the value for the current environment
+            let val_id = row
+                .value_id
+                .clone()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            let _ = self.db.upsert_var_value(
+                &val_id,
+                &row.def_id,
+                &current_env,
+                &row.value,
+                row.is_secret,
+            );
         }
         self.collection_config_state.vars_dirty = false;
     }
@@ -938,9 +929,9 @@ impl LiteRequestApp {
                 if self.collection_config_state.vars_dirty {
                     self.save_collection_vars(&cid);
                 }
-                self.collection_config_state.collection_vars = self
+                self.collection_config_state.var_rows = self
                     .db
-                    .list_collection_variables(&cid, &env_id)
+                    .load_var_rows(&cid, &env_id)
                     .unwrap_or_default();
                 self.collection_config_state.vars_dirty = false;
             }
@@ -948,30 +939,10 @@ impl LiteRequestApp {
                 self.save_collection_vars(collection_id);
                 self.set_status("Variables saved");
             }
-            ConfigAction::AddVar(cid, env_id) => {
-                let var = CollectionVariable {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    collection_id: cid,
-                    environment_id: env_id,
-                    key: String::new(),
-                    value: String::new(),
-                    is_secret: false,
-                };
-                let _ = self.db.insert_collection_variable(&var);
-                self.collection_config_state.collection_vars.push(var);
-            }
-            ConfigAction::AddVarAllEnvs(_cid) => {
-                // Cross-env sync now handled by save_collection_vars
-                self.save_collection_vars(collection_id);
-            }
-            ConfigAction::DeleteVar(var_id) => {
-                let _ = self.db.delete_collection_variable(&var_id);
+            ConfigAction::DeleteVarDef(def_id) => {
+                let _ = self.db.delete_var_def(&def_id);
                 self.collection_config_state.vars_dirty = false;
-            }
-            ConfigAction::DeleteVarByKey(cid, key) => {
-                let _ = self.db.delete_collection_variable_by_key(&cid, &key);
-                self.collection_config_state.vars_dirty = false;
-                self.set_status(&format!("Variable '{}' removed from all environments", key));
+                self.set_status("Variable removed from all environments");
             }
         }
     }

@@ -78,9 +78,9 @@ pub struct CollectionConfigState {
     // Collection-level headers
     pub headers: Vec<KeyValuePair>,
 
-    // Matrix environment variables for this collection
+    // Variable definitions + values for current environment
     pub selected_env_id: Option<String>,
-    pub collection_vars: Vec<CollectionVariable>,
+    pub var_rows: Vec<VarRow>,
     pub vars_dirty: bool,
 
     // Section expansion state
@@ -99,7 +99,7 @@ impl Default for CollectionConfigState {
             dirty: false,
             headers: Vec::new(),
             selected_env_id: None,
-            collection_vars: Vec::new(),
+            var_rows: Vec::new(),
             vars_dirty: false,
             show_general: true,
             show_auth: true,
@@ -125,7 +125,7 @@ impl CollectionConfigState {
             .unwrap_or_default();
         self.dirty = false;
         self.selected_env_id = None;
-        self.collection_vars.clear();
+        self.var_rows.clear();
         self.vars_dirty = false;
         // Keep section expansion state across loads
     }
@@ -152,17 +152,12 @@ impl CollectionConfigState {
 pub enum ConfigAction {
     None,
     Save,
-    /// Load collection variables for this (collection_id, environment_id)
+    /// Load variable rows for this (collection_id, environment_id)
     LoadVars(String, String),
-    /// Persist all current collection_vars to the DB
+    /// Persist current var_rows to the DB
     SaveVars,
-    #[allow(dead_code)]
-    AddVar(String, String),                // collection_id, environment_id
-    /// Add a variable key across ALL environments for a collection
-    AddVarAllEnvs(String),                 // collection_id
-    DeleteVar(String),                     // variable id
-    /// Delete a variable by key across ALL environments
-    DeleteVarByKey(String, String),        // collection_id, key
+    /// Delete a variable definition (cascades to all env values)
+    DeleteVarDef(String),
 }
 
 pub fn render_collection_config(
@@ -511,8 +506,6 @@ fn render_variables_section(
             .corner_radius(egui::CornerRadius::same(4));
 
             if ui.add(btn).clicked() && !is_selected {
-                // Save pending edits before switching environments
-                // (SaveVars will be returned from the parent function)
                 state.selected_env_id = Some(env.id.clone());
                 *action =
                     ConfigAction::LoadVars(collection.id.clone(), env.id.clone());
@@ -537,37 +530,34 @@ fn render_variables_section(
 
     if state.selected_env_id.is_some() {
         // Auto-grow: ensure there's always one empty row at the end
-        let needs_empty = state.collection_vars.is_empty()
+        let needs_empty = state.var_rows.is_empty()
             || state
-                .collection_vars
+                .var_rows
                 .last()
                 .map_or(true, |v| !v.key.is_empty() || !v.value.is_empty());
         if needs_empty {
-            let env_id = state.selected_env_id.clone().unwrap_or_default();
-            state.collection_vars.push(CollectionVariable {
-                id: uuid::Uuid::new_v4().to_string(),
-                collection_id: collection.id.clone(),
-                environment_id: env_id,
+            state.var_rows.push(VarRow {
+                def_id: uuid::Uuid::new_v4().to_string(),
                 key: String::new(),
                 value: String::new(),
                 is_secret: false,
+                value_id: None,
             });
         }
 
-        render_vars_table(ui, state, collection, action);
+        render_vars_table(ui, state, action);
     }
 }
 
-/// Auto-grow KV table for collection variables, matching inspector style.
+/// Auto-grow KV table for collection variables using the split def/value model.
 fn render_vars_table(
     ui: &mut egui::Ui,
     state: &mut CollectionConfigState,
-    collection: &Collection,
     action: &mut ConfigAction,
 ) {
     use egui_extras::{Column, TableBuilder};
 
-    let n_vars = state.collection_vars.len();
+    let n_vars = state.var_rows.len();
     let row_h = 28.0;
     let input_fill = super::theme::SURFACE_0;
     let input_stroke = egui::Stroke::new(1.0, super::theme::BORDER);
@@ -585,11 +575,11 @@ fn render_vars_table(
         .body(|mut body| {
             for i in 0..n_vars {
                 let is_last_empty = i == n_vars - 1
-                    && state.collection_vars[i].key.is_empty()
-                    && state.collection_vars[i].value.is_empty();
+                    && state.var_rows[i].key.is_empty()
+                    && state.var_rows[i].value.is_empty();
 
                 body.row(row_h, |mut row| {
-                    // Key
+                    // Key (shared across all environments)
                     row.col(|ui| {
                         egui::Frame::NONE
                             .fill(input_fill)
@@ -600,7 +590,7 @@ fn render_vars_table(
                                 if ui
                                     .add(
                                         egui::TextEdit::singleline(
-                                            &mut state.collection_vars[i].key,
+                                            &mut state.var_rows[i].key,
                                         )
                                         .desired_width(ui.available_width())
                                         .frame(egui::Frame::NONE)
@@ -617,7 +607,7 @@ fn render_vars_table(
                                 }
                             });
                     });
-                    // Value
+                    // Value (per-environment)
                     row.col(|ui| {
                         egui::Frame::NONE
                             .fill(input_fill)
@@ -625,12 +615,12 @@ fn render_vars_table(
                             .corner_radius(egui::CornerRadius::same(3))
                             .inner_margin(egui::Margin::symmetric(4, 2))
                             .show(ui, |ui| {
-                                let is_secret = state.collection_vars[i].is_secret;
+                                let is_secret = state.var_rows[i].is_secret;
                                 let mut layouter = super::var_highlight::var_text_layouter;
                                 if ui
                                     .add(
                                         egui::TextEdit::singleline(
-                                            &mut state.collection_vars[i].value,
+                                            &mut state.var_rows[i].value,
                                         )
                                         .desired_width(ui.available_width())
                                         .frame(egui::Frame::NONE)
@@ -653,7 +643,7 @@ fn render_vars_table(
                     row.col(|ui| {
                         if !is_last_empty {
                             if ui
-                                .checkbox(&mut state.collection_vars[i].is_secret, "")
+                                .checkbox(&mut state.var_rows[i].is_secret, "")
                                 .on_hover_text("Secret")
                                 .changed()
                             {
@@ -685,22 +675,10 @@ fn render_vars_table(
             }
         });
 
-    // Handle deletion: remove from all environments
     if let Some(i) = to_delete {
-        let key = state.collection_vars[i].key.clone();
-        state.collection_vars.remove(i);
-        if !key.is_empty() {
-            *action = ConfigAction::DeleteVarByKey(collection.id.clone(), key);
-        } else {
-            let var_id = state
-                .collection_vars
-                .get(i)
-                .map(|v| v.id.clone())
-                .unwrap_or_default();
-            if !var_id.is_empty() {
-                *action = ConfigAction::DeleteVar(var_id);
-            }
-        }
+        let def_id = state.var_rows[i].def_id.clone();
+        state.var_rows.remove(i);
+        *action = ConfigAction::DeleteVarDef(def_id);
     }
 }
 

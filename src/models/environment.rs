@@ -17,8 +17,37 @@ pub struct EnvVariable {
     pub is_secret: bool,
 }
 
-/// Per-collection, per-environment variable (the "Matrix" model).
-/// Collection variables override global env variables with the same key.
+/// Variable definition shared across all environments for a collection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VarDef {
+    pub id: String,
+    pub collection_id: String,
+    pub key: String,
+    pub sort_order: i32,
+}
+
+/// Per-environment value for a variable definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VarValue {
+    pub id: String,
+    pub def_id: String,
+    pub environment_id: String,
+    pub value: String,
+    pub is_secret: bool,
+}
+
+/// UI row combining a variable definition with its value for a particular environment.
+#[derive(Debug, Clone)]
+pub struct VarRow {
+    pub def_id: String,
+    pub key: String,
+    pub value: String,
+    pub is_secret: bool,
+    /// ID of the VarValue row, if one exists for this env
+    pub value_id: Option<String>,
+}
+
+/// Legacy model kept for migration only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectionVariable {
     pub id: String,
