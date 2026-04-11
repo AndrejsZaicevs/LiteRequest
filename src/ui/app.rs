@@ -345,7 +345,25 @@ impl LiteRequestApp {
             None => return,
         };
 
-        // Check ALL existing versions — if any is identical, reuse it (A→B→A case).
+        let now = chrono::Utc::now().to_rfc3339();
+
+        // If the current version has no executions, overwrite it in place
+        // (this is the "autosave draft" behaviour — edits don't pile up versions).
+        if let Some(current_vid) = self.selected_version_id.clone() {
+            if !self.db.version_has_executions(&current_vid) {
+                let _ = self.db.update_version_data(
+                    &current_vid,
+                    &self.editor_state.data,
+                    &now,
+                );
+                self.versions = self.db.list_versions_by_request(&req_id).unwrap_or_default();
+                self.editor_state.dirty = false;
+                return;
+            }
+        }
+
+        // Current version has executions — need a new version.
+        // Check ALL existing versions for an identical match first (A→B→A dedup).
         let existing_id = self.versions.iter()
             .find(|v| data_equal(&v.data, &self.editor_state.data))
             .map(|v| v.id.clone());
@@ -370,7 +388,7 @@ impl LiteRequestApp {
             return;
         }
 
-        let now = chrono::Utc::now().to_rfc3339();
+        // Create a fresh version
         let version = RequestVersion {
             id: uuid::Uuid::new_v4().to_string(),
             request_id: req_id.clone(),
@@ -731,7 +749,10 @@ impl eframe::App for LiteRequestApp {
                                 self.executions.iter().find(|e| e.id == eid).cloned();
                             self.response_state = ResponseViewState::default();
                         }
-                        InspectorAction::DataChanged | InspectorAction::None => {}
+                        InspectorAction::DataChanged => {
+                            self.save_version();
+                        }
+                        InspectorAction::None => {}
                     }
                 });
         }
@@ -801,19 +822,21 @@ impl eframe::App for LiteRequestApp {
                                         EditorAction::Send => self.send_request(),
                                         EditorAction::DataChanged => {
                                             self.sync_path_params();
+                                            self.save_version();
                                         }
                                         EditorAction::UrlCommitted => {
                                             self.sync_query_params_from_url();
                                             self.sync_path_params();
+                                            self.save_version();
                                         }
                                         EditorAction::CopyCurl => {
                                             self.copy_request_as_curl();
                                         }
                                         EditorAction::ImportCurl(data) => {
                                             self.editor_state.data = data;
-                                            self.editor_state.dirty = true;
                                             self.sync_query_params_from_url();
                                             self.sync_path_params();
+                                            self.save_version();
                                         }
                                         EditorAction::None => {}
                                     }

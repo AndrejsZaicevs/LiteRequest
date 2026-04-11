@@ -50,13 +50,6 @@ pub fn render_request_editor(
                 .strong()
                 .color(super::theme::TEXT_PRIMARY),
         );
-        if state.dirty {
-            ui.label(
-                egui::RichText::new("* unsaved")
-                    .size(11.0)
-                    .color(egui::Color32::from_rgb(252, 161, 48)),
-            );
-        }
     });
     ui.add_space(6.0);
 

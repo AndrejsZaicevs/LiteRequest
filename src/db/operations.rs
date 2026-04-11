@@ -238,6 +238,25 @@ impl Database {
         rows.collect()
     }
 
+    /// Check whether a version has any executions linked to it.
+    pub fn version_has_executions(&self, version_id: &str) -> bool {
+        self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM request_executions WHERE version_id=?1)",
+            params![version_id],
+            |row| row.get::<_, bool>(0),
+        ).unwrap_or(false)
+    }
+
+    /// Overwrite a version's data and timestamp in place.
+    pub fn update_version_data(&self, version_id: &str, data: &RequestData, created_at: &str) -> rusqlite::Result<()> {
+        let data_json = serde_json::to_string(data).unwrap_or_default();
+        self.conn.execute(
+            "UPDATE request_versions SET data_json=?2, created_at=?3 WHERE id=?1",
+            params![version_id, data_json, created_at],
+        )?;
+        Ok(())
+    }
+
     // ── Request Executions ───────────────────────────────────────
 
     fn body_hash(body: &str) -> String {
