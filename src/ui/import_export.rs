@@ -124,6 +124,7 @@ pub fn import_collection(db: &Database, json: &str) -> Result<String, String> {
         name: lreq.collection.name,
         base_path: lreq.collection.base_path,
         auth_config: lreq.collection.auth_config,
+        headers_config: None,
         created_at: now.clone(),
         updated_at: now.clone(),
     };
