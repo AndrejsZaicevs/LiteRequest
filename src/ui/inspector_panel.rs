@@ -230,6 +230,7 @@ fn render_kv_table(
     TableBuilder::new(ui)
         .id_salt(id)
         .striped(true)
+        .max_scroll_height(n_rows as f32 * row_h + 4.0)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(Column::exact(20.0))           // checkbox
         .column(Column::remainder().at_least(60.0)) // key
@@ -331,6 +332,7 @@ fn render_path_params_table(
     TableBuilder::new(ui)
         .id_salt("path_params_table")
         .striped(true)
+        .max_scroll_height(n_rows as f32 * row_h + 4.0)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(Column::exact(20.0))               // checkbox
         .column(Column::remainder().at_least(60.0)) // key (read-only)
