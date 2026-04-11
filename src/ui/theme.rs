@@ -126,3 +126,71 @@ pub fn framed_section(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui
             add_contents(ui);
         });
 }
+
+/// Reusable collapsible section header with background, icon, and click-to-toggle.
+/// Returns true if the section is currently expanded.
+pub fn collapsible_header(ui: &mut egui::Ui, label: &str, expanded: &mut bool) -> bool {
+    let icon = if *expanded {
+        egui_phosphor::regular::CARET_DOWN
+    } else {
+        egui_phosphor::regular::CARET_RIGHT
+    };
+
+    let header_color = if *expanded {
+        SURFACE_2
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+
+    ui.add_space(1.0);
+
+    let available_w = ui.available_width();
+    let start_y = ui.cursor().min.y;
+
+    let bg_idx = ui.painter().add(egui::Shape::Noop);
+
+    ui.add_space(5.0);
+
+    let resp = ui.horizontal(|ui| {
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(icon)
+                .size(10.0)
+                .color(TEXT_MUTED),
+        );
+        ui.label(
+            egui::RichText::new(label)
+                .strong()
+                .size(12.0)
+                .color(if *expanded {
+                    TEXT_PRIMARY
+                } else {
+                    TEXT_SECONDARY
+                }),
+        );
+    });
+
+    ui.add_space(5.0);
+
+    let end_y = ui.cursor().min.y;
+
+    let bg_rect = egui::Rect::from_min_size(
+        egui::pos2(resp.response.rect.min.x, start_y),
+        egui::vec2(available_w, end_y - start_y),
+    );
+    ui.painter().set(bg_idx, egui::Shape::rect_filled(bg_rect, 0.0, header_color));
+
+    let click_resp = ui.interact(
+        bg_rect,
+        ui.id().with(label),
+        egui::Sense::click(),
+    );
+    if click_resp.clicked() {
+        *expanded = !*expanded;
+    }
+    if click_resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+
+    *expanded
+}

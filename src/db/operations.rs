@@ -451,6 +451,44 @@ impl Database {
         Ok(())
     }
 
+    /// Delete all collection variables with a given key across all environments.
+    pub fn delete_collection_variable_by_key(
+        &self,
+        collection_id: &str,
+        key: &str,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "DELETE FROM collection_variables WHERE collection_id=?1 AND key=?2",
+            params![collection_id, key],
+        )?;
+        Ok(())
+    }
+
+    /// List all collection variables for a collection (across all environments).
+    pub fn list_all_collection_variables(
+        &self,
+        collection_id: &str,
+    ) -> rusqlite::Result<Vec<CollectionVariable>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, collection_id, environment_id, key, value, is_secret
+             FROM collection_variables
+             WHERE collection_id=?1
+             ORDER BY key, environment_id",
+        )?;
+        let rows = stmt.query_map(params![collection_id], |row| {
+            let is_secret: i32 = row.get(5)?;
+            Ok(CollectionVariable {
+                id: row.get(0)?,
+                collection_id: row.get(1)?,
+                environment_id: row.get(2)?,
+                key: row.get(3)?,
+                value: row.get(4)?,
+                is_secret: is_secret != 0,
+            })
+        })?;
+        rows.collect()
+    }
+
     // ── Move / Rename helpers ────────────────────────────────────
 
     pub fn move_request(&self, id: &str, collection_id: &str, folder_id: Option<&str>) -> rusqlite::Result<()> {

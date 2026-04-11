@@ -781,6 +781,14 @@ impl LiteRequestApp {
                 self.save_collection_config(collection_id);
             }
             ConfigAction::LoadVars(cid, env_id) => {
+                // Auto-save pending edits before switching environments
+                if self.collection_config_state.vars_dirty {
+                    for var in &self.collection_config_state.collection_vars {
+                        if !var.key.is_empty() || !var.value.is_empty() {
+                            let _ = self.db.update_collection_variable(var);
+                        }
+                    }
+                }
                 self.collection_config_state.collection_vars = self
                     .db
                     .list_collection_variables(&cid, &env_id)
@@ -789,7 +797,10 @@ impl LiteRequestApp {
             }
             ConfigAction::SaveVars => {
                 for var in &self.collection_config_state.collection_vars {
-                    let _ = self.db.update_collection_variable(var);
+                    // Only save non-empty vars (skip the trailing placeholder)
+                    if !var.key.is_empty() || !var.value.is_empty() {
+                        let _ = self.db.update_collection_variable(var);
+                    }
                 }
                 self.collection_config_state.vars_dirty = false;
                 self.set_status("Variables saved");
@@ -806,9 +817,51 @@ impl LiteRequestApp {
                 let _ = self.db.insert_collection_variable(&var);
                 self.collection_config_state.collection_vars.push(var);
             }
+            ConfigAction::AddVarAllEnvs(cid) => {
+                // The last non-empty var in state has the new key.
+                // Insert it for the current env, then create empty vars for all other envs.
+                let current_env = self
+                    .collection_config_state
+                    .selected_env_id
+                    .clone()
+                    .unwrap_or_default();
+
+                // Find the newly typed variable (last one with a non-empty key)
+                if let Some(new_var) = self
+                    .collection_config_state
+                    .collection_vars
+                    .iter()
+                    .rev()
+                    .find(|v| !v.key.is_empty())
+                    .cloned()
+                {
+                    // Insert for current env
+                    let _ = self.db.insert_collection_variable(&new_var);
+
+                    // Insert for all other environments
+                    for env in &self.environments {
+                        if env.id != current_env {
+                            let var = CollectionVariable {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                collection_id: cid.clone(),
+                                environment_id: env.id.clone(),
+                                key: new_var.key.clone(),
+                                value: String::new(),
+                                is_secret: new_var.is_secret,
+                            };
+                            let _ = self.db.insert_collection_variable(&var);
+                        }
+                    }
+                }
+            }
             ConfigAction::DeleteVar(var_id) => {
                 let _ = self.db.delete_collection_variable(&var_id);
                 self.collection_config_state.vars_dirty = false;
+            }
+            ConfigAction::DeleteVarByKey(cid, key) => {
+                let _ = self.db.delete_collection_variable_by_key(&cid, &key);
+                self.collection_config_state.vars_dirty = false;
+                self.set_status(&format!("Variable '{}' removed from all environments", key));
             }
         }
     }
