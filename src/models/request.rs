@@ -56,7 +56,7 @@ impl std::fmt::Display for HttpMethod {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct KeyValuePair {
     pub key: String,
     pub value: String,
@@ -74,7 +74,7 @@ impl Default for KeyValuePair {
 }
 
 /// The mutable data of a request at a point in time
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RequestData {
     pub method: HttpMethod,
     pub url: String,

@@ -26,6 +26,24 @@ struct HttpResult {
     result: Result<(ResponseData, u64), String>,
 }
 
+/// Compare two RequestData values, ignoring trailing empty KV rows
+/// that the inspector auto-appends as placeholder rows.
+fn data_equal(a: &RequestData, b: &RequestData) -> bool {
+    fn strip(pairs: &[KeyValuePair]) -> Vec<&KeyValuePair> {
+        let mut v: Vec<&KeyValuePair> = pairs.iter().collect();
+        while v.last().map_or(false, |p| p.key.is_empty() && p.value.is_empty()) {
+            v.pop();
+        }
+        v
+    }
+    a.method == b.method
+        && a.url == b.url
+        && a.body == b.body
+        && a.body_type == b.body_type
+        && strip(&a.headers) == strip(&b.headers)
+        && strip(&a.query_params) == strip(&b.query_params)
+}
+
 pub struct LiteRequestApp {
     db: Database,
     tokio_rt: tokio::runtime::Runtime,
@@ -230,6 +248,16 @@ impl LiteRequestApp {
 
     fn save_version(&mut self) {
         if let Some(req) = &self.current_request {
+            // Skip if the most recent version is identical to current data.
+            // Normalize by stripping trailing empty KV rows (auto-appended by inspector)
+            // before comparing so those don't count as a change.
+            if let Some(latest) = self.versions.first() {
+                if data_equal(&latest.data, &self.editor_state.data) {
+                    self.editor_state.dirty = false;
+                    return;
+                }
+            }
+
             let now = chrono::Utc::now().to_rfc3339();
             let version = RequestVersion {
                 id: uuid::Uuid::new_v4().to_string(),
