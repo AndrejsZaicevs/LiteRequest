@@ -88,7 +88,6 @@ pub struct LiteRequestApp {
 
     // Inspector panel state
     inspector_state: InspectorState,
-    path_params: Vec<KeyValuePair>,
 
     // Confirmation modal state
     pending_delete_collection: Option<String>, // collection id awaiting confirmation
@@ -138,7 +137,6 @@ impl LiteRequestApp {
             split_ratio: 0.5,
             is_dragging_split: false,
             inspector_state: InspectorState::default(),
-            path_params: Vec::new(),
             pending_delete_collection: None,
             app_settings_state: AppSettingsState::default(),
             global_settings: GlobalSettings::default(),
@@ -273,22 +271,20 @@ impl LiteRequestApp {
         }
     }
 
-    /// Re-extract `:paramName` path params from the URL, preserving existing values.
+    /// Re-extract `:paramName` path params from the URL, preserving saved values from RequestData.
     fn sync_path_params(&mut self) {
         let new_names = crate::http::interpolation::extract_path_params(&self.editor_state.data.url);
-        let mut new_params = Vec::with_capacity(new_names.len());
-        for name in &new_names {
-            if let Some(existing) = self.path_params.iter().find(|p| &p.key == name) {
-                new_params.push(existing.clone());
-            } else {
-                new_params.push(KeyValuePair {
-                    key: name.clone(),
-                    value: String::new(),
-                    enabled: true,
-                });
-            }
-        }
-        self.path_params = new_params;
+        let existing = std::mem::take(&mut self.editor_state.data.path_params);
+        self.editor_state.data.path_params = new_names
+            .into_iter()
+            .map(|name| {
+                existing
+                    .iter()
+                    .find(|p| p.key == name)
+                    .cloned()
+                    .unwrap_or(KeyValuePair { key: name, value: String::new(), enabled: true })
+            })
+            .collect();
     }
 
     /// If the URL contains a query string, extract the params into `data.query_params`
@@ -398,7 +394,17 @@ impl LiteRequestApp {
         }
         let base_path = collection.map(|c| c.base_path.clone()).unwrap_or_default();
 
-        let curl = crate::http::curl::to_curl(&self.editor_state.data, &variables, &base_path);
+        // Resolve path params in URL before generating cURL
+        let mut data = self.editor_state.data.clone();
+        let param_pairs: Vec<(String, String)> = data.path_params.iter()
+            .filter(|p| p.enabled && !p.key.is_empty())
+            .map(|p| (p.key.clone(), p.value.clone()))
+            .collect();
+        if !param_pairs.is_empty() {
+            data.url = crate::http::interpolation::resolve_path_params(&data.url, &param_pairs);
+        }
+
+        let curl = crate::http::curl::to_curl(&data, &variables, &base_path);
         self.pending_clipboard = Some(curl);
     }
 
@@ -411,7 +417,7 @@ impl LiteRequestApp {
         let mut data = self.editor_state.data.clone();
 
         // Resolve :pathParam placeholders in the URL before sending
-        let param_pairs: Vec<(String, String)> = self.path_params.iter()
+        let param_pairs: Vec<(String, String)> = self.editor_state.data.path_params.iter()
             .filter(|p| p.enabled && !p.key.is_empty())
             .map(|p| (p.key.clone(), p.value.clone()))
             .collect();
@@ -694,7 +700,6 @@ impl eframe::App for LiteRequestApp {
                         ui,
                         &mut self.editor_state.data,
                         &mut self.editor_state.dirty,
-                        &mut self.path_params,
                         &self.versions,
                         &self.executions,
                         self.selected_version_id.as_deref(),

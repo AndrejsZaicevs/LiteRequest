@@ -48,7 +48,6 @@ pub fn render_inspector(
     ui: &mut egui::Ui,
     data: &mut RequestData,
     dirty: &mut bool,
-    path_params: &mut Vec<KeyValuePair>,
     versions: &[RequestVersion],
     executions: &[RequestExecution],
     selected_version_id: Option<&str>,
@@ -85,11 +84,11 @@ pub fn render_inspector(
         .auto_shrink([false, false])
         .show(ui, |ui| {
             // ── PATH PARAMS (only if any exist) ──
-            if !path_params.is_empty() {
-                let path_count = count_active_pairs(path_params);
+            if !data.path_params.is_empty() {
+                let path_count = count_active_pairs(&data.path_params);
                 if section_header(ui, "PATH PARAMS", path_count, &mut inspector_state.show_path_params) {
                     ui.push_id("path_params_section", |ui| {
-                        if render_path_params_table(ui, path_params, variables) {
+                        if render_path_params_table(ui, &mut data.path_params, variables) {
                             *dirty = true;
                             action = InspectorAction::DataChanged;
                         }
@@ -397,21 +396,14 @@ fn render_path_params_table(
                             changed = true;
                         }
                     });
-                    // Key (read-only label styled like the param name)
+                    // Key: styled monospace label (no editable frame)
                     row.col(|ui| {
-                        egui::Frame::none()
-                            .fill(input_fill)
-                            .stroke(input_stroke)
-                            .corner_radius(egui::CornerRadius::same(3))
-                            .inner_margin(egui::Margin::symmetric(4, 2))
-                            .show(ui, |ui| {
-                                ui.label(
-                                    egui::RichText::new(format!(":{}", &pairs[i].key))
-                                        .size(12.0)
-                                        .color(super::theme::ACCENT)
-                                        .family(egui::FontFamily::Monospace),
-                                );
-                            });
+                        ui.label(
+                            egui::RichText::new(format!(":{}", &pairs[i].key))
+                                .size(12.0)
+                                .color(super::theme::ACCENT)
+                                .family(egui::FontFamily::Monospace),
+                        );
                     });
                     // Value (editable with variable highlighting)
                     row.col(|ui| {

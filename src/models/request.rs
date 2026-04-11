@@ -137,6 +137,8 @@ pub struct RequestData {
     pub url: String,
     pub headers: Vec<KeyValuePair>,
     pub query_params: Vec<KeyValuePair>,
+    #[serde(default)]
+    pub path_params: Vec<KeyValuePair>,
     pub body: String,
     pub body_type: BodyType,
 }
@@ -148,6 +150,7 @@ impl Default for RequestData {
             url: String::new(),
             headers: vec![KeyValuePair::default()],
             query_params: vec![KeyValuePair::default()],
+            path_params: Vec::new(),
             body: String::new(),
             body_type: BodyType::None,
         }

@@ -214,6 +214,7 @@ pub fn parse_curl(input: &str) -> Result<RequestData, String> {
         url: base_url,
         headers,
         query_params,
+        path_params: Vec::new(),
         body,
         body_type,
     })
@@ -424,6 +425,7 @@ mod tests {
                 value: "1".to_string(),
                 enabled: true,
             }],
+            path_params: Vec::new(),
             body: r#"{"test": true}"#.to_string(),
             body_type: BodyType::Json,
         };
