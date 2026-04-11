@@ -504,7 +504,7 @@ fn render_folder_row(
     let fname = folder.name.clone();
     let cid_owned = collection_id.to_string();
 
-    let indent = (depth as f32) * 16.0;
+    let indent = (depth as f32) * 20.0;
 
     // Dim the folder if it is currently being dragged
     let is_being_dragged = egui::DragAndDrop::payload::<DragPayload>(ui.ctx())
@@ -699,7 +699,7 @@ fn render_request_item(
 
     let rid = req.id.clone();
     let rname = req.name.clone();
-    let indent = (depth as f32) * 16.0;
+    let indent = (depth as f32) * 20.0;
 
     let payload = DragPayload {
         source_idx: row_idx,

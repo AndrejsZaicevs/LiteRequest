@@ -46,7 +46,6 @@ pub fn apply_theme(ctx: &egui::Context) {
     style.spacing.button_padding = egui::vec2(10.0, 5.0);
     style.spacing.window_margin = egui::Margin::same(12);
     style.spacing.indent = 16.0;
-    style.spacing.interact_size = egui::vec2(40.0, INPUT_HEIGHT);
 
     // Bigger text
     use egui::FontFamily::Proportional;

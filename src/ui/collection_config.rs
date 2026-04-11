@@ -218,6 +218,7 @@ pub fn render_collection_config(
                                 egui::TextEdit::singleline(&mut state.name)
                                     .desired_width(f32::INFINITY)
                                     .min_size(egui::vec2(0.0, super::theme::INPUT_HEIGHT))
+                                    .margin(egui::Margin::symmetric(8, 6))
                                     .hint_text("Collection name"),
                             )
                             .changed()
@@ -241,6 +242,7 @@ pub fn render_collection_config(
                                     egui::TextEdit::singleline(&mut state.base_path)
                                         .desired_width(f32::INFINITY)
                                         .min_size(egui::vec2(0.0, super::theme::INPUT_HEIGHT))
+                                        .margin(egui::Margin::symmetric(8, 6))
                                         .font(egui::TextStyle::Monospace)
                                         .hint_text("https://{{host}}/v1/{{instance_id}}")
                                         .layouter(&mut layouter),
@@ -446,6 +448,7 @@ fn render_auth_field(
     let mut edit = egui::TextEdit::singleline(&mut text)
         .desired_width(f32::INFINITY)
         .min_size(egui::vec2(0.0, super::theme::INPUT_HEIGHT))
+        .margin(egui::Margin::symmetric(8, 6))
         .font(egui::TextStyle::Monospace)
         .layouter(&mut layouter);
     if !hint.is_empty() {
