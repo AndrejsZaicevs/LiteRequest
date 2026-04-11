@@ -40,7 +40,7 @@ pub fn render_env_selector(
         .map(|e| e.name.as_str())
         .unwrap_or("No Environment");
 
-    ui.horizontal(|ui| {
+    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
         ui.label("Env:");
         egui::ComboBox::from_id_salt("env_selector")
             .selected_text(active_name)

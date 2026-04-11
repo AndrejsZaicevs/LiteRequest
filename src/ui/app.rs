@@ -577,7 +577,7 @@ impl eframe::App for LiteRequestApp {
                     .inner_margin(egui::Margin::symmetric(12, 8)),
             )
             .show_inside(ui, |ui| {
-                ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.label(
                         egui::RichText::new("LiteRequest")
                             .strong()
