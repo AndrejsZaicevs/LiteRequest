@@ -846,18 +846,14 @@ fn render_method_badge(ui: &mut egui::Ui, method: Option<&HttpMethod>) {
         other => other,
     };
 
-    let (badge_rect, _) = ui.allocate_exact_size(egui::vec2(32.0, 16.0), egui::Sense::hover());
-    ui.painter().rect_filled(
-        badge_rect,
-        egui::CornerRadius::same(3),
-        color.gamma_multiply(0.18),
-    );
-    ui.painter().text(
-        badge_rect.center(),
-        egui::Align2::CENTER_CENTER,
-        short,
-        egui::FontId::new(9.0, egui::FontFamily::Proportional),
-        color,
+    // Reserve a fixed width so names stay aligned, but paint only text — no background box.
+    let muted = color.gamma_multiply(0.8);
+    ui.label(
+        egui::RichText::new(short)
+            .size(10.0)
+            .strong()
+            .color(muted)
+            .family(egui::FontFamily::Monospace),
     );
 }
 

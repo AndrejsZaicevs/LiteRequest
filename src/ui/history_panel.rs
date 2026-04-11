@@ -441,18 +441,14 @@ fn render_single_version(
         .inner_margin(egui::Margin::symmetric(6, 4))
         .show(ui, |ui: &mut egui::Ui| {
             ui.set_width(ui.available_width());
-            // First line: method badge + truncated path
+            // First line: method label + truncated path
             ui.horizontal(|ui: &mut egui::Ui| {
-                ui.add(
-                    egui::Button::new(
-                        egui::RichText::new(version.data.method.as_str())
-                            .strong()
-                            .size(10.0)
-                            .color(egui::Color32::WHITE),
-                    )
-                    .fill(method_color)
-                    .corner_radius(egui::CornerRadius::same(3))
-                    .sense(egui::Sense::hover()),
+                ui.label(
+                    egui::RichText::new(version.data.method.as_str())
+                        .strong()
+                        .size(10.0)
+                        .color(method_color.gamma_multiply(0.85))
+                        .family(egui::FontFamily::Monospace),
                 );
                 ui.label(
                     egui::RichText::new(truncate_str(&path, 22))
