@@ -40,18 +40,16 @@ pub fn render_env_selector(
         .map(|e| e.name.as_str())
         .unwrap_or("No Environment");
 
-    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-        ui.label("Env:");
-        egui::ComboBox::from_id_salt("env_selector")
-            .selected_text(active_name)
-            .show_ui(ui, |ui| {
-                for env in environments {
-                    if ui.selectable_label(env.is_active, &env.name).clicked() {
-                        action = EnvAction::SelectEnvironment(env.id.clone());
-                    }
+    ui.label("Env:");
+    egui::ComboBox::from_id_salt("env_selector")
+        .selected_text(active_name)
+        .show_ui(ui, |ui| {
+            for env in environments {
+                if ui.selectable_label(env.is_active, &env.name).clicked() {
+                    action = EnvAction::SelectEnvironment(env.id.clone());
                 }
-            });
-    });
+            }
+        });
 
     action
 }
