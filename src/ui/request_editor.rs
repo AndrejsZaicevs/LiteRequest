@@ -6,6 +6,9 @@ pub struct RequestEditorState {
     pub data: RequestData,
     pub dirty: bool,
     pub json_error: Option<String>,
+    pub show_curl_import: bool,
+    pub curl_import_buf: String,
+    pub curl_import_error: Option<String>,
 }
 
 impl Default for RequestEditorState {
@@ -14,6 +17,9 @@ impl Default for RequestEditorState {
             data: RequestData::default(),
             dirty: false,
             json_error: None,
+            show_curl_import: false,
+            curl_import_buf: String::new(),
+            curl_import_error: None,
         }
     }
 }
@@ -22,7 +28,9 @@ pub enum EditorAction {
     None,
     Send,
     DataChanged,
-    UrlCommitted, // URL field lost focus or Enter pressed — trigger query param sync
+    UrlCommitted,
+    CopyCurl,
+    ImportCurl(RequestData),
 }
 
 pub fn render_request_editor(
@@ -79,7 +87,7 @@ pub fn render_request_editor(
                 }
             });
 
-        let send_btn_w = 80.0;
+        let send_btn_w = 140.0; // Send + cURL menu
         let available_for_url = (ui.available_width() - send_btn_w - 8.0).max(200.0);
 
         if !base_path.is_empty() {
@@ -151,7 +159,86 @@ pub fn render_request_editor(
         if super::theme::pill_button(ui, "Send", super::theme::ACCENT) {
             action = EditorAction::Send;
         }
+
+        // cURL dropdown menu
+        let menu_btn = ui.add(
+            egui::Button::new(
+                egui::RichText::new("⋮")
+                    .size(16.0)
+                    .color(super::theme::TEXT_SECONDARY),
+            )
+            .fill(super::theme::SURFACE_1)
+            .stroke(egui::Stroke::new(1.0, super::theme::BORDER))
+            .corner_radius(egui::CornerRadius::same(4)),
+        );
+        if menu_btn.clicked() {
+            ui.memory_mut(|m| m.toggle_popup(menu_btn.id));
+        }
+        egui::popup_below_widget(ui, menu_btn.id, &menu_btn, egui::PopupCloseBehavior::CloseOnClick, |ui| {
+            ui.set_min_width(160.0);
+            if ui.button("📋 Copy as cURL").clicked() {
+                action = EditorAction::CopyCurl;
+            }
+            if ui.button("📥 Import from cURL").clicked() {
+                state.show_curl_import = !state.show_curl_import;
+                state.curl_import_buf.clear();
+                state.curl_import_error = None;
+            }
+        });
     });
+
+    // ── cURL import panel (collapsible) ──
+    if state.show_curl_import {
+        ui.add_space(4.0);
+        egui::Frame::default()
+            .fill(super::theme::SURFACE_1)
+            .stroke(egui::Stroke::new(1.0, super::theme::BORDER))
+            .corner_radius(egui::CornerRadius::same(6))
+            .inner_margin(egui::Margin::same(8))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("PASTE CURL COMMAND")
+                            .strong()
+                            .size(11.0)
+                            .color(super::theme::TEXT_SECONDARY),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.small_button("✕").clicked() {
+                            state.show_curl_import = false;
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+                ui.add(
+                    egui::TextEdit::multiline(&mut state.curl_import_buf)
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(4)
+                        .font(egui::TextStyle::Monospace)
+                        .hint_text("curl https://api.example.com ..."),
+                );
+                if let Some(err) = &state.curl_import_error {
+                    ui.label(
+                        egui::RichText::new(err)
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(249, 62, 62)),
+                    );
+                }
+                ui.add_space(4.0);
+                if super::theme::pill_button(ui, "Import", super::theme::ACCENT) {
+                    match crate::http::curl::parse_curl(&state.curl_import_buf) {
+                        Ok(data) => {
+                            state.show_curl_import = false;
+                            state.curl_import_error = None;
+                            action = EditorAction::ImportCurl(data);
+                        }
+                        Err(e) => {
+                            state.curl_import_error = Some(e);
+                        }
+                    }
+                }
+            });
+    }
 
     ui.add_space(6.0);
 

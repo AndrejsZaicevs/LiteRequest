@@ -96,6 +96,9 @@ pub struct LiteRequestApp {
     // Global app settings
     app_settings_state: AppSettingsState,
     global_settings: GlobalSettings,
+
+    // Deferred clipboard copy (set in methods, applied in ui() where ctx is available)
+    pending_clipboard: Option<String>,
 }
 
 impl LiteRequestApp {
@@ -139,6 +142,7 @@ impl LiteRequestApp {
             pending_delete_collection: None,
             app_settings_state: AppSettingsState::default(),
             global_settings: GlobalSettings::default(),
+            pending_clipboard: None,
         };
 
         app.refresh_all_data();
@@ -367,6 +371,37 @@ impl LiteRequestApp {
         }
     }
 
+    fn copy_request_as_curl(&mut self) {
+        let Some(req) = &self.current_request else { return };
+
+        let mut variables: HashMap<String, String> = HashMap::new();
+        for v in &self.global_settings.variables {
+            if v.enabled && !v.key.is_empty() {
+                variables.insert(v.key.clone(), v.value.clone());
+            }
+        }
+        for v in &self.env_variables {
+            variables.insert(v.key.clone(), v.value.clone());
+        }
+        let collection_vars = self
+            .db
+            .get_active_collection_variables(&req.collection_id)
+            .unwrap_or_default();
+        for (key, value) in &collection_vars {
+            if !key.is_empty() {
+                variables.insert(key.clone(), value.clone());
+            }
+        }
+        let collection = self.collections.iter().find(|c| c.id == req.collection_id);
+        if let Some(c) = collection {
+            variables.insert("collectionName".to_string(), c.name.clone());
+        }
+        let base_path = collection.map(|c| c.base_path.clone()).unwrap_or_default();
+
+        let curl = crate::http::curl::to_curl(&self.editor_state.data, &variables, &base_path);
+        self.pending_clipboard = Some(curl);
+    }
+
     fn send_request(&mut self) {
         self.save_version();
 
@@ -489,6 +524,12 @@ impl LiteRequestApp {
 impl eframe::App for LiteRequestApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.process_http_results();
+
+        // Flush deferred clipboard copy
+        if let Some(text) = self.pending_clipboard.take() {
+            ui.ctx().copy_text(text);
+            self.status_message = Some(("Copied as cURL".to_string(), std::time::Instant::now()));
+        }
 
         if self.is_loading {
             ui.ctx().request_repaint();
@@ -749,6 +790,15 @@ impl eframe::App for LiteRequestApp {
                                             self.sync_path_params();
                                         }
                                         EditorAction::UrlCommitted => {
+                                            self.sync_query_params_from_url();
+                                            self.sync_path_params();
+                                        }
+                                        EditorAction::CopyCurl => {
+                                            self.copy_request_as_curl();
+                                        }
+                                        EditorAction::ImportCurl(data) => {
+                                            self.editor_state.data = data;
+                                            self.editor_state.dirty = true;
                                             self.sync_query_params_from_url();
                                             self.sync_path_params();
                                         }
