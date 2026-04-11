@@ -112,8 +112,8 @@ pub fn render_request_editor(
             egui::Frame::default()
                 .fill(super::theme::SURFACE_2)
                 .stroke(egui::Stroke::new(1.0, super::theme::BORDER))
-                .rounding(egui::Rounding::same(6.0))
-                .inner_margin(egui::Margin::symmetric(6.0, 0.0))
+                .corner_radius(egui::CornerRadius::same(6))
+                .inner_margin(egui::Margin::symmetric(6, 0))
                 .show(ui, |ui: &mut egui::Ui| {
                     ui.set_width(available_for_url);
                     ui.horizontal_centered(|ui| {
@@ -128,7 +128,7 @@ pub fn render_request_editor(
                             .add(
                                 egui::TextEdit::singleline(&mut state.data.url)
                                     .desired_width(ui.available_width())
-                                    .frame(false)
+                                    .frame(egui::Frame::NONE)
                                     .font(egui::TextStyle::Monospace),
                             )
                             .changed()
@@ -218,7 +218,7 @@ pub fn render_request_editor(
                                     } else {
                                         egui::Stroke::NONE
                                     })
-                                    .rounding(egui::Rounding::same(4.0)),
+                                    .corner_radius(egui::CornerRadius::same(4)),
                             )
                             .clicked()
                         {
@@ -248,12 +248,35 @@ pub fn render_request_editor(
                         }
                     }
 
+                    let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(
+                        ui.ctx(),
+                        ui.style(),
+                    );
+                    let lang = match state.data.body_type {
+                        BodyType::Json => "json",
+                        BodyType::Raw => "txt",
+                        _ => "txt",
+                    };
+                    let mut layouter =
+                        |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+                            let mut job = egui_extras::syntax_highlighting::highlight(
+                                ui.ctx(),
+                                ui.style(),
+                                &theme,
+                                buf.as_str(),
+                                lang,
+                            );
+                            job.wrap.max_width = wrap_width;
+                            ui.fonts_mut(|f| f.layout_job(job))
+                        };
+
                     let response = ui.add(
                         egui::TextEdit::multiline(&mut state.data.body)
                             .desired_width(f32::INFINITY)
                             .desired_rows(6)
                             .font(egui::TextStyle::Monospace)
-                            .code_editor(),
+                            .code_editor()
+                            .layouter(&mut layouter),
                     );
 
                     if response.changed() {
@@ -279,7 +302,7 @@ pub fn render_request_editor(
 
 /// Collapsible section header. Returns true if section is expanded.
 fn collapsible_section(ui: &mut egui::Ui, label: &str, count: usize, expanded: &mut bool) -> bool {
-    let icon = if *expanded { "v" } else { ">" };
+    let icon = if *expanded { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_RIGHT };
     let count_text = if count > 0 {
         format!(" ({count})")
     } else {
@@ -358,7 +381,7 @@ fn render_kv_table(ui: &mut egui::Ui, pairs: &mut Vec<KeyValuePair>, id: &str) -
                             .add(
                                 egui::TextEdit::singleline(&mut pairs[i].key)
                                     .desired_width(ui.available_width())
-                                    .frame(false)
+                                    .frame(egui::Frame::NONE)
                                     .font(egui::TextStyle::Monospace),
                             )
                             .changed()
@@ -372,7 +395,7 @@ fn render_kv_table(ui: &mut egui::Ui, pairs: &mut Vec<KeyValuePair>, id: &str) -
                             .add(
                                 egui::TextEdit::singleline(&mut pairs[i].value)
                                     .desired_width(ui.available_width())
-                                    .frame(false)
+                                    .frame(egui::Frame::NONE)
                                     .font(egui::TextStyle::Monospace),
                             )
                             .changed()
@@ -385,7 +408,7 @@ fn render_kv_table(ui: &mut egui::Ui, pairs: &mut Vec<KeyValuePair>, id: &str) -
                         if ui
                             .add(
                                 egui::Button::new(
-                                    egui::RichText::new("x")
+                                    egui::RichText::new(egui_phosphor::regular::X)
                                         .size(11.0)
                                         .color(super::theme::TEXT_MUTED),
                                 )

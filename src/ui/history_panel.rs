@@ -57,8 +57,8 @@ pub fn render_version_history(
 
                 let frame_resp = egui::Frame::default()
                     .fill(fill)
-                    .rounding(egui::Rounding::same(5.0))
-                    .inner_margin(egui::Margin::symmetric(6.0, 4.0))
+                    .corner_radius(egui::CornerRadius::same(5))
+                    .inner_margin(egui::Margin::symmetric(6, 4))
                     .show(ui, |ui: &mut egui::Ui| {
                         ui.set_width(ui.available_width());
                         ui.horizontal(|ui: &mut egui::Ui| {
@@ -162,8 +162,8 @@ pub fn render_execution_history(
 
                 let frame_resp = egui::Frame::default()
                     .fill(fill)
-                    .rounding(egui::Rounding::same(5.0))
-                    .inner_margin(egui::Margin::symmetric(6.0, 4.0))
+                    .corner_radius(egui::CornerRadius::same(5))
+                    .inner_margin(egui::Margin::symmetric(6, 4))
                     .show(ui, |ui: &mut egui::Ui| {
                         ui.set_width(ui.available_width());
                         ui.horizontal(|ui: &mut egui::Ui| {
@@ -175,7 +175,7 @@ pub fn render_execution_history(
                                         .color(egui::Color32::WHITE),
                                 )
                                 .fill(status_color)
-                                .rounding(egui::Rounding::same(3.0))
+                                .corner_radius(egui::CornerRadius::same(3))
                                 .sense(egui::Sense::hover()),
                             );
                             ui.label(

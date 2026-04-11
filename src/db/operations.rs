@@ -376,6 +376,32 @@ impl Database {
         rows.collect()
     }
 
+    // ── Move / Rename helpers ────────────────────────────────────
+
+    pub fn move_request(&self, id: &str, collection_id: &str, folder_id: Option<&str>) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE requests SET collection_id=?2, folder_id=?3 WHERE id=?1",
+            params![id, collection_id, folder_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn rename_folder(&self, id: &str, name: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE folders SET name=?2 WHERE id=?1",
+            params![id, name],
+        )?;
+        Ok(())
+    }
+
+    pub fn rename_collection(&self, id: &str, name: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE collections SET name=?2 WHERE id=?1",
+            params![id, name],
+        )?;
+        Ok(())
+    }
+
     // ── Maintenance ──────────────────────────────────────────────
 
     pub fn prune_old_executions(&self, days: i64) -> rusqlite::Result<usize> {

@@ -85,7 +85,7 @@ pub fn render_environment_panel(
             if ui.selectable_label(is_selected, &env.name).clicked() {
                 state.selected_env_id = Some(env.id.clone());
             }
-            if ui.small_button("x").clicked() {
+            if ui.small_button(egui_phosphor::regular::X).clicked() {
                 action = EnvAction::DeleteEnvironment(env.id.clone());
             }
         });
@@ -141,7 +141,7 @@ pub fn render_environment_panel(
                         changed = true;
                     }
 
-                    if ui.small_button("x").clicked() {
+                    if ui.small_button(egui_phosphor::regular::X).clicked() {
                         to_delete = Some(i);
                     }
 

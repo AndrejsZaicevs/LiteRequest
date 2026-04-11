@@ -65,6 +65,9 @@ pub struct LiteRequestApp {
     // Resizable request/response split (0.0–1.0, fraction for request)
     split_ratio: f32,
     is_dragging_split: bool,
+
+    // Confirmation modal state
+    pending_delete_collection: Option<String>, // collection id awaiting confirmation
 }
 
 impl LiteRequestApp {
@@ -103,6 +106,7 @@ impl LiteRequestApp {
             status_message: None,
             split_ratio: 0.5,
             is_dragging_split: false,
+            pending_delete_collection: None,
         };
 
         app.refresh_all_data();
@@ -279,11 +283,11 @@ impl LiteRequestApp {
 }
 
 impl eframe::App for LiteRequestApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.process_http_results();
 
         if self.is_loading {
-            ctx.request_repaint();
+            ui.ctx().request_repaint();
         }
 
         // Clear status message after 3s
@@ -294,14 +298,14 @@ impl eframe::App for LiteRequestApp {
         }
 
         // ── Top bar ──────────────────────────────────────────────
-        egui::TopBottomPanel::top("top_bar")
+        egui::Panel::top("top_bar")
             .frame(
                 egui::Frame::default()
                     .fill(super::theme::SURFACE_1)
                     .stroke(egui::Stroke::new(1.0, super::theme::BORDER))
-                    .inner_margin(egui::Margin::symmetric(12.0, 8.0)),
+                    .inner_margin(egui::Margin::symmetric(12, 8)),
             )
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new("LiteRequest")
@@ -374,38 +378,40 @@ impl eframe::App for LiteRequestApp {
             });
 
         // ── Left panel: Collection tree ──────────────────────────
-        egui::SidePanel::left("collection_panel")
-            .default_width(240.0)
-            .min_width(200.0)
+        egui::Panel::left("collection_panel")
+            .default_size(240.0)
+            .min_size(200.0)
             .frame(
                 egui::Frame::default()
                     .fill(super::theme::SURFACE_1)
                     .stroke(egui::Stroke::new(1.0, super::theme::BORDER))
-                    .inner_margin(egui::Margin::symmetric(8.0, 6.0)),
+                    .inner_margin(egui::Margin::symmetric(8, 6)),
             )
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
+                let method_map = build_method_map(&self.requests, &self.db);
                 let action = render_collection_tree(
                     ui,
                     &self.collections,
                     &self.folders,
                     &self.requests,
                     &mut self.tree_state,
+                    &method_map,
                 );
                 self.handle_tree_action(action);
             });
 
         // ── Right panel: History (only when editing a request) ───
         if matches!(self.center_view, CenterView::RequestEditor(_)) {
-            egui::SidePanel::right("history_panel")
-                .default_width(260.0)
-                .min_width(220.0)
+            egui::Panel::right("history_panel")
+                .default_size(260.0)
+                .min_size(220.0)
                 .frame(
                     egui::Frame::default()
                         .fill(super::theme::SURFACE_1)
                         .stroke(egui::Stroke::new(1.0, super::theme::BORDER))
-                        .inner_margin(egui::Margin::symmetric(8.0, 6.0)),
+                        .inner_margin(egui::Margin::symmetric(8, 6)),
                 )
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     let available_height = ui.available_height();
 
                     // Top half: Version history
@@ -447,9 +453,9 @@ impl eframe::App for LiteRequestApp {
             .frame(
                 egui::Frame::default()
                     .fill(super::theme::SURFACE_0)
-                    .inner_margin(egui::Margin::symmetric(16.0, 10.0)),
+                    .inner_margin(egui::Margin::symmetric(16, 10)),
             )
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 match self.center_view.clone() {
                     CenterView::Welcome => {
                         render_welcome(ui);
@@ -525,6 +531,56 @@ impl eframe::App for LiteRequestApp {
                 }
             });
 
+        // ── Delete collection confirmation modal ─────────────────
+        if let Some(ref cid) = self.pending_delete_collection.clone() {
+            let cname = self.collections.iter()
+                .find(|c| &c.id == cid)
+                .map(|c| c.name.as_str())
+                .unwrap_or("this collection");
+            let mut confirmed = false;
+            let mut cancelled = false;
+            egui::Window::new("Delete Collection")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                .show(ui.ctx(), |ui| {
+                    ui.add_space(8.0);
+                    ui.label(format!("Delete \"{cname}\" and all its requests?"));
+                    ui.label(
+                        egui::RichText::new("This cannot be undone.")
+                            .color(egui::Color32::from_rgb(249, 62, 62))
+                            .size(12.0),
+                    );
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        if super::theme::pill_button(ui, "Delete", egui::Color32::from_rgb(249, 62, 62)) {
+                            confirmed = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancelled = true;
+                        }
+                    });
+                    ui.add_space(4.0);
+                });
+            if confirmed {
+                let id = cid.clone();
+                self.pending_delete_collection = None;
+                let _ = self.db.delete_collection(&id);
+                if matches!(&self.center_view, CenterView::CollectionConfig(ref cid2) if *cid2 == id) {
+                    self.center_view = CenterView::Welcome;
+                }
+                if self.current_request.as_ref().map(|r| &r.collection_id) == Some(&id) {
+                    self.current_request = None;
+                    self.center_view = CenterView::Welcome;
+                }
+                self.tree_state.selected_request_id = None;
+                self.tree_state.selected_collection_id = None;
+                self.refresh_all_data();
+            } else if cancelled {
+                self.pending_delete_collection = None;
+            }
+        }
+
         // ── Environment management window ────────────────────────
         let mut env_show = self.env_panel_state.show_panel;
         if env_show {
@@ -532,7 +588,7 @@ impl eframe::App for LiteRequestApp {
             egui::Window::new("Environments")
                 .open(&mut env_show)
                 .default_width(550.0)
-                .show(ctx, |ui| {
+                .show(ui.ctx(), |ui| {
                     env_action = render_environment_panel(
                         ui,
                         &self.environments,
@@ -619,17 +675,8 @@ impl LiteRequestApp {
                 self.select_request(&req_id);
             }
             TreeAction::DeleteCollection(id) => {
-                let _ = self.db.delete_collection(&id);
-                if matches!(&self.center_view, CenterView::CollectionConfig(cid) if cid == &id) {
-                    self.center_view = CenterView::Welcome;
-                }
-                if self.current_request.as_ref().map(|r| &r.collection_id) == Some(&id) {
-                    self.current_request = None;
-                    self.center_view = CenterView::Welcome;
-                }
-                self.tree_state.selected_request_id = None;
-                self.tree_state.selected_collection_id = None;
-                self.refresh_all_data();
+                // Show confirmation modal instead of deleting immediately
+                self.pending_delete_collection = Some(id);
             }
             TreeAction::DeleteFolder(id) => {
                 let _ = self.db.delete_folder(&id);
@@ -647,12 +694,52 @@ impl LiteRequestApp {
             TreeAction::RenameRequest(id, name) => {
                 let _ = self.db.rename_request(&id, &name);
                 self.refresh_all_data();
-                // Update current request name if it's the one being renamed
                 if let Some(req) = &mut self.current_request {
                     if req.id == id {
                         req.name = name;
                     }
                 }
+            }
+            TreeAction::RenameFolder(id, name) => {
+                let _ = self.db.rename_folder(&id, &name);
+                self.refresh_all_data();
+            }
+            TreeAction::RenameCollection(id, name) => {
+                let _ = self.db.rename_collection(&id, &name);
+                self.refresh_all_data();
+            }
+            TreeAction::CloneRequest(id) => {
+                if let Some(src) = self.requests.iter().find(|r| r.id == id).cloned() {
+                    let new_req = Request {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        collection_id: src.collection_id.clone(),
+                        folder_id: src.folder_id.clone(),
+                        name: format!("{} (copy)", src.name),
+                        current_version_id: None,
+                        sort_order: self.requests.len() as i32,
+                    };
+                    let new_req_id = new_req.id.clone();
+                    let _ = self.db.insert_request(&new_req);
+                    // Copy the latest version data if available
+                    if let Some(vid) = &src.current_version_id {
+                        if let Ok(ver) = self.db.get_version(vid) {
+                            let now = chrono::Utc::now().to_rfc3339();
+                            let new_ver = RequestVersion {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                request_id: new_req_id.clone(),
+                                data: ver.data,
+                                created_at: now,
+                            };
+                            let _ = self.db.insert_version(&new_ver);
+                        }
+                    }
+                    self.refresh_all_data();
+                    self.select_request(&new_req_id);
+                }
+            }
+            TreeAction::MoveRequest(request_id, collection_id, folder_id) => {
+                let _ = self.db.move_request(&request_id, &collection_id, folder_id.as_deref());
+                self.refresh_all_data();
             }
         }
     }
@@ -915,6 +1002,20 @@ fn rfd_save_file(_title: &str, _default_name: &str) -> Option<PathBuf> {
     {
         None
     }
+}
+
+// ── Build method map for tree badges ─────────────────────────────
+
+fn build_method_map(requests: &[Request], db: &crate::db::Database) -> HashMap<String, HttpMethod> {
+    let mut map = HashMap::new();
+    for req in requests {
+        if let Some(vid) = &req.current_version_id {
+            if let Ok(ver) = db.get_version(vid) {
+                map.insert(req.id.clone(), ver.data.method.clone());
+            }
+        }
+    }
+    map
 }
 
 // ── Data directory ───────────────────────────────────────────────

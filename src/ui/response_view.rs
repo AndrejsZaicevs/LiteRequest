@@ -34,7 +34,7 @@ pub fn render_response_view(
     // ── Single-line divider: [status info] ... [Body Headers Table] ──
     egui::Frame::default()
         .fill(super::theme::SURFACE_2)
-        .inner_margin(egui::Margin::symmetric(8.0, 4.0))
+        .inner_margin(egui::Margin::symmetric(8, 4))
         .show(ui, |ui: &mut egui::Ui| {
             ui.horizontal(|ui: &mut egui::Ui| {
                 // Left side: status info (or placeholder)
@@ -48,7 +48,7 @@ pub fn render_response_view(
                                 .color(egui::Color32::WHITE),
                         )
                         .fill(status_color)
-                        .rounding(egui::Rounding::same(3.0))
+                        .corner_radius(egui::CornerRadius::same(3))
                         .min_size(egui::vec2(0.0, 18.0))
                         .sense(egui::Sense::hover()),
                     );

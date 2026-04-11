@@ -11,7 +11,12 @@ pub const TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(140, 140, 150)
 pub const TEXT_MUTED: egui::Color32 = egui::Color32::from_rgb(90, 90, 100);
 
 pub fn apply_theme(ctx: &egui::Context) {
-    let mut style = (*ctx.style()).clone();
+    // Load Phosphor icon font
+    let mut fonts = egui::FontDefinitions::default();
+    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+    ctx.set_fonts(fonts);
+
+    let mut style = (*ctx.global_style()).clone();
 
     let mut visuals = egui::Visuals::dark();
     visuals.dark_mode = true;
@@ -21,22 +26,22 @@ pub fn apply_theme(ctx: &egui::Context) {
     visuals.window_stroke = egui::Stroke::new(1.0, BORDER);
     visuals.widgets.noninteractive.bg_fill = SURFACE_1;
     visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, BORDER);
-    visuals.widgets.noninteractive.rounding = egui::Rounding::same(6.0);
+    visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(6);
     visuals.widgets.inactive.bg_fill = SURFACE_2;
     visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, BORDER);
-    visuals.widgets.inactive.rounding = egui::Rounding::same(6.0);
+    visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
     visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(52, 52, 60);
     visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, ACCENT);
-    visuals.widgets.hovered.rounding = egui::Rounding::same(6.0);
+    visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
     visuals.widgets.active.bg_fill = egui::Color32::from_rgb(60, 60, 70);
-    visuals.widgets.active.rounding = egui::Rounding::same(6.0);
+    visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
     visuals.selection.bg_fill = egui::Color32::from_rgb(59, 130, 246).gamma_multiply(0.25);
     visuals.selection.stroke = egui::Stroke::new(1.0, ACCENT);
 
     style.visuals = visuals;
     style.spacing.item_spacing = egui::vec2(8.0, 6.0);
     style.spacing.button_padding = egui::vec2(10.0, 5.0);
-    style.spacing.window_margin = egui::Margin::same(12.0);
+    style.spacing.window_margin = egui::Margin::same(12);
     style.spacing.indent = 16.0;
 
     // Bigger text
@@ -48,7 +53,7 @@ pub fn apply_theme(ctx: &egui::Context) {
     style.text_styles.insert(TextStyle::Monospace, egui::FontId::new(13.0, egui::FontFamily::Monospace));
     style.text_styles.insert(TextStyle::Small, egui::FontId::new(11.0, Proportional));
 
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }
 
 pub fn status_color(status: u16) -> egui::Color32 {
@@ -68,8 +73,8 @@ pub fn section_header(ui: &mut egui::Ui, text: &str) {
         rect.min,
         egui::vec2(rect.width(), 28.0),
     );
-    ui.painter().rect_filled(header_rect, 0.0, SURFACE_2);
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(header_rect), |ui| {
+    ui.painter().rect_filled(header_rect, 0, SURFACE_2);
+    ui.scope_builder(egui::UiBuilder::new().max_rect(header_rect), |ui| {
         ui.centered_and_justified(|ui| {
             ui.label(
                 egui::RichText::new(text)
@@ -93,7 +98,7 @@ pub fn pill_button(ui: &mut egui::Ui, text: &str, color: egui::Color32) -> bool 
                 .color(egui::Color32::WHITE),
         )
         .fill(color)
-        .rounding(egui::Rounding::same(6.0))
+        .corner_radius(egui::CornerRadius::same(6))
         .min_size(egui::vec2(0.0, 30.0)),
     )
     .clicked()
@@ -115,8 +120,8 @@ pub fn framed_section(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui
     egui::Frame::default()
         .fill(SURFACE_1)
         .stroke(egui::Stroke::new(1.0, BORDER))
-        .rounding(egui::Rounding::same(8.0))
-        .inner_margin(egui::Margin::same(10.0))
+        .corner_radius(egui::CornerRadius::same(8))
+        .inner_margin(egui::Margin::same(10))
         .show(ui, |ui| {
             add_contents(ui);
         });

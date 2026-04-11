@@ -37,7 +37,7 @@ fn render_node(
 
     if is_expandable {
         let is_open = expanded.contains(path);
-        let icon = if is_open { "▼" } else { "▶" };
+        let icon = if is_open { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_RIGHT };
         let count = match value {
             serde_json::Value::Object(m) => format!("{{{}}}", m.len()),
             serde_json::Value::Array(a) => format!("[{}]", a.len()),
