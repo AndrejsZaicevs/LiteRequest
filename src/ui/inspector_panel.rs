@@ -149,9 +149,12 @@ fn section_header(ui: &mut egui::Ui, label: &str, count: usize, expanded: &mut b
     ui.add_space(1.0);
 
     let available_w = ui.available_width();
+    let start_y = ui.cursor().min.y;
 
     // Reserve a shape slot FIRST so the background is drawn behind the text
     let bg_idx = ui.painter().add(egui::Shape::Noop);
+
+    ui.add_space(5.0); // top padding for taller header
 
     let resp = ui.horizontal(|ui| {
         ui.add_space(8.0);
@@ -186,10 +189,14 @@ fn section_header(ui: &mut egui::Ui, label: &str, count: usize, expanded: &mut b
         }
     });
 
-    // Now fill in the background rect (behind the text, due to reserved slot)
+    ui.add_space(5.0); // bottom padding for taller header
+
+    let end_y = ui.cursor().min.y;
+
+    // Fill the reserved slot with the full background rect
     let bg_rect = egui::Rect::from_min_size(
-        resp.response.rect.min,
-        egui::vec2(available_w, resp.response.rect.height()),
+        egui::pos2(resp.response.rect.min.x, start_y),
+        egui::vec2(available_w, end_y - start_y),
     );
     ui.painter().set(bg_idx, egui::Shape::rect_filled(bg_rect, 0.0, header_color));
 
@@ -228,18 +235,20 @@ fn render_kv_table(
 
     let mut changed = false;
     let mut to_remove: Option<usize> = None;
-    let row_h = 22.0;
+    let row_h = 28.0;
     let n_rows = pairs.len();
+    let input_fill = super::theme::SURFACE_0;
+    let input_stroke = egui::Stroke::new(1.0, super::theme::BORDER);
 
     TableBuilder::new(ui)
         .id_salt(id)
-        .striped(true)
+        .striped(false)
         .max_scroll_height(n_rows as f32 * row_h + 4.0)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(Column::exact(20.0))           // checkbox
+        .column(Column::exact(22.0))           // checkbox
         .column(Column::remainder().at_least(60.0)) // key
         .column(Column::remainder().at_least(60.0)) // value
-        .column(Column::exact(20.0))           // remove btn
+        .column(Column::exact(22.0))           // remove btn
         .body(|mut body| {
             for i in 0..n_rows {
                 let is_last_empty = i == n_rows - 1
@@ -257,37 +266,51 @@ fn render_kv_table(
                     });
                     // Key
                     row.col(|ui| {
-                        let mut layouter = super::var_highlight::var_text_layouter;
-                        let resp = ui.add(
-                            egui::TextEdit::singleline(&mut pairs[i].key)
-                                .desired_width(ui.available_width())
-                                .frame(egui::Frame::NONE)
-                                .font(egui::TextStyle::Monospace)
-                                .layouter(&mut layouter),
-                        );
-                        if resp.changed() {
-                            changed = true;
-                        }
-                        super::var_highlight::show_variable_tooltip(
-                            ui, &resp, &pairs[i].key, variables,
-                        );
+                        egui::Frame::none()
+                            .fill(input_fill)
+                            .stroke(input_stroke)
+                            .corner_radius(egui::CornerRadius::same(3))
+                            .inner_margin(egui::Margin::symmetric(4, 2))
+                            .show(ui, |ui| {
+                                let mut layouter = super::var_highlight::var_text_layouter;
+                                let resp = ui.add(
+                                    egui::TextEdit::singleline(&mut pairs[i].key)
+                                        .desired_width(ui.available_width())
+                                        .frame(egui::Frame::NONE)
+                                        .font(egui::TextStyle::Monospace)
+                                        .layouter(&mut layouter),
+                                );
+                                if resp.changed() {
+                                    changed = true;
+                                }
+                                super::var_highlight::show_variable_tooltip(
+                                    ui, &resp, &pairs[i].key, variables,
+                                );
+                            });
                     });
                     // Value
                     row.col(|ui| {
-                        let mut layouter = super::var_highlight::var_text_layouter;
-                        let resp = ui.add(
-                            egui::TextEdit::singleline(&mut pairs[i].value)
-                                .desired_width(ui.available_width())
-                                .frame(egui::Frame::NONE)
-                                .font(egui::TextStyle::Monospace)
-                                .layouter(&mut layouter),
-                        );
-                        if resp.changed() {
-                            changed = true;
-                        }
-                        super::var_highlight::show_variable_tooltip(
-                            ui, &resp, &pairs[i].value, variables,
-                        );
+                        egui::Frame::none()
+                            .fill(input_fill)
+                            .stroke(input_stroke)
+                            .corner_radius(egui::CornerRadius::same(3))
+                            .inner_margin(egui::Margin::symmetric(4, 2))
+                            .show(ui, |ui| {
+                                let mut layouter = super::var_highlight::var_text_layouter;
+                                let resp = ui.add(
+                                    egui::TextEdit::singleline(&mut pairs[i].value)
+                                        .desired_width(ui.available_width())
+                                        .frame(egui::Frame::NONE)
+                                        .font(egui::TextStyle::Monospace)
+                                        .layouter(&mut layouter),
+                                );
+                                if resp.changed() {
+                                    changed = true;
+                                }
+                                super::var_highlight::show_variable_tooltip(
+                                    ui, &resp, &pairs[i].value, variables,
+                                );
+                            });
                     });
                     // Remove (hide for the trailing empty row)
                     row.col(|ui| {
@@ -330,15 +353,17 @@ fn render_path_params_table(
     use egui_extras::{TableBuilder, Column};
 
     let mut changed = false;
-    let row_h = 22.0;
+    let row_h = 28.0;
     let n_rows = pairs.len();
+    let input_fill = super::theme::SURFACE_0;
+    let input_stroke = egui::Stroke::new(1.0, super::theme::BORDER);
 
     TableBuilder::new(ui)
         .id_salt("path_params_table")
-        .striped(true)
+        .striped(false)
         .max_scroll_height(n_rows as f32 * row_h + 4.0)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(Column::exact(20.0))               // checkbox
+        .column(Column::exact(22.0))               // checkbox
         .column(Column::remainder().at_least(60.0)) // key (read-only)
         .column(Column::remainder().at_least(60.0)) // value (editable)
         .body(|mut body| {
@@ -352,29 +377,43 @@ fn render_path_params_table(
                     });
                     // Key (read-only label styled like the param name)
                     row.col(|ui| {
-                        ui.label(
-                            egui::RichText::new(format!(":{}", &pairs[i].key))
-                                .size(12.0)
-                                .color(super::theme::ACCENT)
-                                .family(egui::FontFamily::Monospace),
-                        );
+                        egui::Frame::none()
+                            .fill(input_fill)
+                            .stroke(input_stroke)
+                            .corner_radius(egui::CornerRadius::same(3))
+                            .inner_margin(egui::Margin::symmetric(4, 2))
+                            .show(ui, |ui| {
+                                ui.label(
+                                    egui::RichText::new(format!(":{}", &pairs[i].key))
+                                        .size(12.0)
+                                        .color(super::theme::ACCENT)
+                                        .family(egui::FontFamily::Monospace),
+                                );
+                            });
                     });
                     // Value (editable with variable highlighting)
                     row.col(|ui| {
-                        let mut layouter = super::var_highlight::var_text_layouter;
-                        let resp = ui.add(
-                            egui::TextEdit::singleline(&mut pairs[i].value)
-                                .desired_width(ui.available_width())
-                                .frame(egui::Frame::NONE)
-                                .font(egui::TextStyle::Monospace)
-                                .layouter(&mut layouter),
-                        );
-                        if resp.changed() {
-                            changed = true;
-                        }
-                        super::var_highlight::show_variable_tooltip(
-                            ui, &resp, &pairs[i].value, variables,
-                        );
+                        egui::Frame::none()
+                            .fill(input_fill)
+                            .stroke(input_stroke)
+                            .corner_radius(egui::CornerRadius::same(3))
+                            .inner_margin(egui::Margin::symmetric(4, 2))
+                            .show(ui, |ui| {
+                                let mut layouter = super::var_highlight::var_text_layouter;
+                                let resp = ui.add(
+                                    egui::TextEdit::singleline(&mut pairs[i].value)
+                                        .desired_width(ui.available_width())
+                                        .frame(egui::Frame::NONE)
+                                        .font(egui::TextStyle::Monospace)
+                                        .layouter(&mut layouter),
+                                );
+                                if resp.changed() {
+                                    changed = true;
+                                }
+                                super::var_highlight::show_variable_tooltip(
+                                    ui, &resp, &pairs[i].value, variables,
+                                );
+                            });
                     });
                 });
             }
