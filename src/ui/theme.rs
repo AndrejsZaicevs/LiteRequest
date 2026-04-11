@@ -155,13 +155,13 @@ pub fn collapsible_header(ui: &mut egui::Ui, label: &str, expanded: &mut bool) -
         ui.add_space(8.0);
         ui.label(
             egui::RichText::new(icon)
-                .size(10.0)
+                .size(12.0)
                 .color(TEXT_MUTED),
         );
         ui.label(
             egui::RichText::new(label)
                 .strong()
-                .size(12.0)
+                .size(13.0)
                 .color(if *expanded {
                     TEXT_PRIMARY
                 } else {

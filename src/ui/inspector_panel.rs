@@ -160,13 +160,13 @@ fn section_header(ui: &mut egui::Ui, label: &str, count: usize, expanded: &mut b
         ui.add_space(8.0);
         ui.label(
             egui::RichText::new(icon)
-                .size(10.0)
+                .size(12.0)
                 .color(super::theme::TEXT_MUTED),
         );
         ui.label(
             egui::RichText::new(label)
                 .strong()
-                .size(12.0)
+                .size(13.0)
                 .color(if *expanded {
                     super::theme::TEXT_PRIMARY
                 } else {

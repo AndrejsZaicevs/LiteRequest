@@ -544,7 +544,6 @@ fn render_vars_table(
     let input_fill = super::theme::SURFACE_0;
     let input_stroke = egui::Stroke::new(1.0, super::theme::BORDER);
     let mut to_delete: Option<usize> = None;
-    let mut new_key_entered: Option<String> = None;
 
     TableBuilder::new(ui)
         .id_salt("collection_vars_table")
@@ -570,7 +569,6 @@ fn render_vars_table(
                             .corner_radius(egui::CornerRadius::same(3))
                             .inner_margin(egui::Margin::symmetric(4, 2))
                             .show(ui, |ui| {
-                                let old_key = state.collection_vars[i].key.clone();
                                 if ui
                                     .add(
                                         egui::TextEdit::singleline(
@@ -588,14 +586,6 @@ fn render_vars_table(
                                     .changed()
                                 {
                                     state.vars_dirty = true;
-                                    // If the user typed a key in the empty row, create across all envs
-                                    if is_last_empty
-                                        && old_key.is_empty()
-                                        && !state.collection_vars[i].key.is_empty()
-                                    {
-                                        new_key_entered =
-                                            Some(state.collection_vars[i].key.clone());
-                                    }
                                 }
                             });
                     });
@@ -666,19 +656,6 @@ fn render_vars_table(
                 });
             }
         });
-
-    // Handle new key entry: create this key in all OTHER environments
-    if let Some(key) = new_key_entered {
-        // The variable already exists in state for the current env.
-        // Insert into DB for current env, then trigger creation in all other envs.
-        let var = &state.collection_vars[state.collection_vars.len() - 1];
-        let _ = *action; // don't overwrite a pending LoadVars
-        *action = ConfigAction::AddVarAllEnvs(collection.id.clone());
-        // We save the current var to DB immediately so it persists
-        // (the AddVarAllEnvs handler will see the key and create for other envs)
-        let _ = key; // key is already set in the var
-        let _ = var;
-    }
 
     // Handle deletion: remove from all environments
     if let Some(i) = to_delete {
