@@ -717,17 +717,23 @@ impl LiteRequestApp {
                 self.refresh_all_data();
                 self.select_collection(&cid);
             }
-            TreeAction::NewFolder(collection_id) => {
+            TreeAction::NewFolder(collection_id, parent_folder_id) => {
                 let folder = Folder {
                     id: uuid::Uuid::new_v4().to_string(),
-                    collection_id,
-                    parent_folder_id: None,
+                    collection_id: collection_id.clone(),
+                    parent_folder_id,
                     name: "New Folder".to_string(),
                     path_prefix: String::new(),
                     auth_override: None,
                     sort_order: self.folders.len() as i32,
                 };
                 let _ = self.db.insert_folder(&folder);
+                self.tree_state.expanded_folders.insert(folder.id.clone());
+                // Expand parent so the new sub-folder is visible
+                if let Some(pid) = &folder.parent_folder_id {
+                    self.tree_state.expanded_folders.insert(pid.clone());
+                }
+                self.tree_state.expanded_collections.insert(collection_id);
                 self.refresh_all_data();
             }
             TreeAction::NewRequest(collection_id, folder_id) => {
@@ -807,8 +813,59 @@ impl LiteRequestApp {
                     self.select_request(&new_req_id);
                 }
             }
-            TreeAction::MoveRequest(request_id, collection_id, folder_id) => {
+            TreeAction::MoveRequest(request_id, collection_id, folder_id, position) => {
                 let _ = self.db.move_request(&request_id, &collection_id, folder_id.as_deref());
+
+                // Build ordered list of sibling request IDs in the target container
+                let siblings: Vec<String> = self
+                    .requests
+                    .iter()
+                    .filter(|r| {
+                        r.collection_id == collection_id
+                            && r.folder_id == folder_id
+                            && r.id != request_id
+                    })
+                    .map(|r| r.id.clone())
+                    .collect();
+
+                let ordered = match position {
+                    DropPosition::End => {
+                        let mut v = siblings;
+                        v.push(request_id);
+                        v
+                    }
+                    DropPosition::Before(anchor_id) => {
+                        let mut v = Vec::with_capacity(siblings.len() + 1);
+                        for id in &siblings {
+                            if *id == anchor_id {
+                                v.push(request_id.clone());
+                            }
+                            v.push(id.clone());
+                        }
+                        if !v.contains(&request_id) {
+                            v.push(request_id);
+                        }
+                        v
+                    }
+                    DropPosition::After(anchor_id) => {
+                        let mut v = Vec::with_capacity(siblings.len() + 1);
+                        for id in &siblings {
+                            v.push(id.clone());
+                            if *id == anchor_id {
+                                v.push(request_id.clone());
+                            }
+                        }
+                        if !v.contains(&request_id) {
+                            v.push(request_id);
+                        }
+                        v
+                    }
+                };
+                let _ = self.db.reorder_requests(&ordered);
+                self.refresh_all_data();
+            }
+            TreeAction::MoveFolder(folder_id, collection_id, parent_folder_id) => {
+                let _ = self.db.move_folder(&folder_id, &collection_id, parent_folder_id.as_deref());
                 self.refresh_all_data();
             }
         }

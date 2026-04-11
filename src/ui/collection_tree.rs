@@ -9,6 +9,12 @@ enum RenameTarget {
     Collection(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DragKind {
+    Request,
+    Folder,
+}
+
 /// Payload carried during a drag operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DragPayload {
@@ -16,6 +22,8 @@ struct DragPayload {
     source_idx: usize,
     /// Display name for the floating drag preview.
     label: String,
+    kind: DragKind,
+    item_id: String,
 }
 
 pub struct CollectionTreeState {
@@ -42,12 +50,19 @@ impl Default for CollectionTreeState {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum DropPosition {
+    End,
+    Before(String),
+    After(String),
+}
+
 pub enum TreeAction {
     None,
     SelectRequest(String),
     SelectCollection(String),
     NewCollection,
-    NewFolder(String),
+    NewFolder(String, Option<String>),
     NewRequest(String, Option<String>),
     DeleteCollection(String),
     DeleteFolder(String),
@@ -56,13 +71,17 @@ pub enum TreeAction {
     RenameFolder(String, String),
     RenameCollection(String, String),
     CloneRequest(String),
-    MoveRequest(String, String, Option<String>),
+    MoveRequest(String, String, Option<String>, DropPosition),
+    MoveFolder(String, String, Option<String>),
 }
 
 /// Pending drop from a container (collection or folder).
-/// Contains the DragPayload source_idx and the target container info.
+/// Contains the DragPayload source info and the target container info.
 struct PendingDrop {
+    #[allow(dead_code)]
     source_idx: usize,
+    source_kind: DragKind,
+    source_item_id: String,
     target_collection_id: String,
     target_folder_id: Option<String>,
 }
@@ -115,7 +134,7 @@ pub fn render_collection_tree(
                         }
                     }
                     RowItem::Folder { folder, collection_id, depth } => {
-                        let (a, drop) = render_folder_row(ui, folder, collection_id, state, idx, *depth);
+                        let (a, drop) = render_folder_row(ui, folder, collection_id, state, idx, *depth, folders);
                         merge_action(&mut action, a);
                         if let Some(d) = drop {
                             pending_drops.push(d);
@@ -140,6 +159,8 @@ pub fn render_collection_tree(
                         if let Some(payload) = drop_resp.dnd_release_payload::<DragPayload>() {
                             pending_drops.push(PendingDrop {
                                 source_idx: payload.source_idx,
+                                source_kind: payload.kind.clone(),
+                                source_item_id: payload.item_id.clone(),
                                 target_collection_id: collection_id.clone(),
                                 target_folder_id: None,
                             });
@@ -153,13 +174,32 @@ pub fn render_collection_tree(
 
     // Resolve pending drops using the rows list
     for pd in pending_drops {
-        if let Some(RowItem::Request { request, .. }) = rows.get(pd.source_idx) {
-            action = TreeAction::MoveRequest(
-                request.id.clone(),
-                pd.target_collection_id,
-                pd.target_folder_id,
-            );
-            break;
+        match pd.source_kind {
+            DragKind::Request => {
+                action = TreeAction::MoveRequest(
+                    pd.source_item_id,
+                    pd.target_collection_id,
+                    pd.target_folder_id,
+                    DropPosition::End,
+                );
+                break;
+            }
+            DragKind::Folder => {
+                // Anti-cycle: don't allow dropping a folder into itself or its descendants
+                if let Some(target_fid) = &pd.target_folder_id {
+                    if pd.source_item_id == *target_fid
+                        || is_descendant_of(folders, target_fid, &pd.source_item_id)
+                    {
+                        continue;
+                    }
+                }
+                action = TreeAction::MoveFolder(
+                    pd.source_item_id,
+                    pd.target_collection_id,
+                    pd.target_folder_id,
+                );
+                break;
+            }
         }
     }
 
@@ -224,34 +264,21 @@ fn build_row_list<'a>(
         rows.push(RowItem::Collection(collection));
 
         if state.expanded_collections.contains(&collection.id) {
-            // Folders at collection root
-            let child_folders: Vec<&Folder> = folders
+            let coll_folders: Vec<&Folder> = folders
                 .iter()
-                .filter(|f| f.collection_id == collection.id && f.parent_folder_id.is_none())
+                .filter(|f| f.collection_id == collection.id)
                 .collect();
 
-            for folder in &child_folders {
-                rows.push(RowItem::Folder {
-                    folder,
-                    collection_id: collection.id.clone(),
-                    depth: 1,
-                });
-
-                if state.expanded_folders.contains(&folder.id) {
-                    let folder_requests: Vec<&Request> = requests
-                        .iter()
-                        .filter(|r| r.folder_id.as_deref() == Some(&folder.id))
-                        .collect();
-                    for req in folder_requests {
-                        rows.push(RowItem::Request {
-                            request: req,
-                            collection_id: collection.id.clone(),
-                            folder_id: Some(folder.id.clone()),
-                            depth: 2,
-                        });
-                    }
-                }
-            }
+            // Recursively add folders starting from root (parent_folder_id == None)
+            add_folder_children(
+                &mut rows,
+                &coll_folders,
+                requests,
+                &collection.id,
+                None,
+                1,
+                state,
+            );
 
             // Top-level requests (no folder)
             let orphan_requests: Vec<&Request> = requests
@@ -273,6 +300,56 @@ fn build_row_list<'a>(
     }
 
     rows
+}
+
+fn add_folder_children<'a>(
+    rows: &mut Vec<RowItem<'a>>,
+    all_coll_folders: &[&'a Folder],
+    requests: &'a [Request],
+    collection_id: &str,
+    parent_folder_id: Option<&str>,
+    depth: usize,
+    state: &CollectionTreeState,
+) {
+    let child_folders: Vec<&&Folder> = all_coll_folders
+        .iter()
+        .filter(|f| f.parent_folder_id.as_deref() == parent_folder_id)
+        .collect();
+
+    for folder in child_folders {
+        rows.push(RowItem::Folder {
+            folder,
+            collection_id: collection_id.to_string(),
+            depth,
+        });
+
+        if state.expanded_folders.contains(&folder.id) {
+            // Recurse into sub-folders
+            add_folder_children(
+                rows,
+                all_coll_folders,
+                requests,
+                collection_id,
+                Some(&folder.id),
+                depth + 1,
+                state,
+            );
+
+            // Requests in this folder
+            let folder_requests: Vec<&Request> = requests
+                .iter()
+                .filter(|r| r.folder_id.as_deref() == Some(&*folder.id))
+                .collect();
+            for req in folder_requests {
+                rows.push(RowItem::Request {
+                    request: req,
+                    collection_id: collection_id.to_string(),
+                    folder_id: Some(folder.id.clone()),
+                    depth: depth + 1,
+                });
+            }
+        }
+    }
 }
 
 // ── Collection row ──────────────────────────────────────────────
@@ -363,7 +440,7 @@ fn render_collection_row(
                         ui.close();
                     }
                     if ui.button(format!("{} New Folder", egui_phosphor::regular::FOLDER_PLUS)).clicked() {
-                        action = TreeAction::NewFolder(cid.clone());
+                        action = TreeAction::NewFolder(cid.clone(), None);
                         ui.close();
                     }
                     ui.separator();
@@ -388,6 +465,8 @@ fn render_collection_row(
     if let Some(payload) = drop_resp.dnd_release_payload::<DragPayload>() {
         pending = Some(PendingDrop {
             source_idx: payload.source_idx,
+            source_kind: payload.kind.clone(),
+            source_item_id: payload.item_id.clone(),
             target_collection_id: collection.id.clone(),
             target_folder_id: None,
         });
@@ -413,8 +492,9 @@ fn render_folder_row(
     folder: &Folder,
     collection_id: &str,
     state: &mut CollectionTreeState,
-    _row_idx: usize,
+    row_idx: usize,
     depth: usize,
+    all_folders: &[Folder],
 ) -> (TreeAction, Option<PendingDrop>) {
     let mut action = TreeAction::None;
     let is_expanded = state.expanded_folders.contains(&folder.id);
@@ -426,10 +506,20 @@ fn render_folder_row(
 
     let indent = (depth as f32) * 16.0;
 
+    // Dim the folder if it is currently being dragged
+    let is_being_dragged = egui::DragAndDrop::payload::<DragPayload>(ui.ctx())
+        .map_or(false, |p| p.source_idx == row_idx);
+
+    let fill = if is_being_dragged {
+        super::theme::ACCENT.gamma_multiply(0.06)
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+
     ui.add_space(1.0);
 
-    // Normal frame (no dnd_drop_zone — we detect drops manually)
     let frame = egui::Frame::default()
+        .fill(fill)
         .corner_radius(egui::CornerRadius::same(4))
         .inner_margin(egui::Margin { left: indent as i8 + 4, right: 4, top: 2, bottom: 2 });
 
@@ -441,17 +531,16 @@ fn render_folder_row(
                 egui_phosphor::regular::CARET_RIGHT
             };
             let folder_color = egui::Color32::from_rgb(252, 196, 55);
-            if ui
-                .add(
-                    egui::Label::new(
-                        egui::RichText::new(icon).size(12.0).color(folder_color),
-                    )
-                    .sense(egui::Sense::click()),
-                )
-                .clicked()
-            {
-                toggle_set(&mut state.expanded_folders, &folder.id);
-            }
+
+            let text_color = if is_being_dragged {
+                super::theme::TEXT_MUTED
+            } else {
+                folder_color
+            };
+
+            ui.add(egui::Label::new(
+                egui::RichText::new(icon).size(12.0).color(text_color),
+            ));
 
             let folder_icon = if is_expanded {
                 egui_phosphor::regular::FOLDER_OPEN
@@ -461,7 +550,7 @@ fn render_folder_row(
             ui.add(egui::Label::new(
                 egui::RichText::new(folder_icon)
                     .size(14.0)
-                    .color(folder_color),
+                    .color(text_color),
             ));
 
             if is_renaming {
@@ -470,41 +559,61 @@ fn render_folder_row(
                     action = a;
                 }
             } else {
-                let resp = ui.add(
+                let name_color = if is_being_dragged {
+                    super::theme::TEXT_MUTED
+                } else {
+                    super::theme::TEXT_PRIMARY
+                };
+                ui.add(
                     egui::Label::new(
                         egui::RichText::new(&folder.name)
                             .size(13.0)
-                            .color(super::theme::TEXT_PRIMARY),
-                    )
-                    .sense(egui::Sense::click()),
+                            .color(name_color),
+                    ),
                 );
-                let full_rect = resp.rect.with_max_x(ui.max_rect().right());
-                let full_resp = ui.interact(full_rect, resp.id.with("full"), egui::Sense::click());
-
-                if resp.clicked() || full_resp.clicked() {
-                    toggle_set(&mut state.expanded_folders, &folder.id);
-                }
-                if resp.double_clicked() || full_resp.double_clicked() {
-                    start_rename(state, &folder.id, &folder.name, RenameTarget::Folder(folder.id.clone()));
-                }
-                full_resp.context_menu(|ui| {
-                    if ui.button(format!("{} New Request", egui_phosphor::regular::PLUS)).clicked() {
-                        action = TreeAction::NewRequest(cid_owned.clone(), Some(fid.clone()));
-                        ui.close();
-                    }
-                    ui.separator();
-                    if ui.button(format!("{} Rename", egui_phosphor::regular::PENCIL_SIMPLE)).clicked() {
-                        start_rename(state, &fid, &fname, RenameTarget::Folder(fid.clone()));
-                        ui.close();
-                    }
-                    if ui.button(format!("{} Delete", egui_phosphor::regular::TRASH)).clicked() {
-                        action = TreeAction::DeleteFolder(fid.clone());
-                        ui.close();
-                    }
-                });
             }
         });
     });
+
+    // Single interaction for click + drag on the frame area (only when not renaming)
+    if !is_renaming {
+        let item_id = egui::Id::new(("folder_item", &folder.id));
+        let resp = ui.interact(frame_resp.response.rect, item_id, egui::Sense::click_and_drag());
+
+        let payload = DragPayload {
+            source_idx: row_idx,
+            label: folder.name.clone(),
+            kind: DragKind::Folder,
+            item_id: folder.id.clone(),
+        };
+        resp.dnd_set_drag_payload(payload);
+
+        if resp.clicked() {
+            toggle_set(&mut state.expanded_folders, &folder.id);
+        }
+        if resp.double_clicked() {
+            start_rename(state, &folder.id, &folder.name, RenameTarget::Folder(folder.id.clone()));
+        }
+        resp.context_menu(|ui| {
+            if ui.button(format!("{} New Request", egui_phosphor::regular::PLUS)).clicked() {
+                action = TreeAction::NewRequest(cid_owned.clone(), Some(fid.clone()));
+                ui.close();
+            }
+            if ui.button(format!("{} New Folder", egui_phosphor::regular::FOLDER_PLUS)).clicked() {
+                action = TreeAction::NewFolder(cid_owned.clone(), Some(fid.clone()));
+                ui.close();
+            }
+            ui.separator();
+            if ui.button(format!("{} Rename", egui_phosphor::regular::PENCIL_SIMPLE)).clicked() {
+                start_rename(state, &fid, &fname, RenameTarget::Folder(fid.clone()));
+                ui.close();
+            }
+            if ui.button(format!("{} Delete", egui_phosphor::regular::TRASH)).clicked() {
+                action = TreeAction::DeleteFolder(fid.clone());
+                ui.close();
+            }
+        });
+    }
 
     // Manual drop detection on the folder area
     let drop_id = egui::Id::new(("folder_drop", &folder.id));
@@ -512,21 +621,42 @@ fn render_folder_row(
 
     let mut pending = None;
     if let Some(payload) = drop_resp.dnd_release_payload::<DragPayload>() {
-        pending = Some(PendingDrop {
-            source_idx: payload.source_idx,
-            target_collection_id: collection_id.to_string(),
-            target_folder_id: Some(folder.id.clone()),
-        });
+        // Anti-cycle check for folder-into-folder drops
+        let allow = match payload.kind {
+            DragKind::Folder => {
+                payload.item_id != folder.id
+                    && !is_descendant_of(all_folders, &folder.id, &payload.item_id)
+            }
+            DragKind::Request => true,
+        };
+        if allow {
+            pending = Some(PendingDrop {
+                source_idx: payload.source_idx,
+                source_kind: payload.kind.clone(),
+                source_item_id: payload.item_id.clone(),
+                target_collection_id: collection_id.to_string(),
+                target_folder_id: Some(folder.id.clone()),
+            });
+        }
     }
 
     // Subtle highlight when a drag payload hovers over this folder
-    if drop_resp.dnd_hover_payload::<DragPayload>().is_some() {
-        ui.painter().rect_stroke(
-            frame_resp.response.rect,
-            egui::CornerRadius::same(4),
-            egui::Stroke::new(1.5, super::theme::ACCENT),
-            egui::StrokeKind::Outside,
-        );
+    if let Some(hovered) = drop_resp.dnd_hover_payload::<DragPayload>() {
+        let show_highlight = match hovered.kind {
+            DragKind::Folder => {
+                hovered.item_id != folder.id
+                    && !is_descendant_of(all_folders, &folder.id, &hovered.item_id)
+            }
+            DragKind::Request => true,
+        };
+        if show_highlight {
+            ui.painter().rect_stroke(
+                frame_resp.response.rect,
+                egui::CornerRadius::same(4),
+                egui::Stroke::new(1.5, super::theme::ACCENT),
+                egui::StrokeKind::Outside,
+            );
+        }
     }
 
     (action, pending)
@@ -543,7 +673,7 @@ fn render_request_item(
     method_map: &HashMap<String, HttpMethod>,
     row_idx: usize,
     depth: usize,
-    rows: &[RowItem],
+    _rows: &[RowItem],
 ) -> TreeAction {
     let mut action = TreeAction::None;
     let is_selected = state.selected_request_id.as_deref() == Some(&req.id);
@@ -571,7 +701,12 @@ fn render_request_item(
     let rname = req.name.clone();
     let indent = (depth as f32) * 16.0;
 
-    let payload = DragPayload { source_idx: row_idx, label: req.name.clone() };
+    let payload = DragPayload {
+        source_idx: row_idx,
+        label: req.name.clone(),
+        kind: DragKind::Request,
+        item_id: req.id.clone(),
+    };
 
     // Render frame normally (no dnd_drag_source — we handle drag via click_and_drag sense)
     let frame = egui::Frame::default()
@@ -647,7 +782,8 @@ fn render_request_item(
         ui.input(|i| i.pointer.interact_pos()),
         response.dnd_hover_payload::<DragPayload>(),
     ) {
-        if hovered_payload.source_idx != row_idx {
+        // Only show hline indicators for request-kind payloads
+        if hovered_payload.source_idx != row_idx && hovered_payload.kind == DragKind::Request {
             let rect = response.rect;
             let stroke = egui::Stroke::new(2.0, super::theme::ACCENT);
 
@@ -661,12 +797,28 @@ fn render_request_item(
         // Check for release
         if let Some(dropped) = response.dnd_release_payload::<DragPayload>() {
             if dropped.source_idx != row_idx {
-                if let Some(RowItem::Request { request: src_req, .. }) = rows.get(dropped.source_idx) {
-                    action = TreeAction::MoveRequest(
-                        src_req.id.clone(),
-                        collection_id.to_string(),
-                        folder_id.map(|s| s.to_string()),
-                    );
+                match dropped.kind {
+                    DragKind::Request => {
+                        let position = if pointer.y < response.rect.center().y {
+                            DropPosition::Before(req.id.clone())
+                        } else {
+                            DropPosition::After(req.id.clone())
+                        };
+                        action = TreeAction::MoveRequest(
+                            dropped.item_id.clone(),
+                            collection_id.to_string(),
+                            folder_id.map(|s| s.to_string()),
+                            position,
+                        );
+                    }
+                    DragKind::Folder => {
+                        // Folder dropped onto a request — move folder into the same container
+                        action = TreeAction::MoveFolder(
+                            dropped.item_id.clone(),
+                            collection_id.to_string(),
+                            folder_id.map(|s| s.to_string()),
+                        );
+                    }
                 }
             }
         }
@@ -754,6 +906,30 @@ fn inline_rename_edit(
     }
     resp.request_focus();
     action
+}
+
+// ── Anti-cycle helper ────────────────────────────────────────────
+
+/// Returns true if `folder_id` is a descendant of `potential_ancestor_id`
+/// by walking up the parent chain.
+fn is_descendant_of(folders: &[Folder], folder_id: &str, potential_ancestor_id: &str) -> bool {
+    let mut current = folder_id.to_string();
+    for _ in 0..100 {
+        if let Some(f) = folders.iter().find(|f| f.id == current) {
+            match &f.parent_folder_id {
+                Some(pid) => {
+                    if pid == potential_ancestor_id {
+                        return true;
+                    }
+                    current = pid.clone();
+                }
+                None => return false,
+            }
+        } else {
+            return false;
+        }
+    }
+    false
 }
 
 // ── Utility ─────────────────────────────────────────────────────
