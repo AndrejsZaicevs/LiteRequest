@@ -110,7 +110,7 @@ pub fn render_inspector(
 
             // ── VERSIONS ──
             if section_header(ui, "VERSIONS", versions.len(), &mut inspector_state.show_versions) {
-                if let Some(vid) = history_panel::render_version_history(
+                if let Some(vid) = history_panel::render_version_list(
                     ui, versions, selected_version_id,
                 ) {
                     action = InspectorAction::SelectVersion(vid);
@@ -120,7 +120,7 @@ pub fn render_inspector(
 
             // ── EXECUTIONS ──
             if section_header(ui, "EXECUTIONS", executions.len(), &mut inspector_state.show_executions) {
-                if let Some(eid) = history_panel::render_execution_history(
+                if let Some(eid) = history_panel::render_execution_list(
                     ui, executions, selected_execution_id,
                 ) {
                     action = InspectorAction::SelectExecution(eid);
@@ -140,63 +140,67 @@ fn section_header(ui: &mut egui::Ui, label: &str, count: usize, expanded: &mut b
         egui_phosphor::regular::CARET_RIGHT
     };
 
-    ui.add_space(2.0);
-    let resp = ui.horizontal(|ui| {
-        let badge = if count > 0 {
-            format!(" {count}")
-        } else {
-            String::new()
-        };
+    let header_color = if *expanded {
+        super::theme::SURFACE_2
+    } else {
+        egui::Color32::TRANSPARENT
+    };
 
-        let resp = ui.add(
-            egui::Label::new(
-                egui::RichText::new(format!("{icon}  {label}"))
-                    .strong()
-                    .size(11.0)
-                    .color(if *expanded {
-                        super::theme::TEXT_PRIMARY
-                    } else {
-                        super::theme::TEXT_SECONDARY
-                    }),
-            )
-            .sense(egui::Sense::click()),
-        );
+    ui.add_space(1.0);
 
-        if !badge.is_empty() {
-            // Small colored badge
-            ui.add(
-                egui::Button::new(
-                    egui::RichText::new(&badge)
+    let full_width = ui.available_width();
+    let frame_resp = egui::Frame::default()
+        .fill(header_color)
+        .inner_margin(egui::Margin { left: 8, right: 6, top: 5, bottom: 5 })
+        .show(ui, |ui| {
+            ui.set_width(full_width);
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(icon)
                         .size(10.0)
+                        .color(super::theme::TEXT_MUTED),
+                );
+                ui.label(
+                    egui::RichText::new(label)
                         .strong()
-                        .color(egui::Color32::WHITE),
-                )
-                .fill(super::theme::ACCENT.gamma_multiply(0.6))
-                .corner_radius(egui::CornerRadius::same(8))
-                .min_size(egui::vec2(18.0, 14.0))
-                .sense(egui::Sense::hover()),
-            );
-        }
+                        .size(12.0)
+                        .color(if *expanded {
+                            super::theme::TEXT_PRIMARY
+                        } else {
+                            super::theme::TEXT_SECONDARY
+                        }),
+                );
+                if count > 0 {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add(
+                            egui::Button::new(
+                                egui::RichText::new(format!("{count}"))
+                                    .size(10.0)
+                                    .strong()
+                                    .color(egui::Color32::WHITE),
+                            )
+                            .fill(super::theme::ACCENT.gamma_multiply(0.7))
+                            .corner_radius(egui::CornerRadius::same(8))
+                            .min_size(egui::vec2(20.0, 16.0))
+                            .sense(egui::Sense::hover()),
+                        );
+                    });
+                }
+            });
+        });
 
-        // Horizontal line extending to the right edge
-        let line_y = resp.rect.center().y;
-        let line_start = ui.min_rect().right() + 4.0;
-        let line_end = ui.available_rect_before_wrap().right();
-        if line_end > line_start {
-            ui.painter().line_segment(
-                [egui::pos2(line_start, line_y), egui::pos2(line_end, line_y)],
-                egui::Stroke::new(1.0, super::theme::BORDER),
-            );
-        }
-
-        resp
-    }).inner;
-
-    if resp.clicked() {
+    let click_resp = ui.interact(
+        frame_resp.response.rect,
+        ui.id().with(label),
+        egui::Sense::click(),
+    );
+    if click_resp.clicked() {
         *expanded = !*expanded;
     }
+    if click_resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
 
-    ui.add_space(2.0);
     *expanded
 }
 
