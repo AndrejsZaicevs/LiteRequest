@@ -148,44 +148,46 @@ fn section_header(ui: &mut egui::Ui, label: &str, count: usize, expanded: &mut b
 
     ui.add_space(1.0);
 
-    let full_width = ui.available_width();
+    // Use right-to-left layout so the badge pins to the right edge naturally,
+    // without any set_width() call (which causes a panel-width feedback loop).
     let frame_resp = egui::Frame::default()
         .fill(header_color)
         .inner_margin(egui::Margin { left: 8, right: 6, top: 5, bottom: 5 })
         .show(ui, |ui| {
-            ui.set_width(full_width);
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(icon)
-                        .size(10.0)
-                        .color(super::theme::TEXT_MUTED),
-                );
-                ui.label(
-                    egui::RichText::new(label)
-                        .strong()
-                        .size(12.0)
-                        .color(if *expanded {
-                            super::theme::TEXT_PRIMARY
-                        } else {
-                            super::theme::TEXT_SECONDARY
-                        }),
-                );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Badge on the right
                 if count > 0 {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add(
-                            egui::Button::new(
-                                egui::RichText::new(format!("{count}"))
-                                    .size(10.0)
-                                    .strong()
-                                    .color(egui::Color32::WHITE),
-                            )
-                            .fill(super::theme::ACCENT.gamma_multiply(0.7))
-                            .corner_radius(egui::CornerRadius::same(8))
-                            .min_size(egui::vec2(20.0, 16.0))
-                            .sense(egui::Sense::hover()),
-                        );
-                    });
+                    ui.add(
+                        egui::Button::new(
+                            egui::RichText::new(format!("{count}"))
+                                .size(10.0)
+                                .strong()
+                                .color(egui::Color32::WHITE),
+                        )
+                        .fill(super::theme::ACCENT.gamma_multiply(0.7))
+                        .corner_radius(egui::CornerRadius::same(8))
+                        .min_size(egui::vec2(20.0, 16.0))
+                        .sense(egui::Sense::hover()),
+                    );
                 }
+                // Icon + label on the left (added right-to-left, so rendered left-to-right visually)
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.label(
+                        egui::RichText::new(icon)
+                            .size(10.0)
+                            .color(super::theme::TEXT_MUTED),
+                    );
+                    ui.label(
+                        egui::RichText::new(label)
+                            .strong()
+                            .size(12.0)
+                            .color(if *expanded {
+                                super::theme::TEXT_PRIMARY
+                            } else {
+                                super::theme::TEXT_SECONDARY
+                            }),
+                    );
+                });
             });
         });
 
