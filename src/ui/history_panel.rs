@@ -105,31 +105,32 @@ pub fn render_execution_list_filtered(
     }
 
     // Filter toolbar
-    ui.add_space(2.0);
+    ui.add_space(1.0);
     egui::Frame::NONE
-        .inner_margin(egui::Margin::symmetric(6, 2))
+        .inner_margin(egui::Margin::symmetric(4, 1))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
                 ui.label(
                     egui::RichText::new(egui_phosphor::regular::FUNNEL)
-                        .size(12.0)
+                        .size(11.0)
                         .color(super::theme::TEXT_MUTED),
                 );
                 ui.checkbox(filter_version, "");
                 ui.label(
                     egui::RichText::new("This version")
-                        .size(11.0)
+                        .size(10.0)
                         .color(if *filter_version {
                             super::theme::TEXT_PRIMARY
                         } else {
                             super::theme::TEXT_MUTED
                         }),
                 );
-                ui.add_space(6.0);
+                ui.add_space(4.0);
                 ui.checkbox(filter_env, "");
                 ui.label(
                     egui::RichText::new("Active env")
-                        .size(11.0)
+                        .size(10.0)
                         .color(if *filter_env {
                             super::theme::TEXT_PRIMARY
                         } else {
@@ -138,7 +139,7 @@ pub fn render_execution_list_filtered(
                 );
             });
         });
-    ui.add_space(4.0);
+    ui.add_space(2.0);
 
     // Apply filters
     let active_env_id: Option<String> = if *filter_env {
@@ -279,7 +280,7 @@ fn time_group_header(
     *expanded
 }
 
-/// Render a single execution row, showing env name if available.
+/// Render a single execution as a compact single-line row.
 fn render_single_execution(
     ui: &mut egui::Ui,
     exec: &RequestExecution,
@@ -288,65 +289,76 @@ fn render_single_execution(
 ) -> Option<String> {
     let is_selected = selected_execution_id == Some(&exec.id);
     let status_color = super::theme::status_color(exec.response.status);
+    let time = format_timestamp(&exec.executed_at);
+    let available_w = ui.available_width();
 
-    let fill = if is_selected {
-        super::theme::ACCENT.gamma_multiply(0.12)
-    } else {
-        egui::Color32::TRANSPARENT
-    };
+    let bg_idx = ui.painter().add(egui::Shape::Noop);
 
-    let frame_resp = egui::Frame::default()
-        .fill(fill)
-        .corner_radius(egui::CornerRadius::same(5))
-        .inner_margin(egui::Margin::symmetric(6, 4))
-        .show(ui, |ui: &mut egui::Ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal(|ui: &mut egui::Ui| {
-                ui.add(
-                    egui::Button::new(
-                        egui::RichText::new(format!("{}", exec.response.status))
-                            .strong()
-                            .size(11.0)
-                            .color(egui::Color32::WHITE),
-                    )
-                    .fill(status_color)
-                    .corner_radius(egui::CornerRadius::same(3))
-                    .sense(egui::Sense::hover()),
-                );
-                ui.label(
-                    egui::RichText::new(&exec.response.status_text)
-                        .size(12.0)
-                        .color(super::theme::TEXT_PRIMARY),
-                );
-                ui.label(
-                    egui::RichText::new(format!("{}ms", exec.latency_ms))
-                        .size(11.0)
-                        .color(super::theme::TEXT_MUTED),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(format_timestamp(&exec.executed_at))
-                        .size(10.0)
-                        .color(super::theme::TEXT_MUTED),
-                );
-                if !exec.environment_id.is_empty() {
-                    if let Some(name) = env_name_map.get(&exec.environment_id) {
-                        ui.label(
-                            egui::RichText::new(format!("• {name}"))
-                                .size(10.0)
-                                .color(super::theme::ACCENT.gamma_multiply(0.7)),
-                        );
-                    }
+    let row_resp = ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 5.0;
+        ui.add_space(4.0);
+        // Status code as colored monospace text
+        ui.label(
+            egui::RichText::new(format!("{}", exec.response.status))
+                .strong()
+                .size(11.0)
+                .color(status_color)
+                .family(egui::FontFamily::Monospace),
+        );
+        ui.label(
+            egui::RichText::new(&exec.response.status_text)
+                .size(11.0)
+                .color(super::theme::TEXT_PRIMARY),
+        );
+        ui.label(
+            egui::RichText::new(format!("{}ms", exec.latency_ms))
+                .size(10.0)
+                .color(super::theme::TEXT_MUTED),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add_space(4.0);
+            ui.spacing_mut().item_spacing.x = 4.0;
+            if !exec.environment_id.is_empty() {
+                if let Some(name) = env_name_map.get(&exec.environment_id) {
+                    ui.label(
+                        egui::RichText::new(name)
+                            .size(10.0)
+                            .color(super::theme::ACCENT.gamma_multiply(0.7)),
+                    );
                 }
-            });
+            }
+            ui.label(
+                egui::RichText::new(&time)
+                    .size(10.0)
+                    .color(super::theme::TEXT_MUTED),
+            );
         });
+    });
+
+    let row_rect = egui::Rect::from_min_size(
+        row_resp.response.rect.min,
+        egui::vec2(available_w, row_resp.response.rect.height()),
+    );
 
     let click_resp = ui.interact(
-        frame_resp.response.rect,
+        row_rect,
         ui.id().with(("exec_click", &exec.id)),
         egui::Sense::click(),
     );
+
+    let fill = if is_selected {
+        super::theme::ACCENT.gamma_multiply(0.12)
+    } else if click_resp.hovered() {
+        super::theme::SURFACE_2.gamma_multiply(0.5)
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+    ui.painter().set(bg_idx, egui::Shape::rect_filled(row_rect, 3.0, fill));
+
+    if click_resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+
     if click_resp.clicked() {
         return Some(exec.id.clone());
     }
@@ -426,58 +438,70 @@ fn render_single_version(
     let [r, g, b] = version.data.method.color();
     let method_color = egui::Color32::from_rgb(r, g, b);
 
-    let fill = if is_selected {
-        super::theme::ACCENT.gamma_multiply(0.12)
-    } else {
-        egui::Color32::TRANSPARENT
-    };
-
     let path = extract_path(&version.data.url);
+    let time = format_timestamp(&version.created_at);
     let body_size = fmt_size(version.data.body.len());
+    let available_w = ui.available_width();
 
-    let frame_resp = egui::Frame::default()
-        .fill(fill)
-        .corner_radius(egui::CornerRadius::same(5))
-        .inner_margin(egui::Margin::symmetric(6, 4))
-        .show(ui, |ui: &mut egui::Ui| {
-            ui.set_width(ui.available_width());
-            // First line: method label + truncated path
-            ui.horizontal(|ui: &mut egui::Ui| {
+    let bg_idx = ui.painter().add(egui::Shape::Noop);
+
+    let row_resp = ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 5.0;
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(version.data.method.as_str())
+                .strong()
+                .size(10.0)
+                .color(method_color)
+                .family(egui::FontFamily::Monospace),
+        );
+        ui.label(
+            egui::RichText::new(truncate_str(&path, 18))
+                .size(11.0)
+                .color(super::theme::TEXT_SECONDARY),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add_space(4.0);
+            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.label(
+                egui::RichText::new(&time)
+                    .size(10.0)
+                    .color(super::theme::TEXT_MUTED),
+            );
+            if !body_size.is_empty() {
                 ui.label(
-                    egui::RichText::new(version.data.method.as_str())
-                        .strong()
-                        .size(10.0)
-                        .color(method_color.gamma_multiply(0.85))
-                        .family(egui::FontFamily::Monospace),
-                );
-                ui.label(
-                    egui::RichText::new(truncate_str(&path, 22))
-                        .size(11.0)
-                        .color(super::theme::TEXT_SECONDARY),
-                );
-            });
-            // Second line: timestamp + optional body size
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(format_timestamp(&version.created_at))
+                    egui::RichText::new(&body_size)
                         .size(10.0)
                         .color(super::theme::TEXT_MUTED),
                 );
-                if !body_size.is_empty() {
-                    ui.label(
-                        egui::RichText::new(format!("· {}", body_size))
-                            .size(10.0)
-                            .color(super::theme::TEXT_MUTED),
-                    );
-                }
-            });
+            }
         });
+    });
+
+    let row_rect = egui::Rect::from_min_size(
+        row_resp.response.rect.min,
+        egui::vec2(available_w, row_resp.response.rect.height()),
+    );
 
     let click_resp = ui.interact(
-        frame_resp.response.rect,
+        row_rect,
         ui.id().with(("version_click", &version.id)),
         egui::Sense::click(),
     );
+
+    let fill = if is_selected {
+        super::theme::ACCENT.gamma_multiply(0.12)
+    } else if click_resp.hovered() {
+        super::theme::SURFACE_2.gamma_multiply(0.5)
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+    ui.painter().set(bg_idx, egui::Shape::rect_filled(row_rect, 3.0, fill));
+
+    if click_resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+
     if click_resp.clicked() {
         return Some(version.id.clone());
     }
@@ -491,6 +515,7 @@ pub fn render_execution_list(
     selected_execution_id: Option<&str>,
 ) -> Option<String> {
     let mut selected = None;
+    let empty_env_map = std::collections::HashMap::new();
 
     if executions.is_empty() {
         ui.add_space(4.0);
@@ -503,63 +528,9 @@ pub fn render_execution_list(
         return None;
     }
 
-    for (i, exec) in executions.iter().enumerate() {
-        let is_selected = selected_execution_id == Some(&exec.id);
-        let status_color = super::theme::status_color(exec.response.status);
-
-        let fill = if is_selected {
-            super::theme::ACCENT.gamma_multiply(0.12)
-        } else {
-            egui::Color32::TRANSPARENT
-        };
-
-        let frame_resp = egui::Frame::default()
-            .fill(fill)
-            .corner_radius(egui::CornerRadius::same(5))
-            .inner_margin(egui::Margin::symmetric(6, 4))
-            .show(ui, |ui: &mut egui::Ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui: &mut egui::Ui| {
-                    ui.add(
-                        egui::Button::new(
-                            egui::RichText::new(format!("{}", exec.response.status))
-                                .strong()
-                                .size(11.0)
-                                .color(egui::Color32::WHITE),
-                        )
-                        .fill(status_color)
-                        .corner_radius(egui::CornerRadius::same(3))
-                        .sense(egui::Sense::hover()),
-                    );
-                    ui.label(
-                        egui::RichText::new(&exec.response.status_text)
-                            .size(12.0)
-                            .color(super::theme::TEXT_PRIMARY),
-                    );
-                    ui.label(
-                        egui::RichText::new(format!("{}ms", exec.latency_ms))
-                            .size(11.0)
-                            .color(super::theme::TEXT_MUTED),
-                    );
-                });
-                ui.label(
-                    egui::RichText::new(format_timestamp(&exec.executed_at))
-                        .size(10.0)
-                        .color(super::theme::TEXT_MUTED),
-                );
-            });
-
-        let click_resp = ui.interact(
-            frame_resp.response.rect,
-            ui.id().with(("exec_click", &exec.id)),
-            egui::Sense::click(),
-        );
-        if click_resp.clicked() {
-            selected = Some(exec.id.clone());
-        }
-
-        if i < executions.len() - 1 {
-            ui.add_space(1.0);
+    for exec in executions {
+        if let Some(eid) = render_single_execution(ui, exec, selected_execution_id, &empty_env_map) {
+            selected = Some(eid);
         }
     }
 
@@ -668,64 +639,10 @@ pub fn render_execution_history(
                 return;
             }
 
-            for (i, exec) in executions.iter().enumerate() {
-                let is_selected = selected_execution_id == Some(&exec.id);
-                let status_color = super::theme::status_color(exec.response.status);
-
-                let fill = if is_selected {
-                    super::theme::ACCENT.gamma_multiply(0.12)
-                } else {
-                    egui::Color32::TRANSPARENT
-                };
-
-                let frame_resp = egui::Frame::default()
-                    .fill(fill)
-                    .corner_radius(egui::CornerRadius::same(5))
-                    .inner_margin(egui::Margin::symmetric(6, 4))
-                    .show(ui, |ui: &mut egui::Ui| {
-                        ui.set_width(ui.available_width());
-                        ui.horizontal(|ui: &mut egui::Ui| {
-                            ui.add(
-                                egui::Button::new(
-                                    egui::RichText::new(format!("{}", exec.response.status))
-                                        .strong()
-                                        .size(11.0)
-                                        .color(egui::Color32::WHITE),
-                                )
-                                .fill(status_color)
-                                .corner_radius(egui::CornerRadius::same(3))
-                                .sense(egui::Sense::hover()),
-                            );
-                            ui.label(
-                                egui::RichText::new(&exec.response.status_text)
-                                    .size(12.0)
-                                    .color(super::theme::TEXT_PRIMARY),
-                            );
-                            ui.label(
-                                egui::RichText::new(format!("{}ms", exec.latency_ms))
-                                    .size(11.0)
-                                    .color(super::theme::TEXT_MUTED),
-                            );
-                        });
-                        ui.label(
-                            egui::RichText::new(format_timestamp(&exec.executed_at))
-                                .size(10.0)
-                                .color(super::theme::TEXT_MUTED),
-                        );
-                    });
-
-                // Make the entire frame area clickable
-                let click_resp = ui.interact(
-                    frame_resp.response.rect,
-                    ui.id().with(("exec_click", &exec.id)),
-                    egui::Sense::click(),
-                );
-                if click_resp.clicked() {
-                    selected = Some(exec.id.clone());
-                }
-
-                if i < executions.len() - 1 {
-                    ui.add_space(1.0);
+            let empty_env_map = std::collections::HashMap::new();
+            for exec in executions {
+                if let Some(eid) = render_single_execution(ui, exec, selected_execution_id, &empty_env_map) {
+                    selected = Some(eid);
                 }
             }
         });
