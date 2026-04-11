@@ -91,5 +91,13 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
         "ALTER TABLE collections ADD COLUMN headers_config TEXT;",
     );
 
+    // Global app settings (key-value store for JSON blobs)
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        );",
+    )?;
+
     Ok(())
 }

@@ -1,4 +1,5 @@
 pub mod app;
+pub mod app_settings;
 pub mod collection_tree;
 pub mod collection_config;
 pub mod request_editor;

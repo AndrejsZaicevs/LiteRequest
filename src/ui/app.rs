@@ -10,6 +10,7 @@ use crate::ui::request_editor::*;
 use crate::ui::response_view::*;
 use crate::ui::inspector_panel::{self, InspectorState, InspectorAction};
 use crate::ui::environment_panel::*;
+use crate::ui::app_settings::{self, AppSettingsState, SettingsAction, GlobalSettings};
 
 /// What the center panel should display
 #[derive(Debug, Clone, PartialEq)]
@@ -17,6 +18,7 @@ enum CenterView {
     Welcome,
     CollectionConfig(String), // collection_id
     RequestEditor(String),    // request_id
+    AppSettings,
 }
 
 /// Result of an async HTTP request
@@ -90,6 +92,10 @@ pub struct LiteRequestApp {
 
     // Confirmation modal state
     pending_delete_collection: Option<String>, // collection id awaiting confirmation
+
+    // Global app settings
+    app_settings_state: AppSettingsState,
+    global_settings: GlobalSettings,
 }
 
 impl LiteRequestApp {
@@ -131,9 +137,12 @@ impl LiteRequestApp {
             inspector_state: InspectorState::default(),
             path_params: Vec::new(),
             pending_delete_collection: None,
+            app_settings_state: AppSettingsState::default(),
+            global_settings: GlobalSettings::default(),
         };
 
         app.refresh_all_data();
+        app.load_global_settings();
 
         if app.collections.is_empty() {
             let now = chrono::Utc::now().to_rfc3339();
@@ -175,18 +184,48 @@ impl LiteRequestApp {
         }
     }
 
-    /// Build a HashMap of variables for display purposes (global + collection overlay).
+    fn load_global_settings(&mut self) {
+        if let Ok(Some(json)) = self.db.get_app_setting("global_settings") {
+            if let Ok(s) = serde_json::from_str::<GlobalSettings>(&json) {
+                self.global_settings = s.clone();
+                self.app_settings_state.load_from(&s);
+            }
+        }
+    }
+
+    fn save_global_settings(&mut self) {
+        let settings = self.app_settings_state.to_settings();
+        if let Ok(json) = serde_json::to_string(&settings) {
+            let _ = self.db.set_app_setting("global_settings", &json);
+            self.global_settings = settings;
+        }
+        self.app_settings_state.dirty = false;
+    }
+
+    /// Build a HashMap of variables for display purposes (global app + env + collection overlay).
     fn build_display_variables(&self, collection_id: &str) -> HashMap<String, String> {
         let mut vars = HashMap::new();
+        // 1. Global app-level variables (lowest priority)
+        for v in &self.global_settings.variables {
+            if v.enabled && !v.key.is_empty() {
+                vars.insert(v.key.clone(), v.value.clone());
+            }
+        }
+        // 2. Environment variables override global
         for v in &self.env_variables {
             vars.insert(v.key.clone(), v.value.clone());
         }
+        // 3. Collection variables override env
         if let Ok(cvars) = self.db.get_active_collection_variables(collection_id) {
             for cv in &cvars {
                 if !cv.key.is_empty() {
                     vars.insert(cv.key.clone(), cv.value.clone());
                 }
             }
+        }
+        // 4. Auto-inject collection name as {{collectionName}}
+        if let Some(c) = self.collections.iter().find(|c| c.id == collection_id) {
+            vars.insert("collectionName".to_string(), c.name.clone());
         }
         vars
     }
@@ -348,13 +387,19 @@ impl LiteRequestApp {
         let version_id = vid.clone();
         let tx = self.http_tx.clone();
 
-        // Start with global environment variables
+        // Build variables: global app → env → collection → collectionName
         let mut variables: HashMap<String, String> = HashMap::new();
+        // 1. Global app-level variables (lowest priority)
+        for v in &self.global_settings.variables {
+            if v.enabled && !v.key.is_empty() {
+                variables.insert(v.key.clone(), v.value.clone());
+            }
+        }
+        // 2. Environment variables
         for v in &self.env_variables {
             variables.insert(v.key.clone(), v.value.clone());
         }
-
-        // Overlay collection-scoped variables (override globals with same key)
+        // 3. Collection-scoped variables
         let collection_vars = self
             .db
             .get_active_collection_variables(&req.collection_id)
@@ -367,6 +412,10 @@ impl LiteRequestApp {
 
         // Find collection and inject auth headers + collection headers
         let collection = self.collections.iter().find(|c| c.id == req.collection_id);
+        // 4. Auto-inject collection name as {{collectionName}}
+        if let Some(c) = collection {
+            variables.insert("collectionName".to_string(), c.name.clone());
+        }
         let base_path = collection.map(|c| c.base_path.clone()).unwrap_or_default();
         let auth_config: Option<CollectionAuthConfig> = collection
             .and_then(|c| c.auth_config.as_ref())
@@ -375,12 +424,14 @@ impl LiteRequestApp {
             .and_then(|c| c.headers_config.as_ref())
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default();
+        // Global app-level headers (injected before collection headers)
+        let global_headers: Vec<KeyValuePair> = self.global_settings.headers.clone();
 
         self.is_loading = true;
 
         self.tokio_rt.spawn(async move {
             let result =
-                execute_with_auth(data, &variables, &base_path, auth_config.as_ref(), &collection_headers).await;
+                execute_with_auth(data, &variables, &base_path, auth_config.as_ref(), &global_headers, &collection_headers).await;
             let _ = tx.send(HttpResult {
                 request_id,
                 version_id,
@@ -496,8 +547,37 @@ impl eframe::App for LiteRequestApp {
                         }
                     }
 
-                    // Right side: loading / status / error
+                    // Right side: settings button + loading / status / error
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Settings gear button (rightmost)
+                        let is_settings = matches!(self.center_view, CenterView::AppSettings);
+                        let gear_color = if is_settings {
+                            super::theme::ACCENT
+                        } else {
+                            super::theme::TEXT_SECONDARY
+                        };
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(egui_phosphor::regular::GEAR_SIX)
+                                        .size(18.0)
+                                        .color(gear_color),
+                                )
+                                .frame(false),
+                            )
+                            .on_hover_text("Application settings")
+                            .clicked()
+                        {
+                            if is_settings {
+                                self.center_view = CenterView::Welcome;
+                            } else {
+                                self.tree_state.selected_request_id = None;
+                                self.tree_state.selected_collection_id = None;
+                                self.current_request = None;
+                                self.center_view = CenterView::AppSettings;
+                            }
+                        }
+
                         if let Some(err) = &self.error_message {
                             ui.label(
                                 egui::RichText::new(format!("! {err}"))
@@ -618,6 +698,14 @@ impl eframe::App for LiteRequestApp {
                             );
                             self.handle_config_action(config_action, &cid);
                         }
+                    }
+                    CenterView::AppSettings => {
+                        let settings_action = app_settings::render_app_settings(
+                            ui,
+                            &mut self.app_settings_state,
+                            &self.environments,
+                        );
+                        self.handle_settings_action(settings_action);
                     }
                     CenterView::RequestEditor(_) => {
                         let req = self.current_request.clone();
@@ -1111,6 +1199,30 @@ impl LiteRequestApp {
             }
         }
     }
+
+    fn handle_settings_action(&mut self, action: SettingsAction) {
+        match action {
+            SettingsAction::None => {}
+            SettingsAction::Save => {
+                self.save_global_settings();
+            }
+            SettingsAction::NewEnvironment(name) => {
+                let now = chrono::Utc::now().to_rfc3339();
+                let env = Environment {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name,
+                    is_active: false,
+                    created_at: now,
+                };
+                let _ = self.db.insert_environment(&env);
+                self.refresh_all_data();
+            }
+            SettingsAction::DeleteEnvironment(id) => {
+                let _ = self.db.delete_environment(&id);
+                self.refresh_all_data();
+            }
+        }
+    }
 }
 
 // ── Welcome screen ───────────────────────────────────────────────
@@ -1182,9 +1294,26 @@ async fn execute_with_auth(
     variables: &HashMap<String, String>,
     base_path: &str,
     auth: Option<&CollectionAuthConfig>,
+    global_headers: &[KeyValuePair],
     collection_headers: &[KeyValuePair],
 ) -> Result<(ResponseData, u64), String> {
-    // Inject collection-level headers first (request headers override)
+    // Inject global app-level headers first (lowest priority)
+    for h in global_headers {
+        if h.enabled && !h.key.is_empty() {
+            let key = crate::http::interpolation::interpolate(&h.key, variables);
+            let value = crate::http::interpolation::interpolate(&h.value, variables);
+            let already_set = data.headers.iter().any(|rh| rh.enabled && rh.key.eq_ignore_ascii_case(&key));
+            if !already_set {
+                data.headers.push(KeyValuePair {
+                    key,
+                    value,
+                    enabled: true,
+                });
+            }
+        }
+    }
+
+    // Inject collection-level headers (override global)
     for h in collection_headers {
         if h.enabled && !h.key.is_empty() {
             let key = crate::http::interpolation::interpolate(&h.key, variables);

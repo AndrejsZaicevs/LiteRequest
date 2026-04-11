@@ -544,4 +544,25 @@ impl Database {
             params![cutoff_str],
         )
     }
+
+    // ── App Settings (key-value store) ───────────────────────────
+
+    pub fn get_app_setting(&self, key: &str) -> rusqlite::Result<Option<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT value FROM app_settings WHERE key=?1")?;
+        let mut rows = stmt.query_map(params![key], |row| row.get::<_, String>(0))?;
+        match rows.next() {
+            Some(Ok(val)) => Ok(Some(val)),
+            _ => Ok(None),
+        }
+    }
+
+    pub fn set_app_setting(&self, key: &str, value: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )?;
+        Ok(())
+    }
 }
