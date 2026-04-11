@@ -150,6 +150,22 @@ impl LiteRequestApp {
         }
     }
 
+    /// Build a HashMap of variables for display purposes (global + collection overlay).
+    fn build_display_variables(&self, collection_id: &str) -> HashMap<String, String> {
+        let mut vars = HashMap::new();
+        for v in &self.env_variables {
+            vars.insert(v.key.clone(), v.value.clone());
+        }
+        if let Ok(cvars) = self.db.get_active_collection_variables(collection_id) {
+            for cv in &cvars {
+                if !cv.key.is_empty() {
+                    vars.insert(cv.key.clone(), cv.value.clone());
+                }
+            }
+        }
+        vars
+    }
+
     fn select_collection(&mut self, collection_id: &str) {
         if let Some(collection) = self.collections.iter().find(|c| c.id == collection_id) {
             self.collection_config_state.load_from(collection);
@@ -496,6 +512,9 @@ impl eframe::App for LiteRequestApp {
                                 .map(|c| c.base_path.clone())
                                 .unwrap_or_default();
 
+                            // Build display variables for the editor
+                            let display_vars = self.build_display_variables(&req.collection_id);
+
                             let available_height = ui.available_height();
                             let editor_height = available_height * self.split_ratio;
 
@@ -508,6 +527,7 @@ impl eframe::App for LiteRequestApp {
                                         &mut self.editor_state,
                                         &req.name,
                                         &base_path,
+                                        &display_vars,
                                     );
                                     match action {
                                         EditorAction::Send => self.send_request(),

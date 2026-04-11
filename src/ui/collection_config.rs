@@ -192,16 +192,20 @@ pub fn render_collection_config(
                                 .strong()
                                 .color(super::theme::TEXT_SECONDARY),
                         );
-                        if ui
-                            .add(
-                                egui::TextEdit::singleline(&mut state.base_path)
-                                    .desired_width(350.0)
-                                    .font(egui::TextStyle::Monospace)
-                                    .hint_text("https://{{host}}/v1/{{instance_id}}"),
-                            )
-                            .changed()
                         {
-                            state.dirty = true;
+                            let mut layouter = super::var_highlight::var_text_layouter;
+                            if ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut state.base_path)
+                                        .desired_width(350.0)
+                                        .font(egui::TextStyle::Monospace)
+                                        .hint_text("https://{{host}}/v1/{{instance_id}}")
+                                        .layouter(&mut layouter),
+                                )
+                                .changed()
+                            {
+                                state.dirty = true;
+                            }
                         }
                         ui.end_row();
                     });
@@ -276,13 +280,15 @@ pub fn render_collection_config(
                                 .strong()
                                 .color(super::theme::TEXT_SECONDARY),
                         );
+                        let mut layouter = super::var_highlight::var_text_layouter;
                         if ui
                             .add(
                                 egui::TextEdit::singleline(&mut token)
                                     .desired_width(f32::INFINITY)
                                     .font(egui::TextStyle::Monospace)
                                     .hint_text("Bearer token or {{variable}}")
-                                    .password(true),
+                                    .password(true)
+                                    .layouter(&mut layouter),
                             )
                             .changed()
                         {
@@ -302,16 +308,20 @@ pub fn render_collection_config(
                                         .strong()
                                         .color(super::theme::TEXT_SECONDARY),
                                 );
-                                if ui
-                                    .add(
-                                        egui::TextEdit::singleline(&mut username)
-                                            .desired_width(300.0)
-                                            .font(egui::TextStyle::Monospace),
-                                    )
-                                    .changed()
                                 {
-                                    state.auth.basic_username = Some(username);
-                                    state.dirty = true;
+                                    let mut layouter = super::var_highlight::var_text_layouter;
+                                    if ui
+                                        .add(
+                                            egui::TextEdit::singleline(&mut username)
+                                                .desired_width(300.0)
+                                                .font(egui::TextStyle::Monospace)
+                                                .layouter(&mut layouter),
+                                        )
+                                        .changed()
+                                    {
+                                        state.auth.basic_username = Some(username);
+                                        state.dirty = true;
+                                    }
                                 }
                                 ui.end_row();
 
@@ -322,17 +332,21 @@ pub fn render_collection_config(
                                         .strong()
                                         .color(super::theme::TEXT_SECONDARY),
                                 );
-                                if ui
-                                    .add(
-                                        egui::TextEdit::singleline(&mut password)
-                                            .desired_width(300.0)
-                                            .font(egui::TextStyle::Monospace)
-                                            .password(true),
-                                    )
-                                    .changed()
                                 {
-                                    state.auth.basic_password = Some(password);
-                                    state.dirty = true;
+                                    let mut layouter = super::var_highlight::var_text_layouter;
+                                    if ui
+                                        .add(
+                                            egui::TextEdit::singleline(&mut password)
+                                                .desired_width(300.0)
+                                                .font(egui::TextStyle::Monospace)
+                                                .password(true)
+                                                .layouter(&mut layouter),
+                                        )
+                                        .changed()
+                                    {
+                                        state.auth.basic_password = Some(password);
+                                        state.dirty = true;
+                                    }
                                 }
                                 ui.end_row();
                             });
@@ -349,17 +363,21 @@ pub fn render_collection_config(
                                         .strong()
                                         .color(super::theme::TEXT_SECONDARY),
                                 );
-                                if ui
-                                    .add(
-                                        egui::TextEdit::singleline(&mut header_name)
-                                            .desired_width(300.0)
-                                            .font(egui::TextStyle::Monospace)
-                                            .hint_text("X-API-Key"),
-                                    )
-                                    .changed()
                                 {
-                                    state.auth.api_key_header = Some(header_name);
-                                    state.dirty = true;
+                                    let mut layouter = super::var_highlight::var_text_layouter;
+                                    if ui
+                                        .add(
+                                            egui::TextEdit::singleline(&mut header_name)
+                                                .desired_width(300.0)
+                                                .font(egui::TextStyle::Monospace)
+                                                .hint_text("X-API-Key")
+                                                .layouter(&mut layouter),
+                                        )
+                                        .changed()
+                                    {
+                                        state.auth.api_key_header = Some(header_name);
+                                        state.dirty = true;
+                                    }
                                 }
                                 ui.end_row();
 
@@ -370,18 +388,22 @@ pub fn render_collection_config(
                                         .strong()
                                         .color(super::theme::TEXT_SECONDARY),
                                 );
-                                if ui
-                                    .add(
-                                        egui::TextEdit::singleline(&mut value)
-                                            .desired_width(300.0)
-                                            .font(egui::TextStyle::Monospace)
-                                            .password(true)
-                                            .hint_text("{{api_key}}"),
-                                    )
-                                    .changed()
                                 {
-                                    state.auth.api_key_value = Some(value);
-                                    state.dirty = true;
+                                    let mut layouter = super::var_highlight::var_text_layouter;
+                                    if ui
+                                        .add(
+                                            egui::TextEdit::singleline(&mut value)
+                                                .desired_width(300.0)
+                                                .font(egui::TextStyle::Monospace)
+                                                .password(true)
+                                                .hint_text("{{api_key}}")
+                                                .layouter(&mut layouter),
+                                        )
+                                        .changed()
+                                    {
+                                        state.auth.api_key_value = Some(value);
+                                        state.dirty = true;
+                                    }
                                 }
                                 ui.end_row();
                             });
@@ -503,7 +525,7 @@ pub fn render_collection_config(
                             .map(|e| e.name.as_str())
                             .unwrap_or("Unknown");
 
-                        // Variable table
+                        // Variable table using egui_extras TableBuilder
                         if state.collection_vars.is_empty() {
                             ui.label(
                                 egui::RichText::new(format!(
@@ -515,78 +537,94 @@ pub fn render_collection_config(
                                 .italics(),
                             );
                         } else {
-                            // Header
-                            ui.horizontal(|ui| {
-                                let w = (ui.available_width() - 80.0) / 2.0;
-                                ui.allocate_ui(egui::vec2(w, 18.0), |ui| {
-                                    ui.label(
-                                        egui::RichText::new("Key")
-                                            .size(11.0)
-                                            .strong()
-                                            .color(super::theme::TEXT_MUTED),
-                                    );
-                                });
-                                ui.allocate_ui(egui::vec2(w, 18.0), |ui| {
-                                    ui.label(
-                                        egui::RichText::new("Value")
-                                            .size(11.0)
-                                            .strong()
-                                            .color(super::theme::TEXT_MUTED),
-                                    );
-                                });
-                                ui.allocate_ui(egui::vec2(40.0, 18.0), |ui| {
-                                    ui.label(
-                                        egui::RichText::new("Secret")
-                                            .size(11.0)
-                                            .strong()
-                                            .color(super::theme::TEXT_MUTED),
-                                    );
-                                });
-                            });
+                            use egui_extras::{TableBuilder, Column};
 
+                            let n_vars = state.collection_vars.len();
+                            let row_h = 22.0;
                             let mut to_delete: Option<usize> = None;
-                            for (i, var) in state.collection_vars.iter_mut().enumerate() {
-                                ui.horizontal(|ui| {
-                                    let w = (ui.available_width() - 80.0) / 2.0;
-                                    if ui
-                                        .add(
-                                            egui::TextEdit::singleline(&mut var.key)
-                                                .desired_width(w)
-                                                .font(egui::TextStyle::Monospace),
-                                        )
-                                        .changed()
-                                    {
-                                        state.vars_dirty = true;
-                                    }
-                                    if ui
-                                        .add(
-                                            egui::TextEdit::singleline(&mut var.value)
-                                                .desired_width(w)
-                                                .font(egui::TextStyle::Monospace)
-                                                .password(var.is_secret),
-                                        )
-                                        .changed()
-                                    {
-                                        state.vars_dirty = true;
-                                    }
-                                    if ui.checkbox(&mut var.is_secret, "").changed() {
-                                        state.vars_dirty = true;
-                                    }
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new(egui_phosphor::regular::TRASH)
-                                                    .size(13.0)
-                                                    .color(super::theme::TEXT_MUTED),
-                                            )
-                                            .frame(false),
-                                        )
-                                        .clicked()
-                                    {
-                                        to_delete = Some(i);
+
+                            TableBuilder::new(ui)
+                                .id_salt("collection_vars_table")
+                                .striped(true)
+                                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                                .column(Column::remainder().at_least(80.0)) // key
+                                .column(Column::remainder().at_least(80.0)) // value
+                                .column(Column::exact(24.0))               // secret checkbox
+                                .column(Column::exact(20.0))               // delete btn
+                                .header(18.0, |mut header| {
+                                    header.col(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("Key")
+                                                .size(11.0)
+                                                .strong()
+                                                .color(super::theme::TEXT_MUTED),
+                                        );
+                                    });
+                                    header.col(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("Value")
+                                                .size(11.0)
+                                                .strong()
+                                                .color(super::theme::TEXT_MUTED),
+                                        );
+                                    });
+                                    header.col(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(egui_phosphor::regular::EYE_SLASH)
+                                                .size(12.0)
+                                                .color(super::theme::TEXT_MUTED),
+                                        ).on_hover_text("Secret");
+                                    });
+                                    header.col(|_| {});
+                                })
+                                .body(|mut body| {
+                                    for i in 0..n_vars {
+                                        body.row(row_h, |mut row| {
+                                            row.col(|ui| {
+                                                if ui.add(
+                                                    egui::TextEdit::singleline(&mut state.collection_vars[i].key)
+                                                        .desired_width(ui.available_width())
+                                                        .frame(egui::Frame::NONE)
+                                                        .font(egui::TextStyle::Monospace),
+                                                ).changed() {
+                                                    state.vars_dirty = true;
+                                                }
+                                            });
+                                            row.col(|ui| {
+                                                let is_secret = state.collection_vars[i].is_secret;
+                                                let mut layouter = super::var_highlight::var_text_layouter;
+                                                if ui.add(
+                                                    egui::TextEdit::singleline(&mut state.collection_vars[i].value)
+                                                        .desired_width(ui.available_width())
+                                                        .frame(egui::Frame::NONE)
+                                                        .font(egui::TextStyle::Monospace)
+                                                        .password(is_secret)
+                                                        .layouter(&mut layouter),
+                                                ).changed() {
+                                                    state.vars_dirty = true;
+                                                }
+                                            });
+                                            row.col(|ui| {
+                                                if ui.checkbox(&mut state.collection_vars[i].is_secret, "").changed() {
+                                                    state.vars_dirty = true;
+                                                }
+                                            });
+                                            row.col(|ui| {
+                                                if ui.add(
+                                                    egui::Button::new(
+                                                        egui::RichText::new(egui_phosphor::regular::TRASH)
+                                                            .size(11.0)
+                                                            .color(super::theme::TEXT_MUTED),
+                                                    )
+                                                    .frame(false)
+                                                    .min_size(egui::vec2(16.0, 16.0)),
+                                                ).on_hover_text("Remove").clicked() {
+                                                    to_delete = Some(i);
+                                                }
+                                            });
+                                        });
                                     }
                                 });
-                            }
 
                             if let Some(i) = to_delete {
                                 let var_id = state.collection_vars[i].id.clone();

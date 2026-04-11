@@ -1,4 +1,5 @@
 use eframe::egui;
+use std::collections::HashMap;
 use crate::models::*;
 
 pub struct RequestEditorState {
@@ -30,7 +31,7 @@ pub enum EditorAction {
 }
 
 /// Join base_path and url without producing double slashes.
-fn join_display_path<'a>(base: &'a str, path: &'a str) -> String {
+fn join_display_path(base: &str, path: &str) -> String {
     if base.is_empty() {
         return path.to_string();
     }
@@ -47,6 +48,7 @@ pub fn render_request_editor(
     state: &mut RequestEditorState,
     request_name: &str,
     base_path: &str,
+    variables: &HashMap<String, String>,
 ) -> EditorAction {
     let mut action = EditorAction::None;
 
@@ -68,7 +70,7 @@ pub fn render_request_editor(
     });
     ui.add_space(6.0);
 
-    // ── URL bar: [Method] [base_path + path in one frame] [Send] ──
+    // ── URL bar: [Method] [resolved_base + path in one frame] [Send] ──
     ui.horizontal(|ui| {
         let method_text = state.data.method.as_str();
         let [r, g, b] = state.data.method.color();
@@ -99,14 +101,14 @@ pub fn render_request_editor(
         let available_for_url = (ui.available_width() - send_btn_w - 8.0).max(200.0);
 
         if !base_path.is_empty() {
-            // Smart display: trim trailing slash from base if url starts with /
+            // Resolve variables in the base path for display
+            let resolved_base = super::var_highlight::resolve_display(base_path, variables);
             let display_base = if state.data.url.starts_with('/') {
-                base_path.trim_end_matches('/')
-            } else if base_path.ends_with('/') {
-                base_path
+                resolved_base.trim_end_matches('/').to_string()
+            } else if resolved_base.ends_with('/') {
+                resolved_base.clone()
             } else {
-                // append implicit separator only visually
-                base_path
+                resolved_base.clone()
             };
 
             egui::Frame::default()
@@ -119,35 +121,41 @@ pub fn render_request_editor(
                     ui.horizontal_centered(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
                         ui.label(
-                            egui::RichText::new(display_base)
+                            egui::RichText::new(&display_base)
                                 .size(13.0)
                                 .color(super::theme::TEXT_MUTED)
                                 .family(egui::FontFamily::Monospace),
                         );
-                        if ui
-                            .add(
-                                egui::TextEdit::singleline(&mut state.data.url)
-                                    .desired_width(ui.available_width())
-                                    .frame(egui::Frame::NONE)
-                                    .font(egui::TextStyle::Monospace),
-                            )
-                            .changed()
-                        {
+                        let mut layouter = super::var_highlight::var_text_layouter;
+                        let resp = ui.add(
+                            egui::TextEdit::singleline(&mut state.data.url)
+                                .desired_width(ui.available_width())
+                                .frame(egui::Frame::NONE)
+                                .font(egui::TextStyle::Monospace)
+                                .layouter(&mut layouter),
+                        );
+                        if resp.changed() {
                             state.dirty = true;
                         }
+                        super::var_highlight::show_variable_tooltip(
+                            ui, &resp, &state.data.url, variables,
+                        );
                     });
                 });
         } else {
-            if ui
-                .add_sized(
-                    egui::vec2(available_for_url, 28.0),
-                    egui::TextEdit::singleline(&mut state.data.url)
-                        .font(egui::TextStyle::Monospace),
-                )
-                .changed()
-            {
+            let mut layouter = super::var_highlight::var_text_layouter;
+            let resp = ui.add_sized(
+                egui::vec2(available_for_url, 28.0),
+                egui::TextEdit::singleline(&mut state.data.url)
+                    .font(egui::TextStyle::Monospace)
+                    .layouter(&mut layouter),
+            );
+            if resp.changed() {
                 state.dirty = true;
             }
+            super::var_highlight::show_variable_tooltip(
+                ui, &resp, &state.data.url, variables,
+            );
         }
 
         if super::theme::pill_button(ui, "Send", super::theme::ACCENT) {
@@ -166,7 +174,7 @@ pub fn render_request_editor(
             let param_count = count_active_pairs(&state.data.query_params);
             if collapsible_section(ui, "Params", param_count, &mut state.show_params) {
                 ui.push_id("params_section", |ui| {
-                    if render_kv_table(ui, &mut state.data.query_params, "params_table") {
+                    if render_kv_table(ui, &mut state.data.query_params, "params_table", variables) {
                         state.dirty = true;
                         action = EditorAction::DataChanged;
                     }
@@ -178,7 +186,7 @@ pub fn render_request_editor(
             let header_count = count_active_pairs(&state.data.headers);
             if collapsible_section(ui, "Headers", header_count, &mut state.show_headers) {
                 ui.push_id("headers_section", |ui| {
-                    if render_kv_table(ui, &mut state.data.headers, "headers_table") {
+                    if render_kv_table(ui, &mut state.data.headers, "headers_table", variables) {
                         state.dirty = true;
                         action = EditorAction::DataChanged;
                     }
@@ -248,56 +256,114 @@ pub fn render_request_editor(
                         }
                     }
 
-                    let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(
-                        ui.ctx(),
-                        ui.style(),
-                    );
-                    let lang = match state.data.body_type {
-                        BodyType::Json => "json",
-                        BodyType::Raw => "txt",
-                        _ => "txt",
-                    };
-                    let mut layouter =
-                        |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
-                            let mut job = egui_extras::syntax_highlighting::highlight(
-                                ui.ctx(),
-                                ui.style(),
-                                &theme,
-                                buf.as_str(),
-                                lang,
-                            );
-                            job.wrap.max_width = wrap_width;
-                            ui.fonts_mut(|f| f.layout_job(job))
-                        };
+                    // Use combined syntax highlighting + variable highlighting for JSON
+                    // For other body types, just variable highlighting
+                    let vars_clone = variables.clone();
+                    if state.data.body_type == BodyType::Json {
+                        let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(
+                            ui.ctx(),
+                            ui.style(),
+                        );
+                        let mut layouter =
+                            move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+                                let text = buf.as_str();
+                                // First do JSON syntax highlighting, then overlay variable colors
+                                let mut job = egui_extras::syntax_highlighting::highlight(
+                                    ui.ctx(),
+                                    ui.style(),
+                                    &theme,
+                                    text,
+                                    "json",
+                                );
+                                // Patch variable spans with VAR_COLOR
+                                patch_variable_colors(text, &mut job);
+                                job.wrap.max_width = wrap_width;
+                                ui.fonts_mut(|f| f.layout_job(job))
+                            };
 
-                    let response = ui.add(
-                        egui::TextEdit::multiline(&mut state.data.body)
-                            .desired_width(f32::INFINITY)
-                            .desired_rows(6)
-                            .font(egui::TextStyle::Monospace)
-                            .code_editor()
-                            .layouter(&mut layouter),
-                    );
+                        let response = ui.add(
+                            egui::TextEdit::multiline(&mut state.data.body)
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(6)
+                                .font(egui::TextStyle::Monospace)
+                                .code_editor()
+                                .layouter(&mut layouter),
+                        );
 
-                    if response.changed() {
-                        state.dirty = true;
-                        action = EditorAction::DataChanged;
-                        if state.data.body_type == BodyType::Json
-                            && !state.data.body.is_empty()
-                        {
-                            match serde_json::from_str::<serde_json::Value>(&state.data.body) {
-                                Ok(_) => state.json_error = None,
-                                Err(e) => state.json_error = Some(e.to_string()),
+                        if response.changed() {
+                            state.dirty = true;
+                            action = EditorAction::DataChanged;
+                            if !state.data.body.is_empty() {
+                                match serde_json::from_str::<serde_json::Value>(&state.data.body) {
+                                    Ok(_) => state.json_error = None,
+                                    Err(e) => state.json_error = Some(e.to_string()),
+                                }
+                            } else {
+                                state.json_error = None;
                             }
-                        } else {
-                            state.json_error = None;
                         }
+                        super::var_highlight::show_variable_tooltip(
+                            ui, &response, &state.data.body, &vars_clone,
+                        );
+                    } else {
+                        let mut layouter = super::var_highlight::var_text_layouter;
+                        let response = ui.add(
+                            egui::TextEdit::multiline(&mut state.data.body)
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(6)
+                                .font(egui::TextStyle::Monospace)
+                                .code_editor()
+                                .layouter(&mut layouter),
+                        );
+                        if response.changed() {
+                            state.dirty = true;
+                            action = EditorAction::DataChanged;
+                        }
+                        super::var_highlight::show_variable_tooltip(
+                            ui, &response, &state.data.body, &vars_clone,
+                        );
                     }
                 }
             }
         });
 
     action
+}
+
+/// Patch an existing LayoutJob to color `{{variable}}` spans with VAR_COLOR.
+fn patch_variable_colors(text: &str, job: &mut egui::text::LayoutJob) {
+    let bytes = text.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i + 3 < len {
+        if bytes[i] == b'{' && bytes[i + 1] == b'{' {
+            if let Some(end_offset) = text[i + 2..].find("}}") {
+                let var_start = i;
+                let var_end = i + 2 + end_offset + 2;
+                // Find and update all sections that overlap with this range
+                for section in &mut job.sections {
+                    let s_start = section.byte_range.start;
+                    let s_end = section.byte_range.end;
+                    // If section is fully within the variable range, color it
+                    if s_start >= var_start && s_end <= var_end {
+                        section.format.color = super::var_highlight::VAR_COLOR;
+                    }
+                    // If section partially overlaps, we can't split it easily,
+                    // so just color it if majority overlaps
+                    else if s_start < var_end && s_end > var_start {
+                        let overlap = s_end.min(var_end) - s_start.max(var_start);
+                        if overlap > (s_end - s_start) / 2 {
+                            section.format.color = super::var_highlight::VAR_COLOR;
+                        }
+                    }
+                }
+                i = var_end;
+                continue;
+            }
+        }
+        i += 1;
+    }
 }
 
 /// Collapsible section header. Returns true if section is expanded.
@@ -349,8 +415,13 @@ fn count_active_pairs(pairs: &[KeyValuePair]) -> usize {
         .count()
 }
 
-/// KV editor using egui_extras table for clean column alignment.
-fn render_kv_table(ui: &mut egui::Ui, pairs: &mut Vec<KeyValuePair>, id: &str) -> bool {
+/// KV editor using egui_extras table with variable highlighting.
+fn render_kv_table(
+    ui: &mut egui::Ui,
+    pairs: &mut Vec<KeyValuePair>,
+    id: &str,
+    variables: &HashMap<String, String>,
+) -> bool {
     use egui_extras::{TableBuilder, Column};
 
     let mut changed = false;
@@ -375,33 +446,39 @@ fn render_kv_table(ui: &mut egui::Ui, pairs: &mut Vec<KeyValuePair>, id: &str) -
                             changed = true;
                         }
                     });
-                    // Key
+                    // Key (with variable highlighting)
                     row.col(|ui| {
-                        if ui
-                            .add(
-                                egui::TextEdit::singleline(&mut pairs[i].key)
-                                    .desired_width(ui.available_width())
-                                    .frame(egui::Frame::NONE)
-                                    .font(egui::TextStyle::Monospace),
-                            )
-                            .changed()
-                        {
+                        let mut layouter = super::var_highlight::var_text_layouter;
+                        let resp = ui.add(
+                            egui::TextEdit::singleline(&mut pairs[i].key)
+                                .desired_width(ui.available_width())
+                                .frame(egui::Frame::NONE)
+                                .font(egui::TextStyle::Monospace)
+                                .layouter(&mut layouter),
+                        );
+                        if resp.changed() {
                             changed = true;
                         }
+                        super::var_highlight::show_variable_tooltip(
+                            ui, &resp, &pairs[i].key, variables,
+                        );
                     });
-                    // Value
+                    // Value (with variable highlighting)
                     row.col(|ui| {
-                        if ui
-                            .add(
-                                egui::TextEdit::singleline(&mut pairs[i].value)
-                                    .desired_width(ui.available_width())
-                                    .frame(egui::Frame::NONE)
-                                    .font(egui::TextStyle::Monospace),
-                            )
-                            .changed()
-                        {
+                        let mut layouter = super::var_highlight::var_text_layouter;
+                        let resp = ui.add(
+                            egui::TextEdit::singleline(&mut pairs[i].value)
+                                .desired_width(ui.available_width())
+                                .frame(egui::Frame::NONE)
+                                .font(egui::TextStyle::Monospace)
+                                .layouter(&mut layouter),
+                        );
+                        if resp.changed() {
                             changed = true;
                         }
+                        super::var_highlight::show_variable_tooltip(
+                            ui, &resp, &pairs[i].value, variables,
+                        );
                     });
                     // Remove
                     row.col(|ui| {
