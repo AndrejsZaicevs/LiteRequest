@@ -264,6 +264,7 @@ impl LiteRequestApp {
             self.current_execution = self.executions.first().cloned();
             self.selected_execution_id = self.current_execution.as_ref().map(|e| e.id.clone());
             self.response_state = ResponseViewState::default();
+            self.inspector_state.exec_groups_initialized = false;
             self.sync_path_params();
         }
     }
@@ -447,10 +448,15 @@ impl LiteRequestApp {
             match result.result {
                 Ok((response, latency_ms)) => {
                     let now = chrono::Utc::now().to_rfc3339();
+                    let env_id = self.environments.iter()
+                        .find(|e| e.is_active)
+                        .map(|e| e.id.clone())
+                        .unwrap_or_default();
                     let execution = RequestExecution {
                         id: uuid::Uuid::new_v4().to_string(),
                         version_id: result.version_id,
                         request_id: result.request_id.clone(),
+                        environment_id: env_id,
                         response,
                         latency_ms,
                         executed_at: now,
@@ -654,6 +660,7 @@ impl eframe::App for LiteRequestApp {
                         self.selected_execution_id.as_deref(),
                         &mut self.inspector_state,
                         &display_vars,
+                        &self.environments,
                     );
                     match action {
                         InspectorAction::SelectVersion(vid) => {

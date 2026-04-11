@@ -242,16 +242,16 @@ impl Database {
     pub fn insert_execution(&self, e: &RequestExecution) -> rusqlite::Result<()> {
         let response_json = serde_json::to_string(&e.response).unwrap_or_default();
         self.conn.execute(
-            "INSERT INTO request_executions (id, version_id, request_id, response_json, latency_ms, executed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![e.id, e.version_id, e.request_id, response_json, e.latency_ms, e.executed_at],
+            "INSERT INTO request_executions (id, version_id, request_id, environment_id, response_json, latency_ms, executed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![e.id, e.version_id, e.request_id, e.environment_id, response_json, e.latency_ms, e.executed_at],
         )?;
         Ok(())
     }
 
     pub fn list_executions_by_request(&self, request_id: &str) -> rusqlite::Result<Vec<RequestExecution>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, version_id, request_id, response_json, latency_ms, executed_at
+            "SELECT id, version_id, request_id, response_json, latency_ms, executed_at, COALESCE(environment_id, '') as environment_id
              FROM request_executions WHERE request_id=?1 ORDER BY executed_at DESC",
         )?;
         let rows = stmt.query_map(params![request_id], |row| {
@@ -268,6 +268,7 @@ impl Database {
                 id: row.get(0)?,
                 version_id: row.get(1)?,
                 request_id: row.get(2)?,
+                environment_id: row.get(6)?,
                 response,
                 latency_ms: row.get(4)?,
                 executed_at: row.get(5)?,

@@ -10,6 +10,15 @@ pub struct InspectorState {
     pub show_headers: bool,
     pub show_versions: bool,
     pub show_executions: bool,
+
+    // Execution filters
+    pub exec_filter_version: bool,
+    pub exec_filter_env: bool,
+
+    // Time-group expansion state for executions (indexed by TimeBucket ordinal)
+    pub exec_time_expanded: [bool; 5],
+    /// Set to true once after switching request so we auto-expand first group
+    pub exec_groups_initialized: bool,
 }
 
 impl Default for InspectorState {
@@ -20,6 +29,10 @@ impl Default for InspectorState {
             show_headers: true,
             show_versions: false,
             show_executions: false,
+            exec_filter_version: false,
+            exec_filter_env: false,
+            exec_time_expanded: [true, false, false, false, false],
+            exec_groups_initialized: false,
         }
     }
 }
@@ -42,6 +55,7 @@ pub fn render_inspector(
     selected_execution_id: Option<&str>,
     inspector_state: &mut InspectorState,
     variables: &HashMap<String, String>,
+    environments: &[crate::models::Environment],
 ) -> InspectorAction {
     let mut action = InspectorAction::None;
 
@@ -120,8 +134,16 @@ pub fn render_inspector(
 
             // ── EXECUTIONS ──
             if section_header(ui, "EXECUTIONS", executions.len(), &mut inspector_state.show_executions) {
-                if let Some(eid) = history_panel::render_execution_list(
-                    ui, executions, selected_execution_id,
+                if let Some(eid) = history_panel::render_execution_list_filtered(
+                    ui,
+                    executions,
+                    selected_execution_id,
+                    selected_version_id,
+                    environments,
+                    &mut inspector_state.exec_filter_version,
+                    &mut inspector_state.exec_filter_env,
+                    &mut inspector_state.exec_time_expanded,
+                    &mut inspector_state.exec_groups_initialized,
                 ) {
                     action = InspectorAction::SelectExecution(eid);
                 }

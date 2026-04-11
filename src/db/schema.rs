@@ -109,6 +109,14 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
         "ALTER TABLE collections ADD COLUMN headers_config TEXT;",
     );
 
+    // Migration: add environment_id column to request_executions
+    let _ = conn.execute_batch(
+        "ALTER TABLE request_executions ADD COLUMN environment_id TEXT NOT NULL DEFAULT '';",
+    );
+    let _ = conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_executions_env ON request_executions(environment_id);",
+    );
+
     // Migrate old collection_variables → new split tables
     migrate_collection_variables(conn);
 

@@ -209,6 +209,7 @@ pub struct RequestExecution {
     pub id: String,
     pub version_id: String,
     pub request_id: String,
+    pub environment_id: String,
     pub response: ResponseData,
     pub latency_ms: u64,
     pub executed_at: String,
