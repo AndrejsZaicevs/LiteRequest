@@ -44,6 +44,7 @@ fn data_equal(a: &RequestData, b: &RequestData) -> bool {
         && a.body_type == b.body_type
         && strip(&a.headers) == strip(&b.headers)
         && strip(&a.query_params) == strip(&b.query_params)
+        && strip(&a.path_params) == strip(&b.path_params)
 }
 
 pub struct LiteRequestApp {
@@ -267,6 +268,7 @@ impl LiteRequestApp {
             self.selected_execution_id = self.current_execution.as_ref().map(|e| e.id.clone());
             self.response_state = ResponseViewState::default();
             self.inspector_state.exec_groups_initialized = false;
+            self.inspector_state.version_groups_initialized = false;
             self.sync_path_params();
         }
     }
@@ -338,33 +340,51 @@ impl LiteRequestApp {
     }
 
     fn save_version(&mut self) {
-        if let Some(req) = &self.current_request {
-            // Skip if the most recent version is identical to current data.
-            // Normalize by stripping trailing empty KV rows (auto-appended by inspector)
-            // before comparing so those don't count as a change.
-            if let Some(latest) = self.versions.first() {
-                if data_equal(&latest.data, &self.editor_state.data) {
-                    self.editor_state.dirty = false;
-                    return;
-                }
-            }
+        let req_id = match &self.current_request {
+            Some(req) => req.id.clone(),
+            None => return,
+        };
 
-            let now = chrono::Utc::now().to_rfc3339();
-            let version = RequestVersion {
-                id: uuid::Uuid::new_v4().to_string(),
-                request_id: req.id.clone(),
-                data: self.editor_state.data.clone(),
-                created_at: now,
-            };
-            if self.db.insert_version(&version).is_ok() {
-                self.selected_version_id = Some(version.id.clone());
-                self.versions = self.db.list_versions_by_request(&req.id).unwrap_or_default();
-                if let Some(r) = self.requests.iter_mut().find(|r| r.id == req.id) {
-                    r.current_version_id = Some(version.id);
+        // Check ALL existing versions — if any is identical, reuse it (A→B→A case).
+        let existing_id = self.versions.iter()
+            .find(|v| data_equal(&v.data, &self.editor_state.data))
+            .map(|v| v.id.clone());
+
+        if let Some(existing_id) = existing_id {
+            let current_vid = self.current_request.as_ref()
+                .and_then(|r| r.current_version_id.as_deref())
+                .map(|s| s.to_string());
+
+            if current_vid.as_deref() != Some(&existing_id) {
+                let _ = self.db.update_request_version(&req_id, &existing_id);
+                if let Some(r) = self.requests.iter_mut().find(|r| r.id == req_id) {
+                    r.current_version_id = Some(existing_id.clone());
                 }
+                if let Some(cr) = &mut self.current_request {
+                    cr.current_version_id = Some(existing_id.clone());
+                }
+                self.selected_version_id = Some(existing_id);
+                self.versions = self.db.list_versions_by_request(&req_id).unwrap_or_default();
             }
             self.editor_state.dirty = false;
+            return;
         }
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let version = RequestVersion {
+            id: uuid::Uuid::new_v4().to_string(),
+            request_id: req_id.clone(),
+            data: self.editor_state.data.clone(),
+            created_at: now,
+        };
+        if self.db.insert_version(&version).is_ok() {
+            self.selected_version_id = Some(version.id.clone());
+            self.versions = self.db.list_versions_by_request(&req_id).unwrap_or_default();
+            if let Some(r) = self.requests.iter_mut().find(|r| r.id == req_id) {
+                r.current_version_id = Some(version.id);
+            }
+        }
+        self.editor_state.dirty = false;
     }
 
     fn copy_request_as_curl(&mut self) {

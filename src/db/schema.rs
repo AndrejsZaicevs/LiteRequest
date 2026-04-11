@@ -42,13 +42,20 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS response_bodies (
+            hash TEXT PRIMARY KEY,
+            body TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS request_executions (
             id            TEXT PRIMARY KEY,
             version_id    TEXT NOT NULL REFERENCES request_versions(id) ON DELETE CASCADE,
             request_id    TEXT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
             response_json TEXT NOT NULL,
             latency_ms    INTEGER NOT NULL,
-            executed_at   TEXT NOT NULL
+            executed_at   TEXT NOT NULL,
+            environment_id TEXT NOT NULL DEFAULT '',
+            body_hash      TEXT NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS environments (
@@ -73,6 +80,8 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_executions_request ON request_executions(request_id);
         CREATE INDEX IF NOT EXISTS idx_executions_version ON request_executions(version_id);
         CREATE INDEX IF NOT EXISTS idx_env_vars_env ON env_variables(environment_id);
+        CREATE INDEX IF NOT EXISTS idx_executions_env ON request_executions(environment_id);
+        CREATE INDEX IF NOT EXISTS idx_executions_body_hash ON request_executions(body_hash);
 
         CREATE TABLE IF NOT EXISTS collection_variables (
             id             TEXT PRIMARY KEY,
@@ -103,19 +112,6 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_var_values_def ON collection_var_values(def_id);
         ",
     )?;
-
-    // Migration: add headers_config column to existing databases
-    let _ = conn.execute_batch(
-        "ALTER TABLE collections ADD COLUMN headers_config TEXT;",
-    );
-
-    // Migration: add environment_id column to request_executions
-    let _ = conn.execute_batch(
-        "ALTER TABLE request_executions ADD COLUMN environment_id TEXT NOT NULL DEFAULT '';",
-    );
-    let _ = conn.execute_batch(
-        "CREATE INDEX IF NOT EXISTS idx_executions_env ON request_executions(environment_id);",
-    );
 
     // Migrate old collection_variables → new split tables
     migrate_collection_variables(conn);

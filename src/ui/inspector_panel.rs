@@ -19,6 +19,10 @@ pub struct InspectorState {
     pub exec_time_expanded: [bool; 5],
     /// Set to true once after switching request so we auto-expand first group
     pub exec_groups_initialized: bool,
+
+    // Time-group expansion state for versions
+    pub version_time_expanded: [bool; 5],
+    pub version_groups_initialized: bool,
 }
 
 impl Default for InspectorState {
@@ -33,6 +37,8 @@ impl Default for InspectorState {
             exec_filter_env: false,
             exec_time_expanded: [true, false, false, false, false],
             exec_groups_initialized: false,
+            version_time_expanded: [true, false, false, false, false],
+            version_groups_initialized: false,
         }
     }
 }
@@ -125,6 +131,8 @@ pub fn render_inspector(
             if section_header(ui, "VERSIONS", versions.len(), &mut inspector_state.show_versions) {
                 if let Some(vid) = history_panel::render_version_list(
                     ui, versions, selected_version_id,
+                    &mut inspector_state.version_time_expanded,
+                    &mut inspector_state.version_groups_initialized,
                 ) {
                     action = InspectorAction::SelectVersion(vid);
                 }

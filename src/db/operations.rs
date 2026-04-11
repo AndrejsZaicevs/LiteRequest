@@ -1,5 +1,6 @@
 use crate::models::*;
 use rusqlite::{params, Connection};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 
 pub struct Database {
@@ -239,19 +240,37 @@ impl Database {
 
     // ── Request Executions ───────────────────────────────────────
 
-    pub fn insert_execution(&self, e: &RequestExecution) -> rusqlite::Result<()> {
-        let response_json = serde_json::to_string(&e.response).unwrap_or_default();
+    fn body_hash(body: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(body.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+
+    fn get_or_create_response_body(&self, body: &str) -> rusqlite::Result<String> {
+        let hash = Self::body_hash(body);
         self.conn.execute(
-            "INSERT INTO request_executions (id, version_id, request_id, environment_id, response_json, latency_ms, executed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![e.id, e.version_id, e.request_id, e.environment_id, response_json, e.latency_ms, e.executed_at],
+            "INSERT OR IGNORE INTO response_bodies (hash, body) VALUES (?1, ?2)",
+            params![hash, body],
+        )?;
+        Ok(hash)
+    }
+
+    pub fn insert_execution(&self, e: &RequestExecution) -> rusqlite::Result<()> {
+        let body_hash = self.get_or_create_response_body(&e.response.body)?;
+        let mut stripped_response = e.response.clone();
+        stripped_response.body = String::new();
+        let response_json = serde_json::to_string(&stripped_response).unwrap_or_default();
+        self.conn.execute(
+            "INSERT INTO request_executions (id, version_id, request_id, environment_id, response_json, latency_ms, executed_at, body_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![e.id, e.version_id, e.request_id, e.environment_id, response_json, e.latency_ms, e.executed_at, body_hash],
         )?;
         Ok(())
     }
 
     pub fn list_executions_by_request(&self, request_id: &str) -> rusqlite::Result<Vec<RequestExecution>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, version_id, request_id, response_json, latency_ms, executed_at, COALESCE(environment_id, '') as environment_id
+            "SELECT id, version_id, request_id, response_json, latency_ms, executed_at, environment_id, body_hash
              FROM request_executions WHERE request_id=?1 ORDER BY executed_at DESC",
         )?;
         let rows = stmt.query_map(params![request_id], |row| {
@@ -264,17 +283,33 @@ impl Database {
                     body: String::new(),
                     size_bytes: 0,
                 });
-            Ok(RequestExecution {
-                id: row.get(0)?,
-                version_id: row.get(1)?,
-                request_id: row.get(2)?,
-                environment_id: row.get(6)?,
-                response,
-                latency_ms: row.get(4)?,
-                executed_at: row.get(5)?,
-            })
+            let body_hash: String = row.get(7)?;
+            Ok((
+                RequestExecution {
+                    id: row.get(0)?,
+                    version_id: row.get(1)?,
+                    request_id: row.get(2)?,
+                    environment_id: row.get(6)?,
+                    response,
+                    latency_ms: row.get(4)?,
+                    executed_at: row.get(5)?,
+                },
+                body_hash,
+            ))
         })?;
-        rows.collect()
+        let pairs: Vec<(RequestExecution, String)> = rows.collect::<rusqlite::Result<_>>()?;
+        let mut result = Vec::with_capacity(pairs.len());
+        for (mut exec, hash) in pairs {
+            if let Ok(body) = self.conn.query_row(
+                "SELECT body FROM response_bodies WHERE hash=?1",
+                params![hash],
+                |r| r.get::<_, String>(0),
+            ) {
+                exec.response.body = body;
+            }
+            result.push(exec);
+        }
+        Ok(result)
     }
 
     // ── Environments ─────────────────────────────────────────────

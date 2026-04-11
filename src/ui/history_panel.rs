@@ -1,6 +1,34 @@
 use eframe::egui;
 use crate::models::*;
 
+// ── URL / size helpers ──────────────────────────────────────────
+
+fn extract_path(url: &str) -> String {
+    if let Ok(parsed) = url::Url::parse(url) {
+        let path = parsed.path();
+        if path.is_empty() || path == "/" {
+            return url.to_string();
+        }
+        return path.to_string();
+    }
+    if let Some(rest) = url.find("://").map(|i| &url[i + 3..]) {
+        if let Some(slash) = rest.find('/') {
+            return rest[slash..].to_string();
+        }
+    }
+    url.to_string()
+}
+
+fn fmt_size(bytes: usize) -> String {
+    if bytes == 0 {
+        return String::new();
+    }
+    if bytes < 1024 {
+        return format!("{}b", bytes);
+    }
+    format!("{:.1}KB", bytes as f64 / 1024.0)
+}
+
 // ── Time bucketing ──────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -331,9 +359,9 @@ pub fn render_version_list(
     ui: &mut egui::Ui,
     versions: &[RequestVersion],
     selected_version_id: Option<&str>,
+    time_expanded: &mut [bool; 5],
+    groups_initialized: &mut bool,
 ) -> Option<String> {
-    let mut selected = None;
-
     if versions.is_empty() {
         ui.add_space(4.0);
         ui.label(
@@ -345,63 +373,118 @@ pub fn render_version_list(
         return None;
     }
 
-    for (i, version) in versions.iter().enumerate() {
-        let is_selected = selected_version_id == Some(&version.id);
-        let [r, g, b] = version.data.method.color();
+    // Group by time bucket
+    let now = chrono::Utc::now();
+    let mut buckets: [Vec<&RequestVersion>; 5] = Default::default();
+    for v in versions {
+        let b = TimeBucket::from_timestamp(&v.created_at, &now);
+        buckets[b as usize].push(v);
+    }
 
-        let fill = if is_selected {
-            super::theme::ACCENT.gamma_multiply(0.12)
-        } else {
-            egui::Color32::TRANSPARENT
-        };
+    // Auto-initialize: expand only first non-empty bucket
+    if !*groups_initialized {
+        *groups_initialized = true;
+        let mut found_first = false;
+        for (i, bucket) in buckets.iter().enumerate() {
+            time_expanded[i] = !bucket.is_empty() && !found_first;
+            if !bucket.is_empty() && !found_first {
+                found_first = true;
+            }
+        }
+    }
 
-        let frame_resp = egui::Frame::default()
-            .fill(fill)
-            .corner_radius(egui::CornerRadius::same(5))
-            .inner_margin(egui::Margin::symmetric(6, 4))
-            .show(ui, |ui: &mut egui::Ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui: &mut egui::Ui| {
-                    ui.label(
-                        egui::RichText::new(format!("v{}", versions.len() - i))
-                            .strong()
-                            .size(11.0)
-                            .color(super::theme::TEXT_MUTED),
-                    );
-                    ui.label(
+    let mut selected = None;
+
+    for bucket_type in &ALL_BUCKETS {
+        let idx = *bucket_type as usize;
+        let items = &buckets[idx];
+        if items.is_empty() {
+            continue;
+        }
+
+        let expanded = &mut time_expanded[idx];
+        if time_group_header(ui, bucket_type.label(), items.len(), expanded) {
+            for version in items {
+                if let Some(vid) = render_single_version(ui, version, selected_version_id) {
+                    selected = Some(vid);
+                }
+            }
+            ui.add_space(2.0);
+        }
+    }
+
+    selected
+}
+
+fn render_single_version(
+    ui: &mut egui::Ui,
+    version: &RequestVersion,
+    selected_version_id: Option<&str>,
+) -> Option<String> {
+    let is_selected = selected_version_id == Some(&version.id);
+    let [r, g, b] = version.data.method.color();
+    let method_color = egui::Color32::from_rgb(r, g, b);
+
+    let fill = if is_selected {
+        super::theme::ACCENT.gamma_multiply(0.12)
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+
+    let path = extract_path(&version.data.url);
+    let body_size = fmt_size(version.data.body.len());
+
+    let frame_resp = egui::Frame::default()
+        .fill(fill)
+        .corner_radius(egui::CornerRadius::same(5))
+        .inner_margin(egui::Margin::symmetric(6, 4))
+        .show(ui, |ui: &mut egui::Ui| {
+            ui.set_width(ui.available_width());
+            // First line: method badge + truncated path
+            ui.horizontal(|ui: &mut egui::Ui| {
+                ui.add(
+                    egui::Button::new(
                         egui::RichText::new(version.data.method.as_str())
                             .strong()
-                            .size(12.0)
-                            .color(egui::Color32::from_rgb(r, g, b)),
-                    );
-                    ui.label(
-                        egui::RichText::new(truncate_str(&version.data.url, 22))
-                            .size(11.0)
-                            .color(super::theme::TEXT_SECONDARY),
-                    );
-                });
+                            .size(10.0)
+                            .color(egui::Color32::WHITE),
+                    )
+                    .fill(method_color)
+                    .corner_radius(egui::CornerRadius::same(3))
+                    .sense(egui::Sense::hover()),
+                );
+                ui.label(
+                    egui::RichText::new(truncate_str(&path, 22))
+                        .size(11.0)
+                        .color(super::theme::TEXT_SECONDARY),
+                );
+            });
+            // Second line: timestamp + optional body size
+            ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new(format_timestamp(&version.created_at))
                         .size(10.0)
                         .color(super::theme::TEXT_MUTED),
                 );
+                if !body_size.is_empty() {
+                    ui.label(
+                        egui::RichText::new(format!("· {}", body_size))
+                            .size(10.0)
+                            .color(super::theme::TEXT_MUTED),
+                    );
+                }
             });
+        });
 
-        let click_resp = ui.interact(
-            frame_resp.response.rect,
-            ui.id().with(("version_click", &version.id)),
-            egui::Sense::click(),
-        );
-        if click_resp.clicked() {
-            selected = Some(version.id.clone());
-        }
-
-        if i < versions.len() - 1 {
-            ui.add_space(1.0);
-        }
+    let click_resp = ui.interact(
+        frame_resp.response.rect,
+        ui.id().with(("version_click", &version.id)),
+        egui::Sense::click(),
+    );
+    if click_resp.clicked() {
+        return Some(version.id.clone());
     }
-
-    selected
+    None
 }
 
 /// Content-only execution list (no title header — used inside inspector's own section header).
@@ -531,55 +614,8 @@ pub fn render_version_history(
             }
 
             for (i, version) in versions.iter().enumerate() {
-                let is_selected = selected_version_id == Some(&version.id);
-                let [r, g, b] = version.data.method.color();
-
-                let fill = if is_selected {
-                    super::theme::ACCENT.gamma_multiply(0.12)
-                } else {
-                    egui::Color32::TRANSPARENT
-                };
-
-                let frame_resp = egui::Frame::default()
-                    .fill(fill)
-                    .corner_radius(egui::CornerRadius::same(5))
-                    .inner_margin(egui::Margin::symmetric(6, 4))
-                    .show(ui, |ui: &mut egui::Ui| {
-                        ui.set_width(ui.available_width());
-                        ui.horizontal(|ui: &mut egui::Ui| {
-                            ui.label(
-                                egui::RichText::new(format!("v{}", versions.len() - i))
-                                    .strong()
-                                    .size(11.0)
-                                    .color(super::theme::TEXT_MUTED),
-                            );
-                            ui.label(
-                                egui::RichText::new(version.data.method.as_str())
-                                    .strong()
-                                    .size(12.0)
-                                    .color(egui::Color32::from_rgb(r, g, b)),
-                            );
-                            ui.label(
-                                egui::RichText::new(truncate_str(&version.data.url, 22))
-                                    .size(11.0)
-                                    .color(super::theme::TEXT_SECONDARY),
-                            );
-                        });
-                        ui.label(
-                            egui::RichText::new(format_timestamp(&version.created_at))
-                                .size(10.0)
-                                .color(super::theme::TEXT_MUTED),
-                        );
-                    });
-
-                // Make the entire frame area clickable
-                let click_resp = ui.interact(
-                    frame_resp.response.rect,
-                    ui.id().with(("version_click", &version.id)),
-                    egui::Sense::click(),
-                );
-                if click_resp.clicked() {
-                    selected = Some(version.id.clone());
+                if let Some(vid) = render_single_version(ui, version, selected_version_id) {
+                    selected = Some(vid);
                 }
 
                 if i < versions.len() - 1 {
