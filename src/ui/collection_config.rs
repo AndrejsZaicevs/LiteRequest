@@ -75,6 +75,9 @@ pub struct CollectionConfigState {
     pub auth: AuthConfig,
     pub dirty: bool,
 
+    // Collection-level headers
+    pub headers: Vec<KeyValuePair>,
+
     // Matrix environment variables for this collection
     pub selected_env_id: Option<String>,
     pub collection_vars: Vec<CollectionVariable>,
@@ -83,6 +86,7 @@ pub struct CollectionConfigState {
     // Section expansion state
     pub show_general: bool,
     pub show_auth: bool,
+    pub show_headers: bool,
     pub show_vars: bool,
 }
 
@@ -93,11 +97,13 @@ impl Default for CollectionConfigState {
             base_path: String::new(),
             auth: AuthConfig::default(),
             dirty: false,
+            headers: Vec::new(),
             selected_env_id: None,
             collection_vars: Vec::new(),
             vars_dirty: false,
             show_general: true,
             show_auth: true,
+            show_headers: true,
             show_vars: true,
         }
     }
@@ -112,6 +118,11 @@ impl CollectionConfigState {
             .as_ref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default();
+        self.headers = collection
+            .headers_config
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
         self.dirty = false;
         self.selected_env_id = None;
         self.collection_vars.clear();
@@ -121,6 +132,20 @@ impl CollectionConfigState {
 
     pub fn to_auth_json(&self) -> Option<String> {
         serde_json::to_string(&self.auth).ok()
+    }
+
+    pub fn to_headers_json(&self) -> Option<String> {
+        // Only serialize non-empty headers
+        let non_empty: Vec<&KeyValuePair> = self
+            .headers
+            .iter()
+            .filter(|h| !h.key.is_empty() || !h.value.is_empty())
+            .collect();
+        if non_empty.is_empty() {
+            None
+        } else {
+            serde_json::to_string(&non_empty).ok()
+        }
     }
 }
 
@@ -148,6 +173,14 @@ pub fn render_collection_config(
 ) -> ConfigAction {
     let mut action = ConfigAction::None;
 
+    // Auto-save: trigger save actions when dirty
+    if state.dirty {
+        action = ConfigAction::Save;
+    }
+    if state.vars_dirty {
+        action = ConfigAction::SaveVars;
+    }
+
     // Title bar
     egui::Frame::default()
         .fill(super::theme::SURFACE_2)
@@ -165,30 +198,6 @@ pub fn render_collection_config(
                         .size(14.0)
                         .color(super::theme::TEXT_PRIMARY),
                 );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if state.dirty || state.vars_dirty {
-                        let label = if state.dirty && state.vars_dirty {
-                            "Save All"
-                        } else if state.dirty {
-                            "Save"
-                        } else {
-                            "Save Variables"
-                        };
-                        if super::theme::pill_button(ui, label, super::theme::ACCENT) {
-                            if state.dirty {
-                                action = ConfigAction::Save;
-                            }
-                            if state.vars_dirty {
-                                action = ConfigAction::SaveVars;
-                            }
-                        }
-                        ui.label(
-                            egui::RichText::new("●")
-                                .size(10.0)
-                                .color(egui::Color32::from_rgb(252, 161, 48)),
-                        );
-                    }
-                });
             });
         });
     ui.add_space(4.0);
@@ -346,6 +355,25 @@ pub fn render_collection_config(
                                     &mut state.dirty,
                                 );
                             }
+                        }
+                    });
+                ui.add_space(4.0);
+            }
+
+            // ── HEADERS section ──
+            if super::theme::collapsible_header(ui, "HEADERS", &mut state.show_headers) {
+                ui.add_space(4.0);
+                egui::Frame::NONE
+                    .inner_margin(egui::Margin::symmetric(12, 4))
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new("Auto-included in every request in this collection.")
+                                .size(11.0)
+                                .color(super::theme::TEXT_MUTED),
+                        );
+                        ui.add_space(4.0);
+                        if render_collection_headers_table(ui, &mut state.headers) {
+                            state.dirty = true;
                         }
                     });
                 ui.add_space(4.0);
@@ -674,4 +702,128 @@ fn render_vars_table(
             }
         }
     }
+}
+
+/// Auto-grow KV table for collection-level headers, matching inspector style.
+/// Returns true if any change was made.
+fn render_collection_headers_table(
+    ui: &mut egui::Ui,
+    headers: &mut Vec<KeyValuePair>,
+) -> bool {
+    use egui_extras::{Column, TableBuilder};
+
+    // Ensure there's always one empty row at the end
+    let needs_empty = headers.is_empty()
+        || headers
+            .last()
+            .map_or(true, |h| !h.key.is_empty() || !h.value.is_empty());
+    if needs_empty {
+        headers.push(KeyValuePair::default());
+    }
+
+    let mut changed = false;
+    let mut to_remove: Option<usize> = None;
+    let n = headers.len();
+    let row_h = 28.0;
+    let input_fill = super::theme::SURFACE_0;
+    let input_stroke = egui::Stroke::new(1.0, super::theme::BORDER);
+
+    TableBuilder::new(ui)
+        .id_salt("collection_headers_table")
+        .striped(false)
+        .max_scroll_height(n as f32 * row_h + 4.0)
+        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+        .column(Column::exact(22.0))
+        .column(Column::remainder().at_least(80.0))
+        .column(Column::remainder().at_least(80.0))
+        .column(Column::exact(22.0))
+        .body(|mut body| {
+            for i in 0..n {
+                let is_last_empty = i == n - 1
+                    && headers[i].key.is_empty()
+                    && headers[i].value.is_empty();
+
+                body.row(row_h, |mut row| {
+                    row.col(|ui| {
+                        if !is_last_empty {
+                            if ui.checkbox(&mut headers[i].enabled, "").changed() {
+                                changed = true;
+                            }
+                        }
+                    });
+                    row.col(|ui| {
+                        egui::Frame::NONE
+                            .fill(input_fill)
+                            .stroke(input_stroke)
+                            .corner_radius(egui::CornerRadius::same(3))
+                            .inner_margin(egui::Margin::symmetric(4, 2))
+                            .show(ui, |ui| {
+                                let mut layouter = super::var_highlight::var_text_layouter;
+                                if ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut headers[i].key)
+                                            .desired_width(ui.available_width())
+                                            .frame(egui::Frame::NONE)
+                                            .font(egui::TextStyle::Monospace)
+                                            .hint_text(if is_last_empty { "Header-Name" } else { "" })
+                                            .layouter(&mut layouter),
+                                    )
+                                    .changed()
+                                {
+                                    changed = true;
+                                }
+                            });
+                    });
+                    row.col(|ui| {
+                        egui::Frame::NONE
+                            .fill(input_fill)
+                            .stroke(input_stroke)
+                            .corner_radius(egui::CornerRadius::same(3))
+                            .inner_margin(egui::Margin::symmetric(4, 2))
+                            .show(ui, |ui| {
+                                let mut layouter = super::var_highlight::var_text_layouter;
+                                if ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut headers[i].value)
+                                            .desired_width(ui.available_width())
+                                            .frame(egui::Frame::NONE)
+                                            .font(egui::TextStyle::Monospace)
+                                            .hint_text(if is_last_empty { "value or {{variable}}" } else { "" })
+                                            .layouter(&mut layouter),
+                                    )
+                                    .changed()
+                                {
+                                    changed = true;
+                                }
+                            });
+                    });
+                    row.col(|ui| {
+                        if !is_last_empty {
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new(egui_phosphor::regular::X)
+                                            .size(11.0)
+                                            .color(super::theme::TEXT_MUTED),
+                                    )
+                                    .frame(false)
+                                    .min_size(egui::vec2(16.0, 16.0)),
+                                )
+                                .on_hover_text("Remove")
+                                .clicked()
+                            {
+                                to_remove = Some(i);
+                            }
+                        }
+                    });
+                });
+            }
+        });
+
+    if let Some(idx) = to_remove {
+        headers.remove(idx);
+        changed = true;
+    }
+
+    changed
 }

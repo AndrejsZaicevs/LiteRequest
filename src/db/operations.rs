@@ -23,17 +23,17 @@ impl Database {
 
     pub fn insert_collection(&self, c: &Collection) -> rusqlite::Result<()> {
         self.conn.execute(
-            "INSERT INTO collections (id, name, base_path, auth_config, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![c.id, c.name, c.base_path, c.auth_config, c.created_at, c.updated_at],
+            "INSERT INTO collections (id, name, base_path, auth_config, headers_config, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![c.id, c.name, c.base_path, c.auth_config, c.headers_config, c.created_at, c.updated_at],
         )?;
         Ok(())
     }
 
     pub fn update_collection(&self, c: &Collection) -> rusqlite::Result<()> {
         self.conn.execute(
-            "UPDATE collections SET name=?2, base_path=?3, auth_config=?4, updated_at=?5 WHERE id=?1",
-            params![c.id, c.name, c.base_path, c.auth_config, c.updated_at],
+            "UPDATE collections SET name=?2, base_path=?3, auth_config=?4, headers_config=?5, updated_at=?6 WHERE id=?1",
+            params![c.id, c.name, c.base_path, c.auth_config, c.headers_config, c.updated_at],
         )?;
         Ok(())
     }
@@ -45,7 +45,7 @@ impl Database {
 
     pub fn list_collections(&self) -> rusqlite::Result<Vec<Collection>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, base_path, auth_config, created_at, updated_at FROM collections ORDER BY name",
+            "SELECT id, name, base_path, auth_config, headers_config, created_at, updated_at FROM collections ORDER BY name",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(Collection {
@@ -53,8 +53,9 @@ impl Database {
                 name: row.get(1)?,
                 base_path: row.get(2)?,
                 auth_config: row.get(3)?,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
+                headers_config: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
             })
         })?;
         rows.collect()

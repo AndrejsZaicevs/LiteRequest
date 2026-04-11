@@ -5,7 +5,8 @@ pub struct Collection {
     pub id: String,
     pub name: String,
     pub base_path: String,
-    pub auth_config: Option<String>, // JSON blob for auth settings
+    pub auth_config: Option<String>,    // JSON blob for auth settings
+    pub headers_config: Option<String>, // JSON blob for collection-level headers
     pub created_at: String,
     pub updated_at: String,
 }

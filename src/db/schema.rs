@@ -7,12 +7,13 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS collections (
-            id          TEXT PRIMARY KEY,
-            name        TEXT NOT NULL,
-            base_path   TEXT NOT NULL DEFAULT '',
-            auth_config TEXT,
-            created_at  TEXT NOT NULL,
-            updated_at  TEXT NOT NULL
+            id              TEXT PRIMARY KEY,
+            name            TEXT NOT NULL,
+            base_path       TEXT NOT NULL DEFAULT '',
+            auth_config     TEXT,
+            headers_config  TEXT,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS folders (
@@ -84,6 +85,11 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_coll_vars_coll_env ON collection_variables(collection_id, environment_id);
         ",
     )?;
+
+    // Migration: add headers_config column to existing databases
+    let _ = conn.execute_batch(
+        "ALTER TABLE collections ADD COLUMN headers_config TEXT;",
+    );
 
     Ok(())
 }

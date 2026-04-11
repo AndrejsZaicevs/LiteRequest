@@ -142,6 +142,7 @@ impl LiteRequestApp {
                 name: "My Collection".to_string(),
                 base_path: String::new(),
                 auth_config: None,
+                headers_config: None,
                 created_at: now.clone(),
                 updated_at: now,
             };
@@ -364,18 +365,22 @@ impl LiteRequestApp {
             }
         }
 
-        // Find collection and inject auth headers
+        // Find collection and inject auth headers + collection headers
         let collection = self.collections.iter().find(|c| c.id == req.collection_id);
         let base_path = collection.map(|c| c.base_path.clone()).unwrap_or_default();
         let auth_config: Option<CollectionAuthConfig> = collection
             .and_then(|c| c.auth_config.as_ref())
             .and_then(|s| serde_json::from_str(s).ok());
+        let collection_headers: Vec<KeyValuePair> = collection
+            .and_then(|c| c.headers_config.as_ref())
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
 
         self.is_loading = true;
 
         self.tokio_rt.spawn(async move {
             let result =
-                execute_with_auth(data, &variables, &base_path, auth_config.as_ref()).await;
+                execute_with_auth(data, &variables, &base_path, auth_config.as_ref(), &collection_headers).await;
             let _ = tx.send(HttpResult {
                 request_id,
                 version_id,
@@ -764,6 +769,7 @@ impl LiteRequestApp {
                 name: self.collection_config_state.name.clone(),
                 base_path: self.collection_config_state.base_path.clone(),
                 auth_config: self.collection_config_state.to_auth_json(),
+                headers_config: self.collection_config_state.to_headers_json(),
                 created_at: collection.created_at.clone(),
                 updated_at: now,
             };
@@ -898,6 +904,7 @@ impl LiteRequestApp {
                     name: "New Collection".to_string(),
                     base_path: String::new(),
                     auth_config: None,
+                    headers_config: None,
                     created_at: now.clone(),
                     updated_at: now,
                 };
@@ -1175,7 +1182,25 @@ async fn execute_with_auth(
     variables: &HashMap<String, String>,
     base_path: &str,
     auth: Option<&CollectionAuthConfig>,
+    collection_headers: &[KeyValuePair],
 ) -> Result<(ResponseData, u64), String> {
+    // Inject collection-level headers first (request headers override)
+    for h in collection_headers {
+        if h.enabled && !h.key.is_empty() {
+            let key = crate::http::interpolation::interpolate(&h.key, variables);
+            let value = crate::http::interpolation::interpolate(&h.value, variables);
+            // Only add if request doesn't already have this header
+            let already_set = data.headers.iter().any(|rh| rh.enabled && rh.key.eq_ignore_ascii_case(&key));
+            if !already_set {
+                data.headers.push(KeyValuePair {
+                    key,
+                    value,
+                    enabled: true,
+                });
+            }
+        }
+    }
+
     // Inject auth headers from collection config
     if let Some(auth) = auth {
         match auth.auth_type.as_str() {
