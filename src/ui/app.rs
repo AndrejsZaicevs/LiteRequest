@@ -246,6 +246,56 @@ impl LiteRequestApp {
         self.path_params = new_params;
     }
 
+    /// If the URL contains a query string, extract the params into `data.query_params`
+    /// and strip the query string from the URL so there's a single source of truth.
+    fn sync_query_params_from_url(&mut self) {
+        let url = &self.editor_state.data.url;
+        let Some(q_start) = url.find('?') else { return };
+
+        let base = url[..q_start].to_string();
+        let query = url[q_start + 1..].to_string();
+
+        // Parse key=value pairs from query string
+        let parsed: Vec<KeyValuePair> = query
+            .split('&')
+            .filter(|s| !s.is_empty())
+            .map(|pair| {
+                let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+                KeyValuePair {
+                    key: k.to_string(),
+                    value: v.to_string(),
+                    enabled: true,
+                }
+            })
+            .collect();
+
+        if parsed.is_empty() { return; }
+
+        // Merge: for each parsed param, update existing or append
+        for p in &parsed {
+            if let Some(existing) = self.editor_state.data.query_params
+                .iter_mut()
+                .find(|e| e.key == p.key && !e.key.is_empty())
+            {
+                existing.value = p.value.clone();
+            } else {
+                // Insert before the trailing empty row
+                let last_empty = self.editor_state.data.query_params.last()
+                    .map_or(false, |e| e.key.is_empty() && e.value.is_empty());
+                if last_empty {
+                    let idx = self.editor_state.data.query_params.len() - 1;
+                    self.editor_state.data.query_params.insert(idx, p.clone());
+                } else {
+                    self.editor_state.data.query_params.push(p.clone());
+                }
+            }
+        }
+
+        // Strip query string from URL
+        self.editor_state.data.url = base;
+        self.editor_state.dirty = true;
+    }
+
     fn save_version(&mut self) {
         if let Some(req) = &self.current_request {
             // Skip if the most recent version is identical to current data.
@@ -594,7 +644,10 @@ impl eframe::App for LiteRequestApp {
                                     );
                                     match action {
                                         EditorAction::Send => self.send_request(),
-                                        EditorAction::DataChanged => self.sync_path_params(),
+                                        EditorAction::DataChanged => {
+                                            self.sync_query_params_from_url();
+                                            self.sync_path_params();
+                                        }
                                         EditorAction::None => {}
                                     }
                                 },
