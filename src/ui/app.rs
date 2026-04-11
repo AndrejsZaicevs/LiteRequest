@@ -468,6 +468,7 @@ impl eframe::App for LiteRequestApp {
             egui::Panel::right("inspector_panel")
                 .default_size(280.0)
                 .min_size(240.0)
+                .max_size(400.0)
                 .frame(
                     egui::Frame::default()
                         .fill(super::theme::SURFACE_1)
