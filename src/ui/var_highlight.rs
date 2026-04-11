@@ -22,22 +22,21 @@ pub fn highlight_variables_job(
 
     while i < len {
         if i + 1 < len && bytes[i] == b'{' && bytes[i + 1] == b'{' {
-            // Flush normal text before this variable
-            if i > normal_start {
-                job.append(
-                    &text[normal_start..i],
-                    0.0,
-                    egui::TextFormat {
-                        font_id: font_id.clone(),
-                        color: base_color,
-                        ..Default::default()
-                    },
-                );
-            }
-
             // Find closing }}
             if let Some(end_offset) = text[i + 2..].find("}}") {
                 let var_end = i + 2 + end_offset + 2;
+                // Flush normal text before this variable
+                if i > normal_start {
+                    job.append(
+                        &text[normal_start..i],
+                        0.0,
+                        egui::TextFormat {
+                            font_id: font_id.clone(),
+                            color: base_color,
+                            ..Default::default()
+                        },
+                    );
+                }
                 job.append(
                     &text[i..var_end],
                     0.0,
@@ -51,7 +50,8 @@ pub fn highlight_variables_job(
                 normal_start = i;
                 continue;
             } else {
-                // No closing }} — treat as normal text
+                // No closing }} found — skip past {{ without flushing,
+                // the final flush will include it as plain text
                 i += 2;
                 continue;
             }
