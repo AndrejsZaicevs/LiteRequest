@@ -234,8 +234,8 @@ impl LiteRequestApp {
     }
 
     fn select_collection(&mut self, collection_id: &str) {
-        // Autosave current request before switching away
-        if self.editor_state.dirty && self.current_request.is_some() {
+        // Always save current request before switching away
+        if self.current_request.is_some() {
             self.save_version();
         }
 
@@ -249,8 +249,11 @@ impl LiteRequestApp {
     }
 
     fn select_request(&mut self, request_id: &str) {
-        // Autosave current request before switching away
-        if self.editor_state.dirty && self.current_request.is_some() {
+        // Always save current request before switching away.
+        // We can't rely on the dirty flag alone because save_version clears it
+        // immediately, but the tree click may happen in the same frame as the
+        // last edit (before the editor even renders to emit DataChanged).
+        if self.current_request.is_some() {
             self.save_version();
         }
 
@@ -264,6 +267,7 @@ impl LiteRequestApp {
                 }
             } else {
                 self.editor_state = RequestEditorState::default();
+                self.selected_version_id = None;
             }
 
             self.tree_state.selected_request_id = Some(req.id.clone());
