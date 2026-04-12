@@ -11,3 +11,4 @@ pub mod import_export;
 pub mod json_tree;
 pub mod theme;
 pub mod var_highlight;
+pub mod global_search;

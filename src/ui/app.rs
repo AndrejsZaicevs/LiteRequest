@@ -11,6 +11,7 @@ use crate::ui::response_view::*;
 use crate::ui::inspector_panel::{self, InspectorState, InspectorAction};
 use crate::ui::environment_panel::*;
 use crate::ui::app_settings::{self, AppSettingsState, SettingsAction, GlobalSettings};
+use crate::ui::global_search::{self, GlobalSearchState, SearchAction};
 
 /// What the center panel should display
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +100,9 @@ pub struct LiteRequestApp {
 
     // Deferred clipboard copy (set in methods, applied in ui() where ctx is available)
     pending_clipboard: Option<String>,
+
+    // Global search
+    search_state: GlobalSearchState,
 }
 
 impl LiteRequestApp {
@@ -142,6 +146,7 @@ impl LiteRequestApp {
             app_settings_state: AppSettingsState::default(),
             global_settings: GlobalSettings::default(),
             pending_clipboard: None,
+            search_state: GlobalSearchState::default(),
         };
 
         app.refresh_all_data();
@@ -599,6 +604,38 @@ impl LiteRequestApp {
     fn set_status(&mut self, msg: &str) {
         self.status_message = Some((msg.to_string(), std::time::Instant::now()));
     }
+
+    fn run_search(&mut self) {
+        // Build all_versions map: request_id → versions (latest first)
+        let mut all_versions: HashMap<String, Vec<RequestVersion>> = HashMap::new();
+        for r in &self.requests {
+            if let Ok(versions) = self.db.list_versions_by_request(&r.id) {
+                if !versions.is_empty() {
+                    all_versions.insert(r.id.clone(), versions);
+                }
+            }
+        }
+
+        // Collect all executions across requests for search
+        let mut all_executions: Vec<RequestExecution> = Vec::new();
+        for r in &self.requests {
+            if let Ok(execs) = self.db.list_executions_by_request(&r.id) {
+                all_executions.extend(execs);
+            }
+        }
+
+        self.search_state.results = global_search::perform_search(
+            &self.search_state.query,
+            &self.collections,
+            &self.folders,
+            &self.requests,
+            &all_executions,
+            &self.environments,
+            &self.env_variables,
+            &all_versions,
+        );
+        self.search_state.selected_idx = 0;
+    }
 }
 
 impl eframe::App for LiteRequestApp {
@@ -619,6 +656,38 @@ impl eframe::App for LiteRequestApp {
         if let Some((_, time)) = &self.status_message {
             if time.elapsed() > std::time::Duration::from_secs(3) {
                 self.status_message = None;
+            }
+        }
+
+        // ── Global search shortcut (Ctrl+K) ──────────────────────
+        if ui.input(|i| i.key_pressed(egui::Key::K) && i.modifiers.command) {
+            self.search_state.toggle();
+            if self.search_state.open {
+                // Build all_versions map for search
+                self.run_search();
+            }
+        }
+
+        // Re-run search when query changes
+        if self.search_state.open {
+            let prev_query = self.search_state.query.clone();
+            let action = global_search::render_search_modal(ui.ctx(), &mut self.search_state);
+            if self.search_state.query != prev_query {
+                self.run_search();
+            }
+            match action {
+                SearchAction::NavigateRequest(rid) => {
+                    self.search_state.open = false;
+                    self.select_request(&rid);
+                }
+                SearchAction::NavigateCollection(cid) => {
+                    self.search_state.open = false;
+                    self.select_collection(&cid);
+                }
+                SearchAction::Close => {
+                    self.search_state.open = false;
+                }
+                SearchAction::None => {}
             }
         }
 
@@ -663,7 +732,7 @@ impl eframe::App for LiteRequestApp {
                         }
                     }
 
-                    // Right side: settings button + loading / status / error
+                    // Right side: settings button + search + loading / status / error
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // Settings gear button (rightmost)
                         let is_settings = matches!(self.center_view, CenterView::AppSettings);
@@ -691,6 +760,25 @@ impl eframe::App for LiteRequestApp {
                                 self.tree_state.selected_collection_id = None;
                                 self.current_request = None;
                                 self.center_view = CenterView::AppSettings;
+                            }
+                        }
+
+                        // Search button
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(egui_phosphor::regular::MAGNIFYING_GLASS)
+                                        .size(18.0)
+                                        .color(super::theme::TEXT_SECONDARY),
+                                )
+                                .frame(false),
+                            )
+                            .on_hover_text("Search (Ctrl+K)")
+                            .clicked()
+                        {
+                            self.search_state.toggle();
+                            if self.search_state.open {
+                                self.run_search();
                             }
                         }
 
