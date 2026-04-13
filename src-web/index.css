@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+/* Dark theme base */
+:root {
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --surface-0: #18181b;
+  --surface-1: #202024;
+  --surface-2: #2a2a30;
+  --surface-3: #323238;
+  --border: #37373e;
+  --text-primary: #e4e4e7;
+  --text-secondary: #8c8c96;
+  --text-muted: #5a5a64;
+  --success: #49cc90;
+  --warning: #fca130;
+  --danger: #f93e3e;
+  --danger-bright: #ff5757;
+
+  color-scheme: dark;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Monospace for code */
+.font-mono {
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, "Liberation Mono", monospace;
+}
+
+/* Focus ring */
+*:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* Input base style */
+input, textarea {
+  background: var(--surface-0);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  transition: border-color 0.15s;
+}
+input:focus, textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* Button reset */
+button {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+/* Resizable panels - prevent text selection during drag */
+.resizing * {
+  user-select: none !important;
+  cursor: col-resize !important;
+}
+
+/* Variable highlight in text */
+.var-highlight {
+  color: #e2b714;
+  font-weight: 500;
+}
