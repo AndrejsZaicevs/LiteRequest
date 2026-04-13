@@ -320,7 +320,7 @@ export function Sidebar({
       <DnDRow key={folder.id} item={item} dropState={dropState}>
         {(isDropInside) => (
           <div
-            className="flex items-center gap-2 py-2.5 cursor-pointer transition-colors group"
+            className="flex items-center gap-2 py-3.5 cursor-pointer transition-colors group"
             style={{
               paddingLeft: pl, paddingRight: 10,
               background: isDropInside ? "color-mix(in srgb, var(--accent) 18%, transparent)" : "transparent",
@@ -341,7 +341,7 @@ export function Sidebar({
             </span>
             {renaming?.id === folder.id
               ? renameInput(renaming.value, v => setRenaming({ ...renaming, value: v }))
-              : <span className="truncate flex-1 text-sm" style={{ color: "var(--text-secondary)" }}>{folder.name}</span>
+              : <span className="truncate flex-1 text-base" style={{ color: "var(--text-secondary)" }}>{folder.name}</span>
             }
           </div>
         )}
@@ -373,7 +373,7 @@ export function Sidebar({
       <DnDRow key={req.id} item={item} dropState={dropState}>
         {(_isDropInside) => (
           <div
-            className="flex items-center gap-2 py-2.5 cursor-pointer transition-colors group"
+            className="flex items-center gap-2 py-3.5 cursor-pointer transition-colors group"
             style={{
               paddingLeft: pl, paddingRight: 10,
               background: isSelected ? "var(--surface-2)" : "transparent",
@@ -387,12 +387,12 @@ export function Sidebar({
           >
             <GripVertical size={13} className="flex-shrink-0 opacity-0 group-hover:opacity-30" style={{ color: "var(--text-muted)" }} />
             {meta
-              ? <span className="font-mono text-xs font-bold flex-shrink-0" style={{ color: methodColor(meta.method), width: 36, textAlign: "right" }}>{meta.method.slice(0, 3)}</span>
+              ? <span className="font-mono text-sm font-bold flex-shrink-0" style={{ color: methodColor(meta.method), width: 44, textAlign: "right" }}>{meta.method.slice(0, 3)}</span>
               : <span style={{ width: 36 }} />
             }
             {renaming?.id === req.id
               ? renameInput(renaming.value, v => setRenaming({ ...renaming, value: v }))
-              : <span className="truncate flex-1 text-sm">{req.name}</span>
+              : <span className="truncate flex-1 text-base">{req.name}</span>
             }
           </div>
         )}
@@ -432,7 +432,7 @@ export function Sidebar({
               <div key={col.id}>
                 {/* Collection header — not draggable */}
                 <div
-                  className="flex items-center gap-2 py-3 cursor-pointer transition-colors"
+                  className="flex items-center gap-2 py-3.5 cursor-pointer transition-colors"
                   style={{ paddingLeft: 10, paddingRight: 10, background: isSelected ? "var(--surface-2)" : "transparent", borderBottom: "1px solid var(--border-subtle)" }}
                   onClick={() => toggle(col.id)}
                   onContextMenu={e => handleContextMenu(e, "collection", col.id)}
@@ -446,7 +446,7 @@ export function Sidebar({
                   <Package size={17} style={{ color: "var(--text-secondary)", flexShrink: 0 }} />
                   {renaming?.id === col.id
                     ? renameInput(renaming.value, v => setRenaming({ ...renaming, value: v }))
-                    : <span className="truncate flex-1 text-sm font-medium">{col.name}</span>
+                    : <span className="truncate flex-1 text-base font-medium">{col.name}</span>
                   }
                   <span className="text-xs flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
                     {requests.filter(r => r.collection_id === col.id).length}
@@ -487,25 +487,25 @@ export function Sidebar({
 
       {/* Context menu */}
       {contextMenu && (
-        <div className="fixed z-50 rounded-md shadow-lg text-sm overflow-hidden" style={{ left: contextMenu.x, top: contextMenu.y, background: "var(--surface-2)", border: "1px solid var(--border)", minWidth: 180 }}>
+        <div className="fixed z-50 rounded-md shadow-lg text-base overflow-hidden" style={{ left: contextMenu.x, top: contextMenu.y, background: "var(--surface-2)", border: "1px solid var(--border)", minWidth: 180 }}>
           {contextMenu.type === "collection" && (<>
-            <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)]" onClick={() => handleNewRequest(contextMenu.id)}>New Request</button>
-            <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)]" onClick={() => handleNewFolder(contextMenu.id)}>New Folder</button>
-            <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)]" onClick={() => { onSelectCollection(contextMenu.id); closeCtx(); }}>Settings</button>
+            <button className="w-full text-left px-4 py-3 hover:bg-[var(--surface-3)]" onClick={() => handleNewRequest(contextMenu.id)}>New Request</button>
+            <button className="w-full text-left px-4 py-3 hover:bg-[var(--surface-3)]" onClick={() => handleNewFolder(contextMenu.id)}>New Folder</button>
+            <button className="w-full text-left px-4 py-3 hover:bg-[var(--surface-3)]" onClick={() => { onSelectCollection(contextMenu.id); closeCtx(); }}>Settings</button>
             <div className="my-0.5" style={{ borderTop: "1px solid var(--border)" }} />
-            <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)]" onClick={() => { setRenaming({ type: "collection", id: contextMenu.id, value: collections.find(c => c.id === contextMenu.id)?.name ?? "" }); closeCtx(); }}>Rename</button>
-            <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)]" style={{ color: "var(--danger)" }} onClick={() => handleDelete("collection", contextMenu.id)}>Delete</button>
+            <button className="w-full text-left px-4 py-3 hover:bg-[var(--surface-3)]" onClick={() => { setRenaming({ type: "collection", id: contextMenu.id, value: collections.find(c => c.id === contextMenu.id)?.name ?? "" }); closeCtx(); }}>Rename</button>
+            <button className="w-full text-left px-4 py-3 hover:bg-[var(--surface-3)]" style={{ color: "var(--danger)" }} onClick={() => handleDelete("collection", contextMenu.id)}>Delete</button>
           </>)}
           {contextMenu.type === "folder" && (<>
-            <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)]" onClick={() => { const f = folders.find(ff => ff.id === contextMenu.id); if (f) handleNewRequest(f.collection_id, f.id); }}>New Request</button>
-            <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)]" onClick={() => { const f = folders.find(ff => ff.id === contextMenu.id); if (f) handleNewFolder(f.collection_id, f.id); }}>New Subfolder</button>
+            <button className="w-full text-left px-4 py-3 hover:bg-[var(--surface-3)]" onClick={() => { const f = folders.find(ff => ff.id === contextMenu.id); if (f) handleNewRequest(f.collection_id, f.id); }}>New Request</button>
+            <button className="w-full text-left px-4 py-3 hover:bg-[var(--surface-3)]" onClick={() => { const f = folders.find(ff => ff.id === contextMenu.id); if (f) handleNewFolder(f.collection_id, f.id); }}>New Subfolder</button>
             <div className="my-0.5" style={{ borderTop: "1px solid var(--border)" }} />
-            <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)]" onClick={() => { setRenaming({ type: "folder", id: contextMenu.id, value: folders.find(f => f.id === contextMenu.id)?.name ?? "" }); closeCtx(); }}>Rename</button>
-            <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)]" style={{ color: "var(--danger)" }} onClick={() => handleDelete("folder", contextMenu.id)}>Delete</button>
+            <button className="w-full text-left px-4 py-3 hover:bg-[var(--surface-3)]" onClick={() => { setRenaming({ type: "folder", id: contextMenu.id, value: folders.find(f => f.id === contextMenu.id)?.name ?? "" }); closeCtx(); }}>Rename</button>
+            <button className="w-full text-left px-4 py-3 hover:bg-[var(--surface-3)]" style={{ color: "var(--danger)" }} onClick={() => handleDelete("folder", contextMenu.id)}>Delete</button>
           </>)}
           {contextMenu.type === "request" && (<>
-            <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)]" onClick={() => { setRenaming({ type: "request", id: contextMenu.id, value: requests.find(r => r.id === contextMenu.id)?.name ?? "" }); closeCtx(); }}>Rename</button>
-            <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)]" style={{ color: "var(--danger)" }} onClick={() => handleDelete("request", contextMenu.id)}>Delete</button>
+            <button className="w-full text-left px-4 py-3 hover:bg-[var(--surface-3)]" onClick={() => { setRenaming({ type: "request", id: contextMenu.id, value: requests.find(r => r.id === contextMenu.id)?.name ?? "" }); closeCtx(); }}>Rename</button>
+            <button className="w-full text-left px-4 py-3 hover:bg-[var(--surface-3)]" style={{ color: "var(--danger)" }} onClick={() => handleDelete("request", contextMenu.id)}>Delete</button>
           </>)}
         </div>
       )}
