@@ -33,6 +33,7 @@ export const deleteRequest = (id: string) => invoke<void>("delete_request", { id
 export const moveRequest = (id: string, collectionId: string, folderId?: string | null) =>
   invoke<void>("move_request", { id, collectionId, folderId });
 export const reorderRequests = (orderedIds: string[]) => invoke<void>("reorder_requests", { orderedIds });
+export const reorderFolders = (orderedIds: string[]) => invoke<void>("reorder_folders", { orderedIds });
 export const updateRequestVersion = (requestId: string, versionId: string) =>
   invoke<void>("update_request_version", { requestId, versionId });
 

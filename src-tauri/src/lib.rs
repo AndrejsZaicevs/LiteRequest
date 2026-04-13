@@ -52,6 +52,7 @@ pub fn run() {
             commands::delete_request,
             commands::move_request,
             commands::reorder_requests,
+            commands::reorder_folders,
             commands::update_request_version,
             // Versions
             commands::insert_version,

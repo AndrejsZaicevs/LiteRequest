@@ -87,6 +87,20 @@ export default function App() {
       setFolders(allFolders);
       setRequests(allRequests);
 
+      // Load current version data for all requests so sidebar shows methods
+      const metaMap = new Map<string, { method: HttpMethod; url: string }>();
+      await Promise.all(
+        allRequests
+          .filter(r => r.current_version_id)
+          .map(async (req) => {
+            try {
+              const v = await api.getVersion(req.current_version_id!);
+              metaMap.set(req.id, { method: v.data.method, url: v.data.url });
+            } catch { /* ignore missing versions */ }
+          })
+      );
+      setRequestMeta(metaMap);
+
       // Load active env variables
       const activeEnv = envs.find(e => e.is_active);
       if (activeEnv) {
@@ -151,7 +165,8 @@ export default function App() {
       if (!hasExec) {
         await api.updateVersionData(selectedVersionId, editorData, now);
         setDirty(false);
-        // Refresh versions
+        // Update sidebar meta for this request
+        setRequestMeta(prev => new Map(prev).set(currentRequest.id, { method: editorData.method, url: editorData.url }));
         const vers = await api.listVersions(currentRequest.id);
         setVersions(vers);
         return;
@@ -176,8 +191,15 @@ export default function App() {
       created_at: now,
     };
     await api.insertVersion(version);
+    // Link this version as the request's current version
+    await api.updateRequestVersion(currentRequest.id, versionId);
     setSelectedVersionId(versionId);
     setDirty(false);
+    // Update sidebar meta
+    setRequestMeta(prev => new Map(prev).set(currentRequest.id, { method: editorData.method, url: editorData.url }));
+    // Update local currentRequest so switching away and back works
+    setCurrentRequest(prev => prev ? { ...prev, current_version_id: versionId } : prev);
+    setRequests(prev => prev.map(r => r.id === currentRequest.id ? { ...r, current_version_id: versionId } : r));
 
     const vers = await api.listVersions(currentRequest.id);
     setVersions(vers);

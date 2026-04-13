@@ -205,6 +205,16 @@ pub fn reorder_requests(state: State<AppState>, ordered_ids: Vec<String>) -> Cmd
 }
 
 #[tauri::command]
+pub fn reorder_folders(state: State<AppState>, ordered_ids: Vec<String>) -> CmdResult<()> {
+    state
+        .db
+        .lock()
+        .unwrap()
+        .reorder_folders(&ordered_ids)
+        .map_err(map_err)
+}
+
+#[tauri::command]
 pub fn update_request_version(
     state: State<AppState>,
     request_id: String,

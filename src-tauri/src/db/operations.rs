@@ -592,6 +592,16 @@ impl Database {
         Ok(())
     }
 
+    pub fn reorder_folders(&self, ordered_ids: &[String]) -> rusqlite::Result<()> {
+        for (i, id) in ordered_ids.iter().enumerate() {
+            self.conn.execute(
+                "UPDATE folders SET sort_order=?2 WHERE id=?1",
+                params![id, i as i32],
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn rename_folder(&self, id: &str, name: &str) -> rusqlite::Result<()> {
         self.conn.execute(
             "UPDATE folders SET name=?2 WHERE id=?1",
