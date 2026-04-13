@@ -41,7 +41,7 @@ export function ResponseView({ response, latency, isLoading }: ResponseViewProps
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--surface-0)" }}>
       {/* Status bar — full-width separator */}
       <div
-        className="flex items-center gap-3 px-4 h-10 text-xs flex-shrink-0"
+        className="flex items-center gap-3 px-4 h-12 text-sm flex-shrink-0"
         style={{ background: "var(--surface-1)", borderBottom: "1px solid var(--border)" }}
       >
         <span
@@ -66,7 +66,7 @@ export function ResponseView({ response, latency, isLoading }: ResponseViewProps
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="capitalize text-xs px-3 py-1.5"
+            className="capitalize text-sm px-3 py-1.5"
             style={{
               color: tab === t ? "var(--accent)" : "var(--text-muted)",
               borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",

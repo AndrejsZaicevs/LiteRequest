@@ -1,11 +1,16 @@
 import { useState, useRef } from "react";
-import type { Collection, Folder, Request, HttpMethod } from "../../lib/types";
+import { ChevronRight, ChevronDown, Folder, FolderOpen, Package, GripVertical } from "lucide-react";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import type { Collection, Folder as FolderType, Request, HttpMethod } from "../../lib/types";
 import { methodColor } from "../../lib/types";
 import * as api from "../../lib/api";
 
 interface SidebarProps {
   collections: Collection[];
-  folders: Folder[];
+  folders: FolderType[];
   requests: Request[];
   selectedRequestId: string | null;
   selectedCollectionId: string | null;
@@ -13,6 +18,81 @@ interface SidebarProps {
   onSelectRequest: (req: Request) => void;
   onSelectCollection: (id: string) => void;
   onDataChange: () => void;
+}
+
+interface SortableRequestProps {
+  req: Request;
+  depth: number;
+  isSelected: boolean;
+  meta: { method: HttpMethod; url: string } | undefined;
+  renaming: { type: string; id: string; value: string } | null;
+  renameRef: React.RefObject<HTMLInputElement | null>;
+  setRenaming: (r: { type: string; id: string; value: string } | null) => void;
+  handleRename: () => void;
+  onSelectRequest: (req: Request) => void;
+  handleContextMenu: (e: React.MouseEvent, type: string, id: string) => void;
+}
+
+function SortableRequest({
+  req, depth, isSelected, meta, renaming, renameRef, setRenaming, handleRename,
+  onSelectRequest, handleContextMenu,
+}: SortableRequestProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: req.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    paddingLeft: 16 + depth * 20 + 20,
+    paddingRight: 10,
+    background: isSelected ? "var(--surface-2)" : "transparent",
+    borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 py-2.5 cursor-pointer transition-colors group"
+      onClick={() => onSelectRequest(req)}
+      onContextMenu={(e) => handleContextMenu(e, "request", req.id)}
+      onDoubleClick={() => setRenaming({ type: "request", id: req.id, value: req.name })}
+      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--row-hover)"; }}
+      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = isSelected ? "var(--surface-2)" : "transparent"; }}
+    >
+      <span
+        {...attributes}
+        {...listeners}
+        className="flex-shrink-0 opacity-0 group-hover:opacity-50 cursor-grab"
+        style={{ color: "var(--text-muted)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <GripVertical size={14} />
+      </span>
+      {meta && (
+        <span
+          className="font-mono text-xs font-bold flex-shrink-0"
+          style={{ color: methodColor(meta.method), width: 38, textAlign: "right" }}
+        >
+          {meta.method.length > 3 ? meta.method.slice(0, 3) : meta.method}
+        </span>
+      )}
+      {!meta && <span style={{ width: 38 }} />}
+      {renaming?.id === req.id ? (
+        <input
+          ref={renameRef}
+          value={renaming.value}
+          onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
+          onBlur={handleRename}
+          onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setRenaming(null); }}
+          className="flex-1 bg-transparent outline-none text-sm"
+          style={{ border: "none", borderBottom: "1px solid var(--accent)", borderRadius: 0, padding: "1px 3px" }}
+          autoFocus
+        />
+      ) : (
+        <span className="truncate flex-1 text-sm">{req.name}</span>
+      )}
+    </div>
+  );
 }
 
 export function Sidebar({
@@ -24,6 +104,8 @@ export function Sidebar({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: string; id: string } | null>(null);
   const [renaming, setRenaming] = useState<{ type: string; id: string; value: string } | null>(null);
   const renameRef = useRef<HTMLInputElement>(null);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const toggle = (id: string) => {
     setCollapsed(prev => {
@@ -79,7 +161,7 @@ export function Sidebar({
   };
 
   const handleNewFolder = async (collectionId: string, parentFolderId?: string) => {
-    const folder: Folder = {
+    const folder: FolderType = {
       id: crypto.randomUUID(),
       collection_id: collectionId,
       parent_folder_id: parentFolderId ?? null,
@@ -113,23 +195,56 @@ export function Sidebar({
     closeContextMenu();
   };
 
-  const renderFolder = (folder: Folder, depth: number) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeReq = requests.find(r => r.id === active.id);
+    const overReq = requests.find(r => r.id === over.id);
+    if (!activeReq || !overReq) return;
+
+    // Only reorder within the same container (same folder_id and collection_id)
+    if (activeReq.folder_id !== overReq.folder_id || activeReq.collection_id !== overReq.collection_id) return;
+
+    const siblings = requests
+      .filter(r => r.collection_id === activeReq.collection_id && r.folder_id === activeReq.folder_id)
+      .sort((a, b) => a.sort_order - b.sort_order);
+
+    const ids = siblings.map(r => r.id);
+    const oldIndex = ids.indexOf(activeReq.id);
+    const newIndex = ids.indexOf(overReq.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    ids.splice(oldIndex, 1);
+    ids.splice(newIndex, 0, activeReq.id);
+
+    try {
+      await api.reorderRequests(ids);
+      onDataChange();
+    } catch (e) { console.error(e); }
+  };
+
+  const renderFolder = (folder: FolderType, depth: number) => {
     const isCollapsed = collapsed.has(folder.id);
     const subfolders = folders.filter(f => f.parent_folder_id === folder.id);
-    const folderRequests = requests.filter(r => r.folder_id === folder.id);
+    const folderRequests = requests
+      .filter(r => r.folder_id === folder.id)
+      .sort((a, b) => a.sort_order - b.sort_order);
 
     return (
       <div key={folder.id}>
         <div
-          className="flex items-center gap-2 py-2 cursor-pointer hover:bg-[var(--surface-2)] transition-colors"
-          style={{ paddingLeft: 14 + depth * 18, paddingRight: 10 }}
+          className="flex items-center gap-2 py-2.5 cursor-pointer hover:bg-[var(--surface-2)] transition-colors"
+          style={{ paddingLeft: 16 + depth * 20, paddingRight: 10 }}
           onClick={() => toggle(folder.id)}
           onContextMenu={(e) => handleContextMenu(e, "folder", folder.id)}
         >
-          <span className="text-[11px] w-3.5 text-center flex-shrink-0" style={{ color: "var(--text-muted)" }}>
-            {isCollapsed ? "▶" : "▼"}
+          <span className="flex-shrink-0 transition-transform" style={{ color: "var(--text-muted)" }}>
+            {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
           </span>
-          <span style={{ fontSize: 14 }}>📁</span>
+          <span style={{ color: "var(--text-muted)" }}>
+            {isCollapsed ? <Folder size={16} /> : <FolderOpen size={16} />}
+          </span>
           {renaming?.id === folder.id ? (
             <input
               ref={renameRef}
@@ -150,54 +265,24 @@ export function Sidebar({
         {!isCollapsed && (
           <div>
             {subfolders.map(f => renderFolder(f, depth + 1))}
-            {folderRequests.map(r => renderRequest(r, depth + 1))}
+            <SortableContext items={folderRequests.map(r => r.id)} strategy={verticalListSortingStrategy}>
+              {folderRequests.map(r => (
+                <SortableRequest
+                  key={r.id}
+                  req={r}
+                  depth={depth + 1}
+                  isSelected={r.id === selectedRequestId}
+                  meta={requestMeta.get(r.id)}
+                  renaming={renaming}
+                  renameRef={renameRef}
+                  setRenaming={setRenaming}
+                  handleRename={handleRename}
+                  onSelectRequest={onSelectRequest}
+                  handleContextMenu={handleContextMenu}
+                />
+              ))}
+            </SortableContext>
           </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderRequest = (req: Request, depth: number) => {
-    const isSelected = req.id === selectedRequestId;
-    const meta = requestMeta.get(req.id);
-    return (
-      <div
-        key={req.id}
-        className="flex items-center gap-2 py-2 cursor-pointer transition-colors"
-        style={{
-          paddingLeft: 14 + depth * 18 + 16,
-          paddingRight: 10,
-          background: isSelected ? "var(--surface-2)" : "transparent",
-          borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
-        }}
-        onClick={() => onSelectRequest(req)}
-        onContextMenu={(e) => handleContextMenu(e, "request", req.id)}
-        onDoubleClick={() => setRenaming({ type: "request", id: req.id, value: req.name })}
-        onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--row-hover)"; }}
-        onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = isSelected ? "var(--surface-2)" : "transparent"; }}
-      >
-        {meta && (
-          <span
-            className="font-mono text-[11px] font-bold flex-shrink-0"
-            style={{ color: methodColor(meta.method), width: 34, textAlign: "right" }}
-          >
-            {meta.method.length > 3 ? meta.method.slice(0, 3) : meta.method}
-          </span>
-        )}
-        {!meta && <span style={{ width: 34 }} />}
-        {renaming?.id === req.id ? (
-          <input
-            ref={renameRef}
-            value={renaming.value}
-            onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
-            onBlur={handleRename}
-            onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setRenaming(null); }}
-            className="flex-1 bg-transparent outline-none text-sm"
-            style={{ border: "none", borderBottom: "1px solid var(--accent)", borderRadius: 0, padding: "1px 3px" }}
-            autoFocus
-          />
-        ) : (
-          <span className="truncate flex-1 text-sm">{req.name}</span>
         )}
       </div>
     );
@@ -210,75 +295,96 @@ export function Sidebar({
         className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
         style={{ borderColor: "var(--border)" }}
       >
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+        <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
           Collections
         </span>
         <button
           onClick={handleNewCollection}
           className="btn-pill accent"
           title="New Collection"
+          style={{ padding: "8px 18px", fontSize: 13 }}
         >
           + New
         </button>
       </div>
 
       {/* Tree */}
-      <div className="flex-1 overflow-y-auto py-1.5" onClick={closeContextMenu}>
-        {collections.map(col => {
-          const isCollapsed = collapsed.has(col.id);
-          const isSelected = col.id === selectedCollectionId;
-          const colFolders = folders.filter(f => f.collection_id === col.id && !f.parent_folder_id);
-          const orphanRequests = requests.filter(r => r.collection_id === col.id && !r.folder_id);
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <div className="flex-1 overflow-y-auto py-1.5" onClick={closeContextMenu}>
+          {collections.map(col => {
+            const isCollapsed = collapsed.has(col.id);
+            const isSelected = col.id === selectedCollectionId;
+            const colFolders = folders.filter(f => f.collection_id === col.id && !f.parent_folder_id);
+            const orphanRequests = requests
+              .filter(r => r.collection_id === col.id && !r.folder_id)
+              .sort((a, b) => a.sort_order - b.sort_order);
 
-          return (
-            <div key={col.id}>
-              {/* Collection header */}
-              <div
-                className="flex items-center gap-2 py-2.5 cursor-pointer transition-colors"
-                style={{
-                  paddingLeft: 10,
-                  paddingRight: 10,
-                  background: isSelected ? "var(--surface-2)" : "transparent",
-                  borderBottom: "1px solid var(--border-subtle)",
-                }}
-                onClick={() => toggle(col.id)}
-                onContextMenu={(e) => handleContextMenu(e, "collection", col.id)}
-                onDoubleClick={() => onSelectCollection(col.id)}
-                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--row-hover)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = isSelected ? "var(--surface-2)" : "transparent"; }}
-              >
-                <span className="text-[11px] w-3.5 text-center flex-shrink-0" style={{ color: "var(--text-muted)" }}>
-                  {isCollapsed ? "▶" : "▼"}
-                </span>
-                <span style={{ fontSize: 15 }}>📦</span>
-                {renaming?.id === col.id ? (
-                  <input
-                    ref={renameRef}
-                    value={renaming.value}
-                    onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
-                    onBlur={handleRename}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setRenaming(null); }}
-                    className="flex-1 bg-transparent outline-none text-sm font-medium"
-                    style={{ border: "none", borderBottom: "1px solid var(--accent)", borderRadius: 0, padding: "1px 3px" }}
-                    autoFocus
-                  />
-                ) : (
-                  <span className="truncate flex-1 text-sm font-medium">{col.name}</span>
-                )}
-                <span className="text-xs flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
-                  {requests.filter(r => r.collection_id === col.id).length}
-                </span>
-              </div>
-              {!isCollapsed && (
-                <div className="pb-1.5">
-                  {colFolders.map(f => renderFolder(f, 0))}
-                  {orphanRequests.map(r => renderRequest(r, 0))}
+            return (
+              <div key={col.id}>
+                {/* Collection header */}
+                <div
+                  className="flex items-center gap-2 py-3 cursor-pointer transition-colors"
+                  style={{
+                    paddingLeft: 10,
+                    paddingRight: 10,
+                    background: isSelected ? "var(--surface-2)" : "transparent",
+                    borderBottom: "1px solid var(--border-subtle)",
+                  }}
+                  onClick={() => toggle(col.id)}
+                  onContextMenu={(e) => handleContextMenu(e, "collection", col.id)}
+                  onDoubleClick={() => onSelectCollection(col.id)}
+                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--row-hover)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = isSelected ? "var(--surface-2)" : "transparent"; }}
+                >
+                  <span className="flex-shrink-0 transition-transform" style={{ color: "var(--text-muted)" }}>
+                    {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                  </span>
+                  <Package size={17} style={{ color: "var(--text-secondary)", flexShrink: 0 }} />
+                  {renaming?.id === col.id ? (
+                    <input
+                      ref={renameRef}
+                      value={renaming.value}
+                      onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
+                      onBlur={handleRename}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setRenaming(null); }}
+                      className="flex-1 bg-transparent outline-none text-sm font-medium"
+                      style={{ border: "none", borderBottom: "1px solid var(--accent)", borderRadius: 0, padding: "1px 3px" }}
+                      autoFocus
+                    />
+                  ) : (
+                    <span className="truncate flex-1 text-sm font-medium">{col.name}</span>
+                  )}
+                  <span className="text-xs flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
+                    {requests.filter(r => r.collection_id === col.id).length}
+                  </span>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                {!isCollapsed && (
+                  <div className="pb-1.5">
+                    {colFolders.map(f => renderFolder(f, 0))}
+                    <SortableContext items={orphanRequests.map(r => r.id)} strategy={verticalListSortingStrategy}>
+                      {orphanRequests.map(r => (
+                        <SortableRequest
+                          key={r.id}
+                          req={r}
+                          depth={0}
+                          isSelected={r.id === selectedRequestId}
+                          meta={requestMeta.get(r.id)}
+                          renaming={renaming}
+                          renameRef={renameRef}
+                          setRenaming={setRenaming}
+                          handleRename={handleRename}
+                          onSelectRequest={onSelectRequest}
+                          handleContextMenu={handleContextMenu}
+                        />
+                      ))}
+                    </SortableContext>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </DndContext>
 
       {/* Context menu */}
       {contextMenu && (

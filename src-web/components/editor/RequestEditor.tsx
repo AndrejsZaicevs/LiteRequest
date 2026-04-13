@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Send } from "lucide-react";
 import type { RequestData, KeyValuePair, HttpMethod } from "../../lib/types";
 import { methodColor, HTTP_METHODS } from "../../lib/types";
 
@@ -39,7 +40,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
         <select
           value={data.method}
           onChange={(e) => updateField("method", e.target.value as HttpMethod)}
-          className="h-11 px-3 font-mono text-sm font-bold border-r cursor-pointer flex-shrink-0"
+          className="h-12 px-3 font-mono text-base font-bold border-r cursor-pointer flex-shrink-0"
           style={{
             background: "var(--surface-1)",
             color: methodColor(data.method),
@@ -48,7 +49,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
             outline: "none",
             border: "none",
             borderRight: "1px solid var(--border)",
-            minWidth: 90,
+            minWidth: 100,
           }}
         >
           {HTTP_METHODS.map(m => (
@@ -59,7 +60,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
         {/* Base path prefix (non-editable) */}
         {showBasePath && (
           <span
-            className="h-11 flex items-center px-2.5 font-mono text-xs flex-shrink-0 select-none"
+            className="h-12 flex items-center px-2.5 font-mono text-sm flex-shrink-0 select-none"
             style={{ color: "var(--text-muted)", background: "var(--surface-1)", borderRight: "1px solid var(--border-subtle)" }}
             title={basePath}
           >
@@ -72,7 +73,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           value={data.url}
           onChange={(e) => updateField("url", e.target.value)}
           placeholder={showBasePath ? "/path..." : "https://api.example.com/path"}
-          className="flex-1 h-11 px-3 font-mono text-sm bg-transparent outline-none"
+          className="flex-1 h-12 px-3 font-mono text-base bg-transparent outline-none"
           style={{ color: "var(--text-primary)", border: "none", borderRadius: 0 }}
           onKeyDown={(e) => { if (e.key === "Enter") onSend(); }}
         />
@@ -81,13 +82,13 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
         <button
           onClick={onSend}
           disabled={isLoading}
-          className="h-11 px-6 font-semibold text-sm text-white transition-colors flex-shrink-0"
+          className="h-12 px-7 font-semibold text-base text-white transition-colors flex-shrink-0 flex items-center gap-2"
           style={{
             background: isLoading ? "var(--surface-2)" : "var(--accent)",
             cursor: isLoading ? "wait" : "pointer",
           }}
         >
-          {isLoading ? "Sending…" : "Send"}
+          {isLoading ? "Sending…" : <><Send size={16} /> Send</>}
         </button>
       </div>
 
@@ -100,7 +101,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           <button
             key={tab}
             onClick={() => handleBodyTabChange(tab)}
-            className="px-3 py-2.5 text-xs font-medium capitalize transition-colors"
+            className="px-3 py-3 text-sm font-medium capitalize transition-colors"
             style={{
               color: bodyTab === tab ? "var(--accent)" : "var(--text-muted)",
               borderBottom: bodyTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
@@ -127,7 +128,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           <textarea
             value={data.body}
             onChange={(e) => updateField("body", e.target.value)}
-            className="w-full h-full p-4 font-mono text-sm resize-none bg-transparent outline-none"
+            className="w-full h-full p-4 font-mono text-base leading-relaxed resize-none bg-transparent outline-none"
             style={{ color: "var(--text-primary)", border: "none" }}
             placeholder='{"key": "value"}'
             spellCheck={false}
@@ -145,7 +146,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           <textarea
             value={data.body}
             onChange={(e) => updateField("body", e.target.value)}
-            className="w-full h-full p-4 font-mono text-sm resize-none bg-transparent outline-none"
+            className="w-full h-full p-4 font-mono text-base leading-relaxed resize-none bg-transparent outline-none"
             style={{ color: "var(--text-primary)", border: "none" }}
             placeholder="Raw body content..."
             spellCheck={false}

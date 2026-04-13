@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Settings } from "lucide-react";
 import type { Environment, EnvVariable, KeyValuePair, ClientCertEntry } from "../../lib/types";
 import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
@@ -137,7 +138,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
       {/* Header */}
       <div className="px-6 pt-5 pb-3 flex-shrink-0">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <span>⚙️</span> Settings
+          <Settings size={20} style={{ color: "var(--text-secondary)" }} /> Settings
         </h2>
         <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
           Global application settings — environments, default headers, variables, and certificates
@@ -153,7 +154,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="px-4 py-2.5 text-xs font-medium capitalize transition-colors"
+            className="px-4 py-3 text-sm font-medium capitalize transition-colors"
             style={{
               color: tab === t ? "var(--accent)" : "var(--text-muted)",
               borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
@@ -206,7 +207,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                       <span className="flex-1 text-xs truncate">{env.name}</span>
                     )}
                     {env.is_active && (
-                      <span className="text-[10px] px-2 py-0.5 rounded font-medium ml-2 flex-shrink-0"
+                      <span className="text-[11px] px-2 py-0.5 rounded font-medium ml-2 flex-shrink-0"
                         style={{ background: "var(--accent)", color: "#fff" }}>
                         active
                       </span>

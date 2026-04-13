@@ -154,7 +154,7 @@ export function Inspector({
           {groupedVersions.map(group => (
             <div key={group.label}>
               <div
-                className="px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-wider"
+                className="px-3.5 py-1.5 text-xs font-medium uppercase tracking-wider"
                 style={{ color: "var(--text-muted)", background: "var(--surface-0)" }}
               >
                 {group.label}
@@ -166,7 +166,7 @@ export function Inspector({
                   <button
                     key={v.id}
                     onClick={() => onSelectVersion(v.id)}
-                    className="w-full text-left px-3.5 py-2 text-xs flex items-center gap-2 transition-colors"
+                    className="w-full text-left px-3.5 py-2.5 text-xs flex items-center gap-2 transition-colors"
                     style={{
                       background: isSelected ? "var(--surface-2)" : "transparent",
                       borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
@@ -174,13 +174,13 @@ export function Inspector({
                     onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--row-hover)"; }}
                     onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
                   >
-                    <span className="font-mono text-[11px] font-bold" style={{ color: "var(--text-muted)" }}>
+                    <span className="font-mono text-xs font-bold" style={{ color: "var(--text-muted)" }}>
                       {v.data.method}
                     </span>
                     <span className="truncate flex-1 font-mono text-xs" style={{ color: "var(--text-secondary)" }}>
                       {v.data.url || "(empty)"}
                     </span>
-                    <span className="text-[11px] flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
+                    <span className="text-xs flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
                       {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </button>
@@ -206,7 +206,7 @@ export function Inspector({
                 <select
                   value={execEnvFilter}
                   onChange={(e) => setExecEnvFilter(e.target.value)}
-                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: 4, fontSize: 11, padding: "4px 20px 4px 8px" }}
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: 4, fontSize: 12, padding: "5px 22px 5px 9px" }}
                 >
                   <option value="all">All envs</option>
                   {environments.map(env => (
@@ -218,7 +218,7 @@ export function Inspector({
                 <select
                   value={execVersionFilter}
                   onChange={(e) => setExecVersionFilter(e.target.value)}
-                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: 4, fontSize: 11, padding: "4px 20px 4px 8px" }}
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: 4, fontSize: 12, padding: "5px 22px 5px 9px" }}
                 >
                   <option value="all">All versions</option>
                   {versions.map((v, i) => (
@@ -232,7 +232,7 @@ export function Inspector({
           {groupedExecutions.map(group => (
             <div key={group.label}>
               <div
-                className="px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-wider"
+                className="px-3.5 py-1.5 text-xs font-medium uppercase tracking-wider"
                 style={{ color: "var(--text-muted)", background: "var(--surface-0)" }}
               >
                 {group.label}
@@ -245,7 +245,7 @@ export function Inspector({
                   <button
                     key={exec.id}
                     onClick={() => onSelectExecution(exec.id)}
-                    className="w-full text-left px-3.5 py-2 text-xs flex items-center gap-2.5 transition-colors"
+                    className="w-full text-left px-3.5 py-2.5 text-xs flex items-center gap-3 transition-colors"
                     style={{
                       background: isSelected ? "var(--surface-2)" : "transparent",
                       borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
@@ -254,7 +254,7 @@ export function Inspector({
                     onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
                   >
                     <span
-                      className="font-mono font-bold text-xs w-9 text-center rounded px-1 py-0.5"
+                      className="font-mono font-bold text-sm w-9 text-center rounded px-1 py-0.5"
                       style={{
                         color: statusColor(status),
                         background: `${statusColor(status)}15`,
@@ -266,7 +266,7 @@ export function Inspector({
                       {exec.latency_ms}ms
                     </span>
                     <span className="flex-1" />
-                    <span className="text-[11px] flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
+                    <span className="text-xs flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
                       {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </button>

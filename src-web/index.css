@@ -35,7 +35,7 @@ html, body, #root {
   background: var(--surface-0);
   color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-size: 14px;
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -72,8 +72,8 @@ input, textarea, select {
   color: var(--text-primary);
   border: 1px solid var(--border);
   border-radius: 5px;
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: 10px 14px;
+  font-size: 14px;
   transition: border-color 0.15s;
 }
 input:focus, textarea:focus, select:focus {
@@ -100,7 +100,7 @@ button {
   border: none;
   color: var(--text-primary);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-family: inherit;
 }
 
@@ -109,9 +109,9 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 14px;
+  padding: 7px 16px;
   border-radius: 5px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -134,8 +134,8 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
-  font-size: 12px;
+  padding: 12px 16px;
+  font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -152,7 +152,7 @@ button {
   margin-left: auto;
   padding: 2px 8px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   background: var(--surface-3);
   color: var(--text-secondary);
@@ -163,15 +163,15 @@ button {
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--border-subtle);
-  min-height: 38px;
+  min-height: 42px;
   transition: background 0.1s;
 }
 .kv-row:hover {
   background: var(--row-hover);
 }
 .kv-row .kv-cell {
-  padding: 7px 12px;
-  font-size: 13px;
+  padding: 9px 14px;
+  font-size: 14px;
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
   flex: 1;
   min-width: 0;
@@ -189,13 +189,13 @@ button {
   background: var(--border-subtle);
 }
 .kv-row .kv-action {
-  width: 34px;
+  width: 38px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
   transition: color 0.15s;
 }
@@ -221,8 +221,8 @@ button {
 
 /* Subtle label */
 .label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
-  margin-bottom: 5px;
+  margin-bottom: 6px;
 }

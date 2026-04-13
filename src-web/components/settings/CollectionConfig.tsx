@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Package } from "lucide-react";
 import type { Collection, Environment, VarDef, VarRow, AuthConfig, KeyValuePair } from "../../lib/types";
 import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
@@ -122,7 +123,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
       {/* Header */}
       <div className="px-6 pt-5 pb-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <span>📦</span> {collection.name}
+          <Package size={20} style={{ color: "var(--text-secondary)" }} /> {collection.name}
         </h2>
         <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
           Collection settings — configure base path, authentication, headers, and variables
@@ -138,7 +139,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="px-4 py-2.5 text-xs font-medium capitalize transition-colors"
+            className="px-4 py-3 text-sm font-medium capitalize transition-colors"
             style={{
               color: tab === t ? "var(--accent)" : "var(--text-muted)",
               borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
