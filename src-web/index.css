@@ -23,12 +23,6 @@ html, body, #root {
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, "Liberation Mono", monospace;
 }
 
-/* Global focus ring */
-*:focus-visible {
-  outline: 1px solid #3b82f6;
-  outline-offset: -1px;
-}
-
 /* Global placeholder color */
 input::placeholder, textarea::placeholder {
   color: #4b5563;

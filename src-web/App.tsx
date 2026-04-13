@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type {
   Collection, Folder, Request, RequestVersion, RequestExecution,
   Environment, EnvVariable, RequestData, ResponseData, HttpMethod,
+  KeyValuePair, AuthConfig,
 } from "./lib/types";
 import { defaultRequestData } from "./lib/types";
 import * as api from "./lib/api";
@@ -262,20 +263,60 @@ export default function App() {
     try {
       // Build variables
       const variables: Record<string, string> = {};
-      // Global env variables
       for (const v of envVariables) {
         variables[v.key] = v.value;
       }
-      // Collection variables
       const colVars = await api.getActiveCollectionVariables(currentRequest.collection_id);
       for (const [k, v] of colVars) {
         variables[k] = v;
       }
-      // Collection name as variable
       const col = collections.find(c => c.id === currentRequest.collection_id);
       if (col) variables["collectionName"] = col.name;
 
       const basePath = col?.base_path ?? "";
+
+      // Merge collection default headers + auth into request headers
+      // Request-level headers take precedence over collection defaults
+      const requestHeaderKeys = new Set(
+        editorData.headers.filter(h => h.enabled && h.key).map(h => h.key.toLowerCase())
+      );
+      const extraHeaders: KeyValuePair[] = [];
+
+      // Collection default headers (prepend if not overridden by request)
+      if (col?.headers_config) {
+        try {
+          const defaultHeaders = JSON.parse(col.headers_config) as KeyValuePair[];
+          for (const h of defaultHeaders.filter(h => h.enabled && h.key)) {
+            if (!requestHeaderKeys.has(h.key.toLowerCase())) {
+              extraHeaders.push(h);
+              requestHeaderKeys.add(h.key.toLowerCase());
+            }
+          }
+        } catch { /* ignore malformed */ }
+      }
+
+      // Collection auth header (append if key not already present)
+      if (col?.auth_config) {
+        try {
+          const auth = JSON.parse(col.auth_config) as AuthConfig;
+          let authHeader: KeyValuePair | null = null;
+          if (auth.auth_type === "bearer" && auth.bearer_token) {
+            authHeader = { key: "Authorization", value: `Bearer ${auth.bearer_token}`, enabled: true };
+          } else if (auth.auth_type === "basic") {
+            const encoded = btoa(`${auth.basic_username ?? ""}:${auth.basic_password ?? ""}`);
+            authHeader = { key: "Authorization", value: `Basic ${encoded}`, enabled: true };
+          } else if (auth.auth_type === "api_key" && auth.api_key_value) {
+            authHeader = { key: auth.api_key_header ?? "X-API-Key", value: auth.api_key_value, enabled: true };
+          }
+          if (authHeader && !requestHeaderKeys.has(authHeader.key.toLowerCase())) {
+            extraHeaders.push(authHeader);
+          }
+        } catch { /* ignore malformed */ }
+      }
+
+      const effectiveData: RequestData = extraHeaders.length > 0
+        ? { ...editorData, headers: [...extraHeaders, ...editorData.headers] }
+        : editorData;
 
       // Get client certs from settings
       let clientCerts: import("./lib/types").ClientCertEntry[] = [];
@@ -285,7 +326,7 @@ export default function App() {
       } catch { /* ignore */ }
 
       const [response, latency] = await api.executeRequest(
-        editorData, variables, basePath, clientCerts,
+        effectiveData, variables, basePath, clientCerts,
       );
       setCurrentResponse(response);
       setCurrentLatency(latency);

@@ -47,7 +47,8 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
     setBasePath(collection.base_path);
     setAuthConfig(parseAuthConfig(collection.auth_config));
     setHeadersConfig(parseHeadersConfig(collection.headers_config));
-  }, [collection]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collectionId]); // Only reset when switching collections, not on every parent refresh
 
   const toggle = (s: Section) => setOpen(prev => {
     const next = new Set(prev);
