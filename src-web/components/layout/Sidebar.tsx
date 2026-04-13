@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useCallback } from "react";
-import { ChevronRight, ChevronDown, Folder, FolderOpen, Package, Plus } from "lucide-react";
+import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Plus } from "lucide-react";
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable,
@@ -358,10 +358,10 @@ export function Sidebar({
       <DnDRow key={folder.id} item={item} dropState={dropState}>
         {(isDropInside) => (
           <div
-            className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer rounded-md mx-1.5 transition-colors group ${
-              isDropInside ? "bg-blue-500/15 ring-1 ring-blue-500/40" : "hover:bg-[#1a1a1a]"
+            className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer text-sm rounded-md mx-1.5 transition-colors group ${
+              isDropInside ? "bg-blue-500/15 ring-1 ring-blue-500/40" : "hover:bg-gray-800"
             }`}
-            style={{ marginLeft: pl }}
+            style={{ paddingLeft: pl }}
             onClick={e => { e.stopPropagation(); toggle(folder.id); }}
             onContextMenu={e => handleContextMenu(e, "folder", folder.id)}
             onDoubleClick={e => { e.stopPropagation(); setRenaming({ type: "folder", id: folder.id, value: folder.name }); }}
@@ -374,7 +374,7 @@ export function Sidebar({
             </span>
             {renaming?.id === folder.id
               ? renameInput(renaming.value, v => setRenaming({ ...renaming, value: v }))
-              : <span className="truncate flex-1 text-sm text-gray-400">{folder.name}</span>
+              : <span className="truncate flex-1 text-gray-400">{folder.name}</span>
             }
           </div>
         )}
@@ -408,25 +408,26 @@ export function Sidebar({
       <DnDRow key={req.id} item={item} dropState={dropState}>
         {(_isDropInside) => (
           <div
-            className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer rounded-md mx-1.5 transition-colors group ${
-              isSelected ? "bg-blue-500/10 text-blue-400" : "hover:bg-[#1a1a1a]"
+            className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer text-sm rounded-md mx-1.5 transition-colors group ${
+              isSelected ? "bg-blue-500/10 text-blue-400" : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
             }`}
-            style={{ marginLeft: pl }}
+            style={{ paddingLeft: pl }}
             onClick={e => { e.stopPropagation(); onSelectRequest(req); }}
             onContextMenu={e => handleContextMenu(e, "request", req.id)}
             onDoubleClick={e => { e.stopPropagation(); setRenaming({ type: "request", id: req.id, value: req.name }); }}
           >
-            {colors ? (
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold border shrink-0 ${colors.bg} ${colors.text} ${colors.border}`}>
-                {method}
-              </span>
-            ) : (
-              <span className="w-10 shrink-0" />
-            )}
+            {/* Spacer to align with folder chevrons */}
+            <span className="w-3.5 shrink-0" />
+            <FileText size={14} className={isSelected ? "text-blue-400" : "text-gray-500"} />
             {renaming?.id === req.id
               ? renameInput(renaming.value, v => setRenaming({ ...renaming, value: v }))
-              : <span className={`truncate flex-1 text-sm ${isSelected ? "text-blue-400" : "text-gray-300"}`}>{req.name}</span>
+              : <span className="truncate flex-1">{req.name}</span>
             }
+            {isSelected && colors && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono border shrink-0 ${colors.bg} ${colors.text} ${colors.border}`}>
+                {method}
+              </span>
+            )}
           </div>
         )}
       </DnDRow>
@@ -441,11 +442,11 @@ export function Sidebar({
   return (
     <div className="h-full flex flex-col bg-[#161616]">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 h-12 border-b border-gray-800 shrink-0">
-        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Collections</span>
+      <div className="p-4 border-b border-gray-800 flex items-center justify-between shrink-0">
+        <span className="font-semibold text-sm text-gray-200">Collections</span>
         <button
           onClick={handleNewCollection}
-          className="flex items-center justify-center w-7 h-7 rounded-md text-gray-400 hover:text-blue-400 hover:bg-[#1a1a1a] transition-colors"
+          className="text-gray-400 hover:text-gray-200 transition-colors"
         >
           <Plus size={16} />
         </button>
@@ -459,7 +460,7 @@ export function Sidebar({
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="flex-1 overflow-y-auto py-2" onClick={closeCtx}>
+        <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-0.5" onClick={closeCtx}>
           {collections.map(col => {
             const isCollapsed = collapsed.has(col.id);
             const isSelected  = col.id === selectedCollectionId;
@@ -471,8 +472,8 @@ export function Sidebar({
               <div key={col.id} className="mb-1">
                 {/* Collection header */}
                 <div
-                  className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md mx-1.5 transition-colors ${
-                    isSelected ? "bg-[#242424]" : "hover:bg-[#1a1a1a]"
+                  className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer rounded-md mx-1.5 transition-colors ${
+                    isSelected ? "bg-[#242424]" : "hover:bg-gray-800"
                   }`}
                   onClick={() => toggle(col.id)}
                   onContextMenu={e => handleContextMenu(e, "collection", col.id)}
@@ -481,7 +482,7 @@ export function Sidebar({
                   <span className="shrink-0 text-gray-500">
                     {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                   </span>
-                  <Package size={14} className="shrink-0 text-gray-500" />
+                  <Folder size={14} className="shrink-0 text-gray-500" />
                   {renaming?.id === col.id
                     ? renameInput(renaming.value, v => setRenaming({ ...renaming, value: v }))
                     : <span className="truncate flex-1 text-sm font-medium text-gray-200">{col.name}</span>

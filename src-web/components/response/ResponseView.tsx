@@ -48,7 +48,7 @@ export function ResponseView({ response, latency, isLoading }: ResponseViewProps
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#161616]">
       {/* Status bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] text-sm flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 text-sm flex-shrink-0">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${statusDotColor(response.status)}`} />

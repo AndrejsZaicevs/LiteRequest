@@ -127,7 +127,7 @@ export function Inspector({
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#161616]">
       {/* Header */}
-      <div className="h-12 border-b border-[var(--border)] flex items-center px-4 gap-2 flex-shrink-0">
+      <div className="h-12 border-b border-gray-800 flex items-center px-4 gap-2 flex-shrink-0">
         <SlidersHorizontal size={14} className="text-gray-400" />
         <span className="font-semibold text-sm text-gray-200">Inspector</span>
       </div>

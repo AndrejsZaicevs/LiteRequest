@@ -32,7 +32,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* URL Bar */}
-      <div className="p-4 border-b border-[var(--border)] bg-[#121212] flex-shrink-0">
+      <div className="p-4 border-b border-gray-800 bg-[#121212] flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="flex shadow-sm rounded-md overflow-hidden border border-gray-700/60 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500/50 transition-all flex-1 bg-[#1a1a1a]">
             {/* Method selector */}
@@ -77,9 +77,9 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
       </div>
 
       {/* Body toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[#121212] flex-shrink-0">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Request Body</span>
-        <div className="flex bg-[#1a1a1a] rounded p-0.5 border border-[var(--border)]">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-[#121212] flex-shrink-0">
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Request Body</span>
+        <div className="flex bg-[#1a1a1a] rounded p-0.5 border border-gray-800">
           {(["none", "json", "form", "raw"] as const).map(tab => (
             <button
               key={tab}
