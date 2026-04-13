@@ -1,18 +1,20 @@
 @import "tailwindcss";
 
-/* Dark theme base */
+/* ─── Dark theme – matches example design system ─── */
 :root {
   --accent: #3b82f6;
   --accent-hover: #2563eb;
-  --surface-0: #18181b;
-  --surface-1: #1e1e22;
-  --surface-2: #27272c;
-  --surface-3: #303036;
-  --border: #37373e;
-  --border-subtle: #2e2e34;
-  --text-primary: #e4e4e7;
-  --text-secondary: #a1a1aa;
-  --text-muted: #636370;
+  --surface-0: #121212;
+  --surface-1: #161616;
+  --surface-2: #1a1a1a;
+  --surface-3: #242424;
+  --surface-deep: #0d0d0d;
+  --border: #232323;
+  --border-subtle: #1c1c1c;
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --text-faint: #4b5563;
   --success: #49cc90;
   --warning: #fca130;
   --danger: #f93e3e;
@@ -35,27 +37,17 @@ html, body, #root {
   background: var(--surface-0);
   color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-size: 15px;
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--surface-3);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-/* Monospace for code */
+/* Monospace */
 .font-mono {
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, "Liberation Mono", monospace;
 }
@@ -66,14 +58,14 @@ html, body, #root {
   outline-offset: -1px;
 }
 
-/* Input base style */
+/* Input base */
 input, textarea, select {
-  background: var(--surface-0);
+  background: var(--surface-deep);
   color: var(--text-primary);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 10px 14px;
-  font-size: 14px;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
   transition: border-color 0.15s;
 }
 input:focus, textarea:focus, select:focus {
@@ -81,14 +73,14 @@ input:focus, textarea:focus, select:focus {
   outline: none;
 }
 input::placeholder, textarea::placeholder {
-  color: var(--text-muted);
+  color: var(--text-faint);
 }
 
-/* Select styling */
+/* Select */
 select {
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23636370' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
   padding-right: 26px;
@@ -100,47 +92,22 @@ button {
   border: none;
   color: var(--text-primary);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-family: inherit;
 }
 
-/* Pill button */
-.btn-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 7px 16px;
-  border-radius: 5px;
-  font-size: 13px;
-  font-weight: 500;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-secondary);
-  transition: all 0.15s;
-}
-.btn-pill:hover {
-  background: var(--surface-3);
-  color: var(--text-primary);
-}
-.btn-pill.accent {
-  color: var(--accent);
-}
-.btn-pill.danger {
-  color: var(--danger);
-}
-
-/* Section header */
+/* ─── Collapsible section header (Inspector pattern) ─── */
 .section-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
-  font-size: 13px;
-  font-weight: 600;
+  padding: 10px 12px;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
   user-select: none;
   transition: background 0.15s;
@@ -150,70 +117,83 @@ button {
 }
 .section-header .badge {
   margin-left: auto;
-  padding: 2px 8px;
+  padding: 1px 7px;
   border-radius: 10px;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
   background: var(--surface-3);
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
-/* KV table rows */
+/* ─── KV table rows (compact inspector style) ─── */
 .kv-row {
   display: flex;
   align-items: center;
-  border-bottom: 1px solid var(--border-subtle);
-  min-height: 42px;
-  transition: background 0.1s;
+  gap: 4px;
+  padding: 2px 8px;
+  border-bottom: 1px solid transparent;
+  min-height: 30px;
+  transition: border-color 0.1s;
 }
 .kv-row:hover {
-  background: var(--row-hover);
+  border-bottom-color: var(--border);
 }
 .kv-row .kv-cell {
-  padding: 9px 14px;
-  font-size: 14px;
+  padding: 4px 6px;
+  font-size: 12px;
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
   flex: 1;
   min-width: 0;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
   outline: none;
   color: var(--text-primary);
+  transition: all 0.15s;
+}
+.kv-row .kv-cell:focus {
+  border-color: var(--border);
+  background: var(--surface-2);
 }
 .kv-row .kv-cell::placeholder {
-  color: var(--text-muted);
+  color: var(--text-faint);
 }
 .kv-row .kv-divider {
-  width: 1px;
-  align-self: stretch;
-  background: var(--border-subtle);
+  display: none; /* Hidden in compact mode */
 }
 .kv-row .kv-action {
-  width: 38px;
+  width: 20px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 15px;
+  font-size: 13px;
   cursor: pointer;
   transition: color 0.15s;
+  opacity: 0;
+}
+.kv-row:hover .kv-action {
+  opacity: 1;
 }
 .kv-row .kv-action:hover {
-  color: var(--text-primary);
+  color: var(--danger);
+}
+.kv-row .kv-action.always-visible {
+  opacity: 1;
 }
 .kv-row.placeholder-row {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: text;
 }
 
-/* Resizable panels - prevent text selection during drag */
+/* Resizable panels */
 .resizing * {
   user-select: none !important;
   cursor: col-resize !important;
 }
 
-/* Variable highlight in text */
+/* Variable highlight */
 .var-highlight {
   color: #e2b714;
   font-weight: 500;
@@ -221,7 +201,7 @@ button {
 
 /* Subtle label */
 .label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
   margin-bottom: 6px;

@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import type { Collection, Folder, Request } from "../../lib/types";
+import { Search, FileText, Package, Folder, Clock } from "lucide-react";
+import type { Collection, Folder as FolderType, Request } from "../../lib/types";
+import { METHOD_STYLES } from "../../lib/types";
 
 interface GlobalSearchProps {
   collections: Collection[];
-  folders: Folder[];
+  folders: FolderType[];
   requests: Request[];
   onClose: () => void;
   onSelectRequest: (req: Request) => void;
   onSelectCollection: (id: string) => void;
+  requestMeta?: Map<string, { method: string; url: string }>;
 }
 
 interface SearchResult {
@@ -15,12 +18,14 @@ interface SearchResult {
   id: string;
   label: string;
   detail: string;
-  item: Collection | Folder | Request;
+  item: Collection | FolderType | Request;
+  method?: string;
 }
 
 export function GlobalSearch({
   collections, folders, requests,
   onClose, onSelectRequest, onSelectCollection,
+  requestMeta,
 }: GlobalSearchProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -49,12 +54,13 @@ export function GlobalSearch({
     for (const r of requests) {
       if (r.name.toLowerCase().includes(q)) {
         const col = collections.find(c => c.id === r.collection_id);
-        out.push({ type: "request", id: r.id, label: r.name, detail: col?.name ?? "", item: r });
+        const meta = requestMeta?.get(r.id);
+        out.push({ type: "request", id: r.id, label: r.name, detail: col?.name ?? "", item: r, method: meta?.method });
       }
     }
 
     return out.slice(0, 50);
-  }, [query, collections, folders, requests]);
+  }, [query, collections, folders, requests, requestMeta]);
 
   useEffect(() => { setSelectedIndex(0); }, [query]);
 
@@ -71,61 +77,111 @@ export function GlobalSearch({
     if (e.key === "Enter" && results[selectedIndex]) { handleSelect(results[selectedIndex]); }
   };
 
+  const iconFor = (type: string) => {
+    if (type === "collection") return <Package size={14} className="text-gray-500 shrink-0" />;
+    if (type === "folder") return <Folder size={14} className="text-gray-500 shrink-0" />;
+    return <FileText size={14} className="text-gray-500 group-hover:text-blue-400 shrink-0" />;
+  };
+
+  // Group results by type
+  const grouped = useMemo(() => {
+    const groups: { label: string; items: SearchResult[] }[] = [];
+    const reqs = results.filter(r => r.type === "request");
+    const cols = results.filter(r => r.type === "collection");
+    const folds = results.filter(r => r.type === "folder");
+    if (reqs.length) groups.push({ label: "Saved Requests", items: reqs });
+    if (cols.length) groups.push({ label: "Collections", items: cols });
+    if (folds.length) groups.push({ label: "Folders", items: folds });
+    return groups;
+  }, [results]);
+
+  let flatIdx = -1;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-24" onClick={onClose}>
-      <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.5)" }} />
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] bg-black/60 backdrop-blur-sm px-4"
+      onClick={onClose}
+    >
       <div
-        className="relative w-full max-w-lg rounded-lg shadow-2xl overflow-hidden"
-        style={{ background: "var(--surface-1)", border: "1px solid var(--border)" }}
+        className="w-full max-w-2xl bg-[#161616] border border-gray-700 shadow-2xl rounded-xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Search collections, folders, requests..."
-          className="w-full px-4 py-3 text-sm bg-transparent border-none outline-none"
-          style={{ color: "var(--text-primary)", borderBottom: "1px solid var(--border)" }}
-        />
+        {/* Search input */}
+        <div className="flex items-center px-4 py-4 border-b border-gray-800 bg-[#121212]">
+          <Search className="text-gray-400 mr-3 shrink-0" size={18} />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Search collections, folders, requests..."
+            className="flex-1 bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 text-base"
+            style={{ border: "none", padding: 0 }}
+          />
+          <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700 ml-3">ESC</span>
+        </div>
 
+        {/* Results */}
         {results.length > 0 && (
-          <div className="max-h-80 overflow-y-auto">
-            {results.map((r, i) => (
-              <button
-                key={`${r.type}-${r.id}`}
-                onClick={() => handleSelect(r)}
-                className="w-full text-left px-4 py-2 flex items-center gap-2 text-xs"
-                style={{
-                  background: i === selectedIndex ? "var(--surface-2)" : "transparent",
-                }}
-              >
-                <span
-                  className="px-1 py-0.5 rounded text-[10px] font-medium uppercase"
-                  style={{
-                    background: r.type === "request" ? "var(--accent)" : r.type === "collection" ? "var(--success)" : "var(--warning)",
-                    color: "#fff",
-                  }}
-                >
-                  {r.type.slice(0, 3)}
-                </span>
-                {r.type === "request" && (
-                  <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                    REQ
-                  </span>
-                )}
-                <span className="truncate" style={{ color: "var(--text-primary)" }}>{r.label}</span>
-                <span className="truncate ml-auto text-[10px]" style={{ color: "var(--text-muted)" }}>{r.detail}</span>
-              </button>
+          <div className="max-h-[60vh] overflow-y-auto p-2 flex flex-col gap-4 bg-[#161616]">
+            {grouped.map(group => (
+              <div key={group.label}>
+                <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-wider">{group.label}</div>
+                <div className="flex flex-col gap-0.5 mt-1">
+                  {group.items.map(r => {
+                    flatIdx++;
+                    const idx = flatIdx;
+                    const isSelected = idx === selectedIndex;
+                    const method = r.method;
+                    const colors = method ? METHOD_STYLES[method] : undefined;
+
+                    return (
+                      <button
+                        key={`${r.type}-${r.id}`}
+                        onClick={() => handleSelect(r)}
+                        className={`w-full flex items-center justify-between p-2 rounded-md transition-colors text-left group ${
+                          isSelected ? "bg-blue-500/10 ring-1 ring-blue-500/30" : "hover:bg-[#1a1a1a]"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          {iconFor(r.type)}
+                          <span className="text-sm text-gray-300 group-hover:text-blue-400 truncate">{r.label}</span>
+                          {r.detail && (
+                            <span className="text-[11px] text-gray-600 truncate">{r.detail}</span>
+                          )}
+                        </div>
+                        {method && colors && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono border ${colors.bg} ${colors.text} ${colors.border} shrink-0 ml-2`}>
+                            {method}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </div>
         )}
 
         {query && results.length === 0 && (
-          <div className="px-4 py-6 text-center text-xs" style={{ color: "var(--text-muted)" }}>
+          <div className="px-4 py-8 text-center text-sm text-gray-600">
             No results found
           </div>
         )}
+
+        {/* Footer hints */}
+        <div className="border-t border-gray-800 p-2.5 bg-[#121212] flex items-center gap-6 text-[11px] text-gray-500">
+          <div className="flex items-center gap-1.5">
+            <span className="bg-gray-800 px-1 rounded shadow-sm border border-gray-700">↑</span>
+            <span className="bg-gray-800 px-1 rounded shadow-sm border border-gray-700">↓</span>
+            to navigate
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="bg-gray-800 px-1.5 rounded shadow-sm border border-gray-700">↵</span>
+            to select
+          </div>
+        </div>
       </div>
     </div>
   );

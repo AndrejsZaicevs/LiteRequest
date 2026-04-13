@@ -3,7 +3,7 @@ import type {
   Collection, Folder, Request, RequestVersion, RequestExecution,
   Environment, EnvVariable, RequestData, ResponseData, HttpMethod,
 } from "./lib/types";
-import { defaultRequestData, methodColor } from "./lib/types";
+import { defaultRequestData } from "./lib/types";
 import * as api from "./lib/api";
 import { TopBar } from "./components/layout/TopBar";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -334,7 +334,7 @@ export default function App() {
   const mainWidth = window.innerWidth - sidebarWidth - (showInspector ? inspectorWidth : 0);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#121212]">
       <TopBar
         environments={environments}
         onEnvChange={async (id) => {
@@ -368,19 +368,21 @@ export default function App() {
 
         {/* Sidebar resize handle */}
         <div
-          className="w-1 cursor-col-resize hover:bg-[var(--accent)] transition-colors flex-shrink-0"
-          style={{ background: "var(--border)" }}
+          className="w-px cursor-col-resize hover:bg-blue-500/50 transition-colors shrink-0 bg-gray-800"
           onMouseDown={() => startDrag("sidebar")}
         />
 
         {/* Main content */}
-        <div className="flex-1 flex flex-col overflow-hidden" style={{ minWidth: 0 }}>
+        <div className="flex-1 flex flex-col overflow-hidden bg-[#121212]" style={{ minWidth: 0 }}>
           {centerView.type === "welcome" && (
-            <div className="flex-1 flex items-center justify-center text-[var(--text-muted)]">
+            <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
-                <div className="text-2xl font-bold mb-2">LiteRequest</div>
-                <div className="text-sm">Select a request or create a new collection to get started</div>
-                <div className="text-xs mt-4 text-[var(--text-muted)]">Ctrl+K to search</div>
+                <div className="text-3xl font-bold text-gray-200 mb-3">Welcome</div>
+                <div className="text-sm text-gray-500">Select a request or create a new collection to get started</div>
+                <div className="mt-6 flex items-center justify-center gap-2 text-xs text-gray-600">
+                  <span className="bg-gray-800 px-2 py-1 rounded border border-gray-700">⌘K</span>
+                  <span>to search</span>
+                </div>
               </div>
             </div>
           )}
@@ -388,7 +390,7 @@ export default function App() {
           {centerView.type === "request" && (
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Request editor (top portion) */}
-              <div style={{ height: `${splitRatio * 100}%` }} className="flex-shrink-0 overflow-hidden border-b border-[var(--border)]">
+              <div style={{ height: `${splitRatio * 100}%` }} className="shrink-0 overflow-hidden border-b border-gray-800">
                 <RequestEditor
                   data={editorData}
                   onChange={onEditorChange}
@@ -401,8 +403,7 @@ export default function App() {
 
               {/* Split drag handle */}
               <div
-                className="h-1 cursor-row-resize hover:bg-[var(--accent)] transition-colors flex-shrink-0"
-                style={{ background: "var(--border)" }}
+                className="h-px cursor-row-resize hover:bg-blue-500/50 transition-colors shrink-0 bg-gray-800"
                 onMouseDown={() => startDrag("split")}
               />
 
@@ -437,8 +438,7 @@ export default function App() {
         {/* Inspector resize handle */}
         {showInspector && (
           <div
-            className="w-1 cursor-col-resize hover:bg-[var(--accent)] transition-colors flex-shrink-0"
-            style={{ background: "var(--border)" }}
+            className="w-px cursor-col-resize hover:bg-blue-500/50 transition-colors shrink-0 bg-gray-800"
             onMouseDown={() => startDrag("inspector")}
           />
         )}
@@ -479,6 +479,7 @@ export default function App() {
           collections={collections}
           folders={folders}
           requests={requests}
+          requestMeta={requestMeta}
           onClose={() => setSearchOpen(false)}
           onSelectRequest={(req) => {
             setSearchOpen(false);

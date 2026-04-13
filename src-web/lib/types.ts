@@ -5,15 +5,25 @@ export const HTTP_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELET
 
 export function methodColor(m: HttpMethod): string {
   switch (m) {
-    case "GET": return "#61affe";
-    case "POST": return "#49cc90";
-    case "PUT": return "#fca130";
-    case "PATCH": return "#50e3c2";
-    case "DELETE": return "#f93e3e";
-    case "HEAD": return "#9012fe";
-    case "OPTIONS": return "#0d5aa7";
+    case "GET": return "#60a5fa";
+    case "POST": return "#4ade80";
+    case "PUT": return "#facc15";
+    case "PATCH": return "#c084fc";
+    case "DELETE": return "#f87171";
+    case "HEAD": return "#9ca3af";
+    case "OPTIONS": return "#9ca3af";
   }
 }
+
+export const METHOD_STYLES: Record<string, { text: string; bg: string; border: string }> = {
+  GET:     { text: "text-blue-400",   bg: "bg-blue-500/10",   border: "border-blue-500/20" },
+  POST:    { text: "text-green-400",  bg: "bg-green-500/10",  border: "border-green-500/20" },
+  PUT:     { text: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/20" },
+  PATCH:   { text: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20" },
+  DELETE:  { text: "text-red-400",    bg: "bg-red-500/10",    border: "border-red-500/20" },
+  HEAD:    { text: "text-gray-400",   bg: "bg-gray-500/10",   border: "border-gray-500/20" },
+  OPTIONS: { text: "text-gray-400",   bg: "bg-gray-500/10",   border: "border-gray-500/20" },
+};
 
 // ── Key-Value Pair ───────────────────────────────────────────
 export interface KeyValuePair {

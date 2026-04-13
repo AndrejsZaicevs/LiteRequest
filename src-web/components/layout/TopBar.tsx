@@ -18,27 +18,21 @@ export function TopBar({
   const activeEnv = environments.find(e => e.is_active);
 
   return (
-    <div
-      className="flex items-center h-14 px-4 gap-2 border-b flex-shrink-0 overflow-x-auto"
-      style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
-    >
-      {/* Environment chips — one per env, click to activate/deactivate */}
+    <div className="flex items-center h-12 px-4 gap-3 border-b border-[var(--border)] flex-shrink-0 bg-[#161616]">
+      {/* Environment chips */}
       {environments.length > 0 && (
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-xs font-medium mr-1" style={{ color: "var(--text-muted)" }}>Env</span>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {environments.map(env => {
             const isActive = env.is_active;
             return (
               <button
                 key={env.id}
                 onClick={() => onEnvChange(isActive ? null : env.id)}
-                className="px-3 py-1.5 rounded-full text-sm font-medium transition-all flex-shrink-0"
-                style={{
-                  background: isActive ? "var(--accent)" : "var(--surface-2)",
-                  color: isActive ? "#fff" : "var(--text-secondary)",
-                  border: isActive ? "1px solid var(--accent)" : "1px solid var(--border)",
-                  opacity: isActive ? 1 : 0.85,
-                }}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all flex-shrink-0 border ${
+                  isActive
+                    ? "bg-blue-500 text-white border-blue-500"
+                    : "bg-transparent text-gray-500 border-gray-700 hover:border-gray-500 hover:text-gray-300"
+                }`}
               >
                 {env.name}
               </button>
@@ -47,42 +41,46 @@ export function TopBar({
         </div>
       )}
 
+      {/* Search trigger — faux input */}
+      <button
+        onClick={onSearch}
+        className="flex-1 max-w-md mx-2 flex items-center justify-between bg-[#0d0d0d] border border-[var(--border)] hover:border-gray-600 rounded-md px-3 py-1.5 text-sm text-gray-500 transition-colors group"
+      >
+        <div className="flex items-center gap-2 overflow-hidden">
+          <Search size={14} className="text-gray-600 group-hover:text-gray-400 shrink-0" />
+          <span className="truncate text-xs">Search requests…</span>
+        </div>
+        <div className="flex items-center gap-1 shrink-0 ml-2">
+          <span className="text-[10px] font-mono bg-[#1a1a1a] text-gray-600 px-1.5 py-0.5 rounded border border-gray-700">⌘</span>
+          <span className="text-[10px] font-mono bg-[#1a1a1a] text-gray-600 px-1.5 py-0.5 rounded border border-gray-700">K</span>
+        </div>
+      </button>
+
       <div className="flex-1" />
 
       {/* Status messages */}
       {isLoading && (
-        <div className="text-xs animate-pulse flex-shrink-0" style={{ color: "var(--accent)" }}>
+        <div className="text-xs animate-pulse flex-shrink-0 text-blue-400">
           Sending…
         </div>
       )}
       {errorMessage && (
-        <div className="text-xs truncate max-w-xs flex-shrink-0" style={{ color: "var(--danger)" }} title={errorMessage}>
+        <div className="text-xs truncate max-w-xs flex-shrink-0 text-red-400" title={errorMessage}>
           {errorMessage}
         </div>
       )}
       {statusMessage && (
-        <div className="text-xs flex-shrink-0" style={{ color: "var(--text-muted)" }}>
+        <div className="text-xs flex-shrink-0 text-gray-500">
           {statusMessage}
         </div>
       )}
 
-      {/* Search button */}
-      <button
-        onClick={onSearch}
-        className="px-4 py-2 rounded-md text-sm hover:opacity-80 transition-opacity flex items-center gap-2 flex-shrink-0"
-        style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
-      >
-        <Search size={16} style={{ color: "var(--text-secondary)" }} />
-        <span style={{ color: "var(--text-muted)" }}>Ctrl+K</span>
-      </button>
-
       {/* Settings */}
       <button
         onClick={onSettings}
-        className="px-4 py-2 rounded-md text-sm hover:opacity-80 transition-opacity flex-shrink-0"
-        style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+        className="p-2 rounded-md text-gray-500 hover:text-gray-300 hover:bg-[#1a1a1a] transition-colors flex-shrink-0"
       >
-        <Settings size={16} style={{ color: "var(--text-secondary)" }} />
+        <Settings size={16} />
       </button>
     </div>
   );

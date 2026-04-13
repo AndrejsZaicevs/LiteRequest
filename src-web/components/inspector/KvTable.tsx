@@ -1,3 +1,4 @@
+import { Trash2, Check } from "lucide-react";
 import type { KeyValuePair } from "../../lib/types";
 
 interface KvTableProps {
@@ -27,69 +28,74 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys }: KvTableProps
   const needsEmptyRow = !fixedKeys && (!lastRow || lastRow.key !== "" || lastRow.value !== "");
 
   return (
-    <div>
+    <div className="flex flex-col gap-0.5">
       {displayRows.map((row, i) => (
         <div
           key={i}
-          className="kv-row"
+          className="group flex items-center gap-1.5 py-0.5 border-b border-transparent hover:border-gray-800"
           style={{ opacity: row.enabled ? 1 : 0.45 }}
         >
-          {!fixedKeys && (
-            <button
-              className="kv-action"
-              onClick={() => update(i, "enabled", !row.enabled)}
-            >
-              <span style={{ color: row.enabled ? "var(--accent)" : "var(--text-muted)", fontSize: 14 }}>
-                {row.enabled ? "✓" : "○"}
-              </span>
-            </button>
-          )}
-          {fixedKeys && <div style={{ width: 10 }} />}
+          {/* Checkbox */}
+          <div className="w-4 flex justify-center shrink-0">
+            {!fixedKeys && (
+              <button
+                className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center border transition-colors ${
+                  row.enabled ? "bg-blue-500 border-blue-500" : "border-gray-600 hover:border-gray-400"
+                }`}
+                onClick={() => update(i, "enabled", !row.enabled)}
+              >
+                {row.enabled && <Check size={10} className="text-white" />}
+              </button>
+            )}
+            {fixedKeys && (
+              <div className="w-3.5 h-3.5 flex items-center justify-center opacity-50">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+              </div>
+            )}
+          </div>
 
+          {/* Key input */}
           <input
             value={row.key}
             onChange={(e) => update(i, "key", e.target.value)}
             placeholder={placeholder?.key ?? "key"}
-            className="kv-cell"
-            style={{ borderRight: "none", borderRadius: 0, border: "none" }}
+            className={`w-0 flex-1 bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent rounded px-1.5 py-1 transition-all text-gray-200 ${
+              !fixedKeys ? "focus:border-gray-700 focus:bg-[#1a1a1a]" : "text-gray-500 font-mono cursor-default"
+            } ${!row.enabled ? "opacity-40 line-through" : ""}`}
             readOnly={fixedKeys}
           />
 
-          <div className="kv-divider" />
-
+          {/* Value input */}
           <input
             value={row.value}
             onChange={(e) => update(i, "value", e.target.value)}
             placeholder={placeholder?.value ?? "value"}
-            className="kv-cell"
-            style={{ border: "none", borderRadius: 0 }}
+            className={`w-0 flex-1 bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent focus:border-gray-700 focus:bg-[#1a1a1a] rounded px-1.5 py-1 transition-all text-gray-200 ${
+              !row.enabled ? "opacity-40 line-through" : ""
+            }`}
           />
 
-          {!fixedKeys && (row.key !== "" || row.value !== "") ? (
-            <button
-              className="kv-action"
-              onClick={() => remove(i)}
-              style={{ color: "var(--text-muted)" }}
-            >
-              ×
-            </button>
-          ) : (
-            <div style={{ width: 34 }} />
-          )}
+          {/* Delete */}
+          <div className="w-5 flex justify-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            {!fixedKeys && (row.key !== "" || row.value !== "") && (
+              <button onClick={() => remove(i)} className="text-gray-500 hover:text-red-400 p-0.5 rounded">
+                <Trash2 size={12} />
+              </button>
+            )}
+          </div>
         </div>
       ))}
 
       {needsEmptyRow && (
-        <div className="kv-row placeholder-row" onClick={addRow}>
-          {!fixedKeys && <div style={{ width: 34 }} />}
-          <div className="kv-cell" style={{ color: "var(--text-muted)" }}>
+        <div className="group flex items-center gap-1.5 py-0.5 opacity-40 cursor-text" onClick={addRow}>
+          <div className="w-4 shrink-0" />
+          <span className="w-0 flex-1 text-xs px-1.5 py-1 text-gray-600">
             {placeholder?.key ?? "key"}
-          </div>
-          <div className="kv-divider" />
-          <div className="kv-cell" style={{ color: "var(--text-muted)" }}>
+          </span>
+          <span className="w-0 flex-1 text-xs px-1.5 py-1 text-gray-600">
             {placeholder?.value ?? "value"}
-          </div>
-          <div style={{ width: 34 }} />
+          </span>
+          <div className="w-5 shrink-0" />
         </div>
       )}
     </div>

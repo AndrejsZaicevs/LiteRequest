@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Send } from "lucide-react";
+import { Play } from "lucide-react";
 import type { RequestData, KeyValuePair, HttpMethod } from "../../lib/types";
 import { methodColor, HTTP_METHODS } from "../../lib/types";
 
@@ -32,107 +32,89 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* URL Bar */}
-      <div
-        className="flex items-center border-b flex-shrink-0"
-        style={{ borderColor: "var(--border)", background: "var(--surface-0)" }}
-      >
-        {/* Method selector */}
-        <select
-          value={data.method}
-          onChange={(e) => updateField("method", e.target.value as HttpMethod)}
-          className="h-12 px-3 font-mono text-base font-bold border-r cursor-pointer flex-shrink-0"
-          style={{
-            background: "var(--surface-1)",
-            color: methodColor(data.method),
-            borderColor: "var(--border)",
-            borderRadius: 0,
-            outline: "none",
-            border: "none",
-            borderRight: "1px solid var(--border)",
-            minWidth: 100,
-          }}
-        >
-          {HTTP_METHODS.map(m => (
-            <option key={m} value={m} style={{ color: methodColor(m) }}>{m}</option>
-          ))}
-        </select>
+      <div className="p-4 border-b border-[var(--border)] bg-[#121212] flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="flex shadow-sm rounded-md overflow-hidden border border-gray-700/60 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500/50 transition-all flex-1 bg-[#1a1a1a]">
+            {/* Method selector */}
+            <select
+              value={data.method}
+              onChange={(e) => updateField("method", e.target.value as HttpMethod)}
+              className="bg-transparent font-semibold text-sm pl-3 pr-8 py-2 outline-none border-r border-gray-700/60 cursor-pointer"
+              style={{ color: methodColor(data.method), appearance: "none", borderRadius: 0, border: "none", borderRight: "1px solid rgba(55,65,81,0.6)" }}
+            >
+              {HTTP_METHODS.map(m => (
+                <option key={m} value={m} style={{ color: "#d1d5db" }}>{m}</option>
+              ))}
+            </select>
 
-        {/* Base path prefix (non-editable) */}
-        {showBasePath && (
-          <span
-            className="h-12 flex items-center px-2.5 font-mono text-sm flex-shrink-0 select-none"
-            style={{ color: "var(--text-muted)", background: "var(--surface-1)", borderRight: "1px solid var(--border-subtle)" }}
-            title={basePath}
+            {/* Base path + URL input */}
+            <div className="flex-1 flex items-center px-3 py-2 font-mono text-sm overflow-hidden">
+              {showBasePath && (
+                <span className="text-gray-500 shrink-0 select-none mr-px" title={basePath}>
+                  {basePath.replace(/\/+$/, "")}
+                </span>
+              )}
+              <input
+                value={data.url}
+                onChange={(e) => updateField("url", e.target.value)}
+                placeholder={showBasePath ? "/endpoint..." : "https://api.example.com/path"}
+                className="flex-1 bg-transparent text-gray-200 outline-none w-full min-w-[100px]"
+                style={{ border: "none", borderRadius: 0, padding: 0, fontSize: "inherit" }}
+                onKeyDown={(e) => { if (e.key === "Enter") onSend(); }}
+              />
+            </div>
+          </div>
+
+          {/* Send button */}
+          <button
+            onClick={onSend}
+            disabled={isLoading}
+            className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-wait"
           >
-            {basePath.replace(/\/+$/, "")}
-          </span>
-        )}
-
-        {/* URL input */}
-        <input
-          value={data.url}
-          onChange={(e) => updateField("url", e.target.value)}
-          placeholder={showBasePath ? "/path..." : "https://api.example.com/path"}
-          className="flex-1 h-12 px-3 font-mono text-base bg-transparent outline-none"
-          style={{ color: "var(--text-primary)", border: "none", borderRadius: 0 }}
-          onKeyDown={(e) => { if (e.key === "Enter") onSend(); }}
-        />
-
-        {/* Send button */}
-        <button
-          onClick={onSend}
-          disabled={isLoading}
-          className="h-12 px-7 font-semibold text-base text-white transition-colors flex-shrink-0 flex items-center gap-2"
-          style={{
-            background: isLoading ? "var(--surface-2)" : "var(--accent)",
-            cursor: isLoading ? "wait" : "pointer",
-          }}
-        >
-          {isLoading ? "Sending…" : <><Send size={16} /> Send</>}
-        </button>
+            {isLoading ? "Sending…" : <><span>Send</span> <Play size={14} className="fill-white" /></>}
+          </button>
+        </div>
       </div>
 
-      {/* Body tabs */}
-      <div
-        className="flex items-center border-b flex-shrink-0 gap-1 px-3"
-        style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}
-      >
-        {(["none", "json", "form", "raw"] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => handleBodyTabChange(tab)}
-            className="px-3 py-3 text-sm font-medium capitalize transition-colors"
-            style={{
-              color: bodyTab === tab ? "var(--accent)" : "var(--text-muted)",
-              borderBottom: bodyTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
-            }}
-          >
-            {tab === "none" ? "No Body" : tab === "form" ? "Form" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
-        <div className="flex-1" />
-        <span className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
-          {requestName}
-        </span>
+      {/* Body toolbar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[#121212] flex-shrink-0">
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Request Body</span>
+        <div className="flex bg-[#1a1a1a] rounded p-0.5 border border-[var(--border)]">
+          {(["none", "json", "form", "raw"] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => handleBodyTabChange(tab)}
+              className={`text-xs px-3 py-1 rounded-sm transition-colors ${
+                bodyTab === tab
+                  ? "bg-gray-700 text-gray-200 shadow-sm"
+                  : "text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              {tab === "none" ? "None" : tab === "form" ? "Form" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Body editor */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto bg-[#0d0d0d]">
         {bodyTab === "none" && (
-          <div className="flex items-center justify-center h-full text-sm" style={{ color: "var(--text-muted)" }}>
+          <div className="flex items-center justify-center h-full text-sm text-gray-600">
             This request has no body
           </div>
         )}
 
         {bodyTab === "json" && (
-          <textarea
-            value={data.body}
-            onChange={(e) => updateField("body", e.target.value)}
-            className="w-full h-full p-4 font-mono text-base leading-relaxed resize-none bg-transparent outline-none"
-            style={{ color: "var(--text-primary)", border: "none" }}
-            placeholder='{"key": "value"}'
-            spellCheck={false}
-          />
+          <div className="relative h-full">
+            <textarea
+              value={data.body}
+              onChange={(e) => updateField("body", e.target.value)}
+              className="w-full h-full p-4 font-mono text-sm leading-relaxed resize-none bg-transparent outline-none text-gray-300"
+              style={{ border: "none" }}
+              placeholder={'{\n  "key": "value"\n}'}
+              spellCheck={false}
+            />
+          </div>
         )}
 
         {bodyTab === "form" && (
@@ -146,8 +128,8 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           <textarea
             value={data.body}
             onChange={(e) => updateField("body", e.target.value)}
-            className="w-full h-full p-4 font-mono text-base leading-relaxed resize-none bg-transparent outline-none"
-            style={{ color: "var(--text-primary)", border: "none" }}
+            className="w-full h-full p-4 font-mono text-sm leading-relaxed resize-none bg-transparent outline-none text-gray-300"
+            style={{ border: "none" }}
             placeholder="Raw body content..."
             spellCheck={false}
           />
@@ -186,34 +168,30 @@ function FormEditor({ body, onChange }: { body: string; onChange: (body: string)
   const needsEmpty = !last || last.key !== "" || last.value !== "";
 
   return (
-    <div>
+    <div className="p-2">
       {pairs.map((p, i) => (
         <div key={i} className="kv-row">
-          <button className="kv-action" onClick={() => update(i, "enabled", !p.enabled)}>
-            <span style={{ color: p.enabled ? "var(--accent)" : "var(--text-muted)", fontSize: 14 }}>
-              {p.enabled ? "✓" : "○"}
-            </span>
+          <button className="kv-action always-visible" onClick={() => update(i, "enabled", !p.enabled)}>
+            <div className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center border transition-colors ${
+              p.enabled ? "bg-blue-500 border-blue-500" : "border-gray-600"
+            }`}>
+              {p.enabled && <span className="text-white text-[10px]">✓</span>}
+            </div>
           </button>
           <input value={p.key} onChange={(e) => update(i, "key", e.target.value)}
-            placeholder="key"
-            className="kv-cell"
-            style={{ border: "none", borderRadius: 0 }} />
-          <div className="kv-divider" />
+            placeholder="key" className="kv-cell" />
           <input value={p.value} onChange={(e) => update(i, "value", e.target.value)}
-            placeholder="value"
-            className="kv-cell"
-            style={{ border: "none", borderRadius: 0 }} />
+            placeholder="value" className="kv-cell" />
           {(p.key || p.value) && (
-            <button className="kv-action" style={{ color: "var(--text-muted)" }} onClick={() => remove(i)}>×</button>
+            <button className="kv-action" onClick={() => remove(i)}>×</button>
           )}
         </div>
       ))}
       {needsEmpty && (
         <div className="kv-row placeholder-row" onClick={add}>
-          <div style={{ width: 34 }} />
-          <div className="kv-cell" style={{ color: "var(--text-muted)" }}>key</div>
-          <div className="kv-divider" />
-          <div className="kv-cell" style={{ color: "var(--text-muted)" }}>value</div>
+          <div style={{ width: 20 }} />
+          <div className="kv-cell" style={{ color: "var(--text-faint)" }}>key</div>
+          <div className="kv-cell" style={{ color: "var(--text-faint)" }}>value</div>
         </div>
       )}
     </div>

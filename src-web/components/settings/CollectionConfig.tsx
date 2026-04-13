@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Package } from "lucide-react";
+import { Package, Plus, Trash2 } from "lucide-react";
 import type { Collection, Environment, VarDef, VarRow, AuthConfig, KeyValuePair } from "../../lib/types";
 import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
@@ -115,55 +115,56 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
   };
 
   if (!collection) {
-    return <div className="p-6 text-xs" style={{ color: "var(--text-muted)" }}>Collection not found</div>;
+    return <div className="p-6 text-sm text-gray-600">Collection not found</div>;
   }
 
+  const inputClass = "w-full bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-gray-700 focus:bg-[#1a1a1a] transition-colors";
+  const selectClass = "bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-gray-700 transition-colors";
+  const labelClass = "block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5";
+
   return (
-    <div className="h-full overflow-y-auto" style={{ background: "var(--surface-0)" }}>
+    <div className="h-full overflow-y-auto bg-[#121212]">
       {/* Header */}
       <div className="px-6 pt-5 pb-3">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Package size={20} style={{ color: "var(--text-secondary)" }} /> {collection.name}
+        <h2 className="text-lg font-semibold text-gray-200 flex items-center gap-2">
+          <Package size={18} className="text-gray-500" /> {collection.name}
         </h2>
-        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+        <p className="text-xs mt-1 text-gray-600">
           Collection settings — configure base path, authentication, headers, and variables
         </p>
       </div>
 
       {/* Tab bar */}
-      <div
-        className="flex items-center gap-1 px-6 border-b"
-        style={{ borderColor: "var(--border)" }}
-      >
+      <div className="flex items-center gap-1 px-6 border-b border-gray-800">
         {(["general", "auth", "headers", "variables"] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="px-4 py-3 text-sm font-medium capitalize transition-colors"
-            style={{
-              color: tab === t ? "var(--accent)" : "var(--text-muted)",
-              borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
-            }}
+            className={`px-4 py-3 text-sm font-medium capitalize transition-colors ${
+              tab === t
+                ? "text-blue-400 border-b-2 border-blue-500"
+                : "text-gray-500 border-b-2 border-transparent hover:text-gray-300"
+            }`}
           >
             {t}
           </button>
         ))}
       </div>
 
-      <div className="px-6 py-4">
+      <div className="px-6 py-5">
         {/* General tab */}
         {tab === "general" && (
           <div className="space-y-4 max-w-lg">
             <div>
-              <label className="label block">Base Path</label>
+              <label className={labelClass}>Base Path</label>
               <input
                 value={basePath}
                 onChange={(e) => setBasePath(e.target.value)}
                 onBlur={save}
                 placeholder="https://api.example.com"
-                className="w-full font-mono text-xs"
+                className={inputClass}
               />
-              <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
+              <p className="text-xs mt-1.5 text-gray-600">
                 Prepended to request paths that don't start with http(s)://
               </p>
             </div>
@@ -174,12 +175,12 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
         {tab === "auth" && (
           <div className="space-y-4 max-w-lg">
             <div>
-              <label className="label block">Authentication Type</label>
+              <label className={labelClass}>Authentication Type</label>
               <select
                 value={authConfig.auth_type}
                 onChange={(e) => { setAuthConfig({ ...authConfig, auth_type: e.target.value as AuthConfig["auth_type"] }); }}
                 onBlur={save}
-                className="text-xs"
+                className={selectClass}
                 style={{ minWidth: 160 }}
               >
                 <option value="none">None</option>
@@ -191,13 +192,13 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
 
             {authConfig.auth_type === "bearer" && (
               <div>
-                <label className="label block">Token</label>
+                <label className={labelClass}>Token</label>
                 <input
                   value={authConfig.bearer_token ?? ""}
                   onChange={(e) => setAuthConfig({ ...authConfig, bearer_token: e.target.value })}
                   onBlur={save}
                   placeholder="Bearer token value..."
-                  className="w-full font-mono text-xs"
+                  className={inputClass}
                 />
               </div>
             )}
@@ -205,22 +206,22 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
             {authConfig.auth_type === "basic" && (
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="label block">Username</label>
+                  <label className={labelClass}>Username</label>
                   <input
                     value={authConfig.basic_username ?? ""}
                     onChange={(e) => setAuthConfig({ ...authConfig, basic_username: e.target.value })}
                     onBlur={save}
-                    className="w-full font-mono text-xs"
+                    className={inputClass}
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="label block">Password</label>
+                  <label className={labelClass}>Password</label>
                   <input
                     type="password"
                     value={authConfig.basic_password ?? ""}
                     onChange={(e) => setAuthConfig({ ...authConfig, basic_password: e.target.value })}
                     onBlur={save}
-                    className="w-full font-mono text-xs"
+                    className={inputClass}
                   />
                 </div>
               </div>
@@ -229,21 +230,21 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
             {authConfig.auth_type === "api_key" && (
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="label block">Header Name</label>
+                  <label className={labelClass}>Header Name</label>
                   <input
                     value={authConfig.api_key_header ?? "X-API-Key"}
                     onChange={(e) => setAuthConfig({ ...authConfig, api_key_header: e.target.value })}
                     onBlur={save}
-                    className="w-full font-mono text-xs"
+                    className={inputClass}
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="label block">API Key</label>
+                  <label className={labelClass}>API Key</label>
                   <input
                     value={authConfig.api_key_value ?? ""}
                     onChange={(e) => setAuthConfig({ ...authConfig, api_key_value: e.target.value })}
                     onBlur={save}
-                    className="w-full font-mono text-xs"
+                    className={inputClass}
                   />
                 </div>
               </div>
@@ -254,10 +255,10 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
         {/* Headers tab */}
         {tab === "headers" && (
           <div>
-            <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+            <p className="text-xs mb-3 text-gray-600">
               Default headers sent with every request in this collection
             </p>
-            <div style={{ border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden" }}>
+            <div className="border border-gray-800 rounded-md overflow-hidden">
               <KvTable
                 rows={headersConfig}
                 onChange={saveHeaders}
@@ -271,27 +272,31 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
         {tab === "variables" && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <div>
-                <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-400">
                   Environment Variables
                 </span>
                 {activeEnv && (
-                  <span className="ml-2 text-[11px] font-medium px-2 py-0.5 rounded"
-                    style={{ background: "var(--accent)", color: "#fff" }}>
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
                     {activeEnv.name}
                   </span>
                 )}
               </div>
-              <button onClick={addVarDef} className="btn-pill accent">+ Add Variable</button>
+              <button
+                onClick={addVarDef}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-[#1a1a1a] border border-gray-700 rounded-md hover:bg-[#242424] hover:text-gray-100 transition-colors"
+              >
+                <Plus size={12} /> Add Variable
+              </button>
             </div>
 
             {!activeEnv && (
-              <div className="text-xs p-3 rounded" style={{ background: "var(--surface-1)", color: "var(--text-muted)" }}>
+              <div className="text-xs p-3 rounded-md bg-[#1a1a1a] text-gray-600 border border-gray-800">
                 Select an environment to manage variable values
               </div>
             )}
 
-            <div style={{ border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden" }}>
+            <div className="border border-gray-800 rounded-md overflow-hidden">
               {varDefs.map(def => {
                 const row = varRows.find(r => r.def_id === def.id);
                 return (
@@ -320,15 +325,15 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                     />
                     <button
                       onClick={() => deleteVarDef(def.id)}
-                      className="kv-action"
+                      className="kv-action text-gray-600 hover:text-red-400"
                     >
-                      ×
+                      <Trash2 size={12} />
                     </button>
                   </div>
                 );
               })}
               {varDefs.length === 0 && (
-                <div className="px-4 py-4 text-xs text-center" style={{ color: "var(--text-muted)" }}>
+                <div className="px-4 py-4 text-xs text-center text-gray-600">
                   No variables defined yet
                 </div>
               )}
