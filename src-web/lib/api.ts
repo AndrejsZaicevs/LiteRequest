@@ -102,3 +102,6 @@ export const extractPathParams = (url: string) => invoke<string[]>("extract_path
 
 // ── Maintenance ──────────────────────────────────────────────
 export const pruneOldExecutions = (days: number) => invoke<number>("prune_old_executions", { days });
+
+// ── Search ────────────────────────────────────────────────────
+export const searchAll = (query: string) => invoke<import("./types").SearchHit[]>("search_all", { query });

@@ -649,4 +649,301 @@ impl Database {
         )?;
         Ok(())
     }
+
+    // ── Full-text search ─────────────────────────────────────────
+
+    /// Extract a short context snippet around the first occurrence of `query` in `text`.
+    fn extract_snippet(text: &str, query: &str, context_chars: usize) -> String {
+        let text_lower = text.to_lowercase();
+        let query_lower = query.to_lowercase();
+        if let Some(byte_pos) = text_lower.find(&query_lower) {
+            let char_pos = text[..byte_pos].chars().count();
+            let total_chars = text.chars().count();
+            let query_char_len = query.chars().count();
+            let half = context_chars / 2;
+            let start = char_pos.saturating_sub(half);
+            let end = (char_pos + query_char_len + half).min(total_chars);
+            let snippet: String = text.chars().skip(start).take(end - start).collect();
+            let mut result = String::new();
+            if start > 0 { result.push('…'); }
+            result.push_str(&snippet);
+            if end < total_chars { result.push('…'); }
+            result
+        } else {
+            let snippet: String = text.chars().take(80).collect();
+            if text.chars().count() > 80 { format!("{}…", snippet) } else { snippet }
+        }
+    }
+
+    /// Find the first field in `RequestData` that matches `query` and return
+    /// (match_field_label, context_snippet).
+    fn find_match_in_data(data: &RequestData, query: &str) -> (String, String) {
+        let q = query.to_lowercase();
+
+        if data.url.to_lowercase().contains(&q) {
+            return ("URL".to_string(), Self::extract_snippet(&data.url, query, 60));
+        }
+        for h in &data.headers {
+            if h.key.to_lowercase().contains(&q) || h.value.to_lowercase().contains(&q) {
+                let val_preview: String = h.value.chars().take(40).collect();
+                return ("Header".to_string(), format!("{}: {}", h.key, val_preview));
+            }
+        }
+        for p in &data.query_params {
+            if p.key.to_lowercase().contains(&q) || p.value.to_lowercase().contains(&q) {
+                return ("Query Param".to_string(), format!("{}={}", p.key, p.value));
+            }
+        }
+        for p in &data.path_params {
+            if p.key.to_lowercase().contains(&q) || p.value.to_lowercase().contains(&q) {
+                return ("Path Param".to_string(), format!(":{}={}", p.key, p.value));
+            }
+        }
+        if !data.body.is_empty() && data.body.to_lowercase().contains(&q) {
+            return ("Body".to_string(), Self::extract_snippet(&data.body, query, 60));
+        }
+        (String::new(), String::new())
+    }
+
+    /// Find the first field in a response that matches `query`.
+    fn find_match_in_response(response: &ResponseData, body: &str, query: &str) -> (String, String) {
+        let q = query.to_lowercase();
+        let status_str = format!("{} {}", response.status, response.status_text);
+        if status_str.to_lowercase().contains(&q) {
+            return ("Status".to_string(), status_str);
+        }
+        for (k, v) in &response.headers {
+            if k.to_lowercase().contains(&q) || v.to_lowercase().contains(&q) {
+                let val_preview: String = v.chars().take(40).collect();
+                return ("Response Header".to_string(), format!("{}: {}", k, val_preview));
+            }
+        }
+        if !body.is_empty() && body.to_lowercase().contains(&q) {
+            return ("Response Body".to_string(), Self::extract_snippet(body, query, 60));
+        }
+        (String::new(), String::new())
+    }
+
+    /// Full-text search across requests, all versions, and execution history.
+    pub fn search_all(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<SearchHit>> {
+        if query.trim().is_empty() {
+            return Ok(vec![]);
+        }
+        let q_pat = format!("%{}%", query.to_lowercase());
+        let mut hits: Vec<SearchHit> = Vec::new();
+
+        // ── 1. Request names ──────────────────────────────────────
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT r.id, r.name, r.collection_id, c.name, r.current_version_id
+                 FROM requests r
+                 JOIN collections c ON r.collection_id = c.id
+                 WHERE LOWER(r.name) LIKE ?1
+                 LIMIT 20",
+            )?;
+            let rows = stmt.query_map(params![q_pat], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                ))
+            })?;
+            for (req_id, req_name, col_id, col_name, cur_vid) in rows.filter_map(|r| r.ok()) {
+                let (method, url) = if let Some(ref vid) = cur_vid {
+                    self.get_version(vid)
+                        .map(|v| (Some(v.data.method.to_string()), Some(v.data.url)))
+                        .unwrap_or((None, None))
+                } else {
+                    (None, None)
+                };
+                hits.push(SearchHit {
+                    result_type: "request".to_string(),
+                    request_id: req_id,
+                    request_name: req_name.clone(),
+                    collection_id: col_id,
+                    collection_name: col_name,
+                    version_id: cur_vid,
+                    execution_id: None,
+                    match_field: "Name".to_string(),
+                    match_context: req_name,
+                    method,
+                    url,
+                    executed_at: None,
+                    status: None,
+                });
+            }
+        }
+
+        // ── 2. Collection names ───────────────────────────────────
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, name, base_path FROM collections
+                 WHERE LOWER(name) LIKE ?1 OR LOWER(base_path) LIKE ?1
+                 LIMIT 10",
+            )?;
+            let rows = stmt.query_map(params![q_pat], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            })?;
+            for (col_id, col_name, base_path) in rows.filter_map(|r| r.ok()) {
+                let (mf, mc) = if col_name.to_lowercase().contains(&query.to_lowercase()) {
+                    ("Name".to_string(), col_name.clone())
+                } else {
+                    ("Base Path".to_string(), Self::extract_snippet(&base_path, query, 60))
+                };
+                hits.push(SearchHit {
+                    result_type: "collection".to_string(),
+                    request_id: String::new(),
+                    request_name: col_name.clone(),
+                    collection_id: col_id,
+                    collection_name: col_name,
+                    version_id: None,
+                    execution_id: None,
+                    match_field: mf,
+                    match_context: mc,
+                    method: None,
+                    url: None,
+                    executed_at: None,
+                    status: None,
+                });
+            }
+        }
+
+        // ── 3. Version data (URL, headers, params, body) ──────────
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT v.id, v.request_id, v.data_json,
+                        r.name, r.current_version_id, r.collection_id, c.name
+                 FROM request_versions v
+                 JOIN requests r ON v.request_id = r.id
+                 JOIN collections c ON r.collection_id = c.id
+                 WHERE LOWER(v.data_json) LIKE ?1
+                 ORDER BY (CASE WHEN v.id = r.current_version_id THEN 0 ELSE 1 END),
+                          v.created_at DESC
+                 LIMIT 60",
+            )?;
+            let rows = stmt.query_map(params![q_pat], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            })?;
+
+            let mut req_version_count: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
+
+            for (vid, req_id, data_json, req_name, cur_vid, col_id, col_name) in
+                rows.filter_map(|r| r.ok())
+            {
+                let cnt = req_version_count.entry(req_id.clone()).or_insert(0);
+                if *cnt >= 3 { continue; }
+
+                let data: RequestData = match serde_json::from_str(&data_json) {
+                    Ok(d) => d,
+                    Err(_) => continue,
+                };
+
+                let (match_field, match_context) = Self::find_match_in_data(&data, query);
+                if match_context.is_empty() { continue; }
+
+                *cnt += 1;
+                let is_current = cur_vid.as_deref() == Some(vid.as_str());
+                hits.push(SearchHit {
+                    result_type: if is_current { "version".to_string() } else { "version_old".to_string() },
+                    request_id: req_id,
+                    request_name: req_name,
+                    collection_id: col_id,
+                    collection_name: col_name,
+                    version_id: Some(vid),
+                    execution_id: None,
+                    match_field,
+                    match_context,
+                    method: Some(data.method.to_string()),
+                    url: Some(data.url),
+                    executed_at: None,
+                    status: None,
+                });
+            }
+        }
+
+        // ── 4. Execution responses ────────────────────────────────
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT e.id, e.version_id, e.request_id, e.response_json, e.executed_at,
+                        COALESCE(rb.body, '') as body,
+                        r.name, r.collection_id, c.name
+                 FROM request_executions e
+                 JOIN requests r ON e.request_id = r.id
+                 JOIN collections c ON r.collection_id = c.id
+                 LEFT JOIN response_bodies rb ON e.body_hash = rb.hash
+                 WHERE LOWER(e.response_json) LIKE ?1
+                    OR LOWER(COALESCE(rb.body, '')) LIKE ?1
+                 ORDER BY e.executed_at DESC
+                 LIMIT 60",
+            )?;
+            let rows = stmt.query_map(params![q_pat], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                ))
+            })?;
+
+            let mut req_exec_count: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
+
+            for (exec_id, vid, req_id, response_json, executed_at, body, req_name, col_id, col_name) in
+                rows.filter_map(|r| r.ok())
+            {
+                let cnt = req_exec_count.entry(req_id.clone()).or_insert(0);
+                if *cnt >= 5 { continue; }
+
+                let response: ResponseData = serde_json::from_str(&response_json)
+                    .unwrap_or_else(|_| ResponseData {
+                        status: 0,
+                        status_text: String::new(),
+                        headers: Default::default(),
+                        body: String::new(),
+                        size_bytes: 0,
+                    });
+
+                let (match_field, match_context) =
+                    Self::find_match_in_response(&response, &body, query);
+                if match_context.is_empty() { continue; }
+
+                *cnt += 1;
+                let status = response.status;
+                hits.push(SearchHit {
+                    result_type: "execution".to_string(),
+                    request_id: req_id,
+                    request_name: req_name,
+                    collection_id: col_id,
+                    collection_name: col_name,
+                    version_id: Some(vid),
+                    execution_id: Some(exec_id),
+                    match_field,
+                    match_context,
+                    method: None,
+                    url: None,
+                    executed_at: Some(executed_at),
+                    status: Some(status),
+                });
+            }
+        }
+
+        hits.truncate(limit);
+        Ok(hits)
+    }
 }

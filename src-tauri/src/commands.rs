@@ -586,3 +586,15 @@ pub fn prune_old_executions(state: State<AppState>, days: i64) -> CmdResult<usiz
         .prune_old_executions(days)
         .map_err(map_err)
 }
+
+// ── Search ───────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn search_all(state: State<AppState>, query: String) -> CmdResult<Vec<crate::models::SearchHit>> {
+    state
+        .db
+        .lock()
+        .unwrap()
+        .search_all(&query, 80)
+        .map_err(map_err)
+}

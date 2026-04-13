@@ -1,99 +1,93 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Search, FileText, Package, Folder, Clock } from "lucide-react";
-import type { Collection, Folder as FolderType, Request } from "../../lib/types";
+import { Search, FileText, Package, Clock, Layers } from "lucide-react";
 import { METHOD_STYLES } from "../../lib/types";
+import type { SearchHit } from "../../lib/types";
+import * as api from "../../lib/api";
 
 interface GlobalSearchProps {
-  collections: Collection[];
-  folders: FolderType[];
-  requests: Request[];
   onClose: () => void;
-  onSelectRequest: (req: Request) => void;
-  onSelectCollection: (id: string) => void;
-  requestMeta?: Map<string, { method: string; url: string }>;
+  onNavigate: (requestId: string, versionId?: string | null, executionId?: string | null, collectionId?: string | null) => void;
 }
 
-interface SearchResult {
-  type: "collection" | "folder" | "request";
-  id: string;
-  label: string;
-  detail: string;
-  item: Collection | FolderType | Request;
-  method?: string;
+const GROUP_ORDER = ["request", "version", "version_old", "execution", "collection"] as const;
+const GROUP_LABELS: Record<string, string> = {
+  request: "Saved Requests",
+  version: "Request Content",
+  version_old: "Older Versions",
+  execution: "Execution History",
+  collection: "Collections",
+};
+
+function statusColor(code: number) {
+  if (code >= 200 && code < 300) return "text-green-400";
+  if (code >= 300 && code < 400) return "text-yellow-400";
+  if (code >= 400) return "text-red-400";
+  return "text-gray-400";
 }
 
-export function GlobalSearch({
-  collections, folders, requests,
-  onClose, onSelectRequest, onSelectCollection,
-  requestMeta,
-}: GlobalSearchProps) {
+function formatDate(iso: string) {
+  try {
+    return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch { return iso; }
+}
+
+export function GlobalSearch({ onClose, onNavigate }: GlobalSearchProps) {
   const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchHit[]>([]);
+  const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = query.trim();
+    if (!q) { setResults([]); setLoading(false); return; }
 
-  const results = useMemo((): SearchResult[] => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase();
-    const out: SearchResult[] = [];
-
-    for (const c of collections) {
-      if (c.name.toLowerCase().includes(q) || c.base_path.toLowerCase().includes(q)) {
-        out.push({ type: "collection", id: c.id, label: c.name, detail: c.base_path, item: c });
+    setLoading(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const hits = await api.searchAll(q);
+        setResults(hits);
+      } catch {
+        setResults([]);
+      } finally {
+        setLoading(false);
       }
-    }
-    for (const f of folders) {
-      if (f.name.toLowerCase().includes(q)) {
-        const col = collections.find(c => c.id === f.collection_id);
-        out.push({ type: "folder", id: f.id, label: f.name, detail: col?.name ?? "", item: f });
-      }
-    }
-    for (const r of requests) {
-      if (r.name.toLowerCase().includes(q)) {
-        const col = collections.find(c => c.id === r.collection_id);
-        const meta = requestMeta?.get(r.id);
-        out.push({ type: "request", id: r.id, label: r.name, detail: col?.name ?? "", item: r, method: meta?.method });
-      }
-    }
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query]);
 
-    return out.slice(0, 50);
-  }, [query, collections, folders, requests, requestMeta]);
+  useEffect(() => { setSelectedIndex(0); }, [results]);
 
-  useEffect(() => { setSelectedIndex(0); }, [query]);
+  const grouped = useMemo(() => {
+    const map = new Map<string, SearchHit[]>();
+    for (const hit of results) {
+      const g = map.get(hit.result_type) ?? [];
+      g.push(hit);
+      map.set(hit.result_type, g);
+    }
+    return GROUP_ORDER.filter(k => map.has(k)).map(k => ({ key: k, label: GROUP_LABELS[k], items: map.get(k)! }));
+  }, [results]);
 
-  const handleSelect = (result: SearchResult) => {
-    if (result.type === "request") onSelectRequest(result.item as Request);
-    else if (result.type === "collection") onSelectCollection(result.id);
-    else onClose();
+  const flatList = useMemo(() => grouped.flatMap(g => g.items), [grouped]);
+
+  const handleSelect = (hit: SearchHit) => {
+    if (hit.result_type === "collection") {
+      onNavigate("", null, null, hit.collection_id);
+    } else {
+      onNavigate(hit.request_id, hit.version_id, hit.execution_id);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") { onClose(); return; }
-    if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex(i => Math.min(i + 1, results.length - 1)); }
+    if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex(i => Math.min(i + 1, flatList.length - 1)); }
     if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex(i => Math.max(i - 1, 0)); }
-    if (e.key === "Enter" && results[selectedIndex]) { handleSelect(results[selectedIndex]); }
+    if (e.key === "Enter" && flatList[selectedIndex]) { handleSelect(flatList[selectedIndex]); }
   };
-
-  const iconFor = (type: string) => {
-    if (type === "collection") return <Package size={14} className="text-gray-500 shrink-0" />;
-    if (type === "folder") return <Folder size={14} className="text-gray-500 shrink-0" />;
-    return <FileText size={14} className="text-gray-500 group-hover:text-blue-400 shrink-0" />;
-  };
-
-  // Group results by type
-  const grouped = useMemo(() => {
-    const groups: { label: string; items: SearchResult[] }[] = [];
-    const reqs = results.filter(r => r.type === "request");
-    const cols = results.filter(r => r.type === "collection");
-    const folds = results.filter(r => r.type === "folder");
-    if (reqs.length) groups.push({ label: "Saved Requests", items: reqs });
-    if (cols.length) groups.push({ label: "Collections", items: cols });
-    if (folds.length) groups.push({ label: "Folders", items: folds });
-    return groups;
-  }, [results]);
 
   let flatIdx = -1;
 
@@ -114,47 +108,76 @@ export function GlobalSearch({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search collections, folders, requests..."
-            className="flex-1 bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 text-base"
-            style={{ border: "none", padding: 0 }}
+            placeholder="Search requests, URLs, headers, body, history…"
+            className="flex-1 bg-transparent text-gray-200 placeholder-gray-500 text-base"
+            style={{ border: "none", outline: "none", padding: 0 }}
           />
-          <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700 ml-3">ESC</span>
+          {loading && <span className="text-xs text-gray-500 ml-3 animate-pulse">searching…</span>}
+          {!loading && <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700 ml-3">ESC</span>}
         </div>
 
         {/* Results */}
-        {results.length > 0 && (
+        {grouped.length > 0 && (
           <div className="max-h-[60vh] overflow-y-auto p-2 flex flex-col gap-4 bg-[#161616]">
             {grouped.map(group => (
-              <div key={group.label}>
+              <div key={group.key}>
                 <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-wider">{group.label}</div>
                 <div className="flex flex-col gap-0.5 mt-1">
-                  {group.items.map(r => {
+                  {group.items.map(hit => {
                     flatIdx++;
                     const idx = flatIdx;
                     const isSelected = idx === selectedIndex;
-                    const method = r.method;
-                    const colors = method ? METHOD_STYLES[method] : undefined;
+                    const colors = hit.method ? METHOD_STYLES[hit.method] : undefined;
 
                     return (
                       <button
-                        key={`${r.type}-${r.id}`}
-                        onClick={() => handleSelect(r)}
-                        className={`w-full flex items-center justify-between p-2 rounded-md transition-colors text-left group ${
+                        key={`${hit.result_type}-${hit.request_id}-${hit.version_id ?? ""}-${hit.execution_id ?? ""}`}
+                        onClick={() => handleSelect(hit)}
+                        className={`w-full flex items-start gap-3 px-3 py-2 rounded-md transition-colors text-left group ${
                           isSelected ? "bg-blue-500/10 ring-1 ring-blue-500/30" : "hover:bg-[#1a1a1a]"
                         }`}
                       >
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          {iconFor(r.type)}
-                          <span className="text-sm text-gray-300 group-hover:text-blue-400 truncate">{r.label}</span>
-                          {r.detail && (
-                            <span className="text-[11px] text-gray-600 truncate">{r.detail}</span>
+                        {/* Icon */}
+                        <div className="mt-0.5 shrink-0">
+                          {hit.result_type === "collection" && <Package size={14} className="text-gray-500" />}
+                          {(hit.result_type === "request") && <FileText size={14} className="text-blue-400" />}
+                          {(hit.result_type === "version" || hit.result_type === "version_old") && <Layers size={14} className="text-purple-400" />}
+                          {hit.result_type === "execution" && <Clock size={14} className="text-amber-400" />}
+                        </div>
+
+                        {/* Main content */}
+                        <div className="flex-1 overflow-hidden min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-gray-200 truncate">{hit.request_name || hit.collection_name}</span>
+                            {hit.method && colors && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono border ${colors.bg} ${colors.text} ${colors.border} shrink-0`}>
+                                {hit.method}
+                              </span>
+                            )}
+                            {hit.result_type === "execution" && hit.status != null && (
+                              <span className={`text-xs font-mono shrink-0 ${statusColor(hit.status)}`}>{hit.status}</span>
+                            )}
+                            {hit.result_type === "execution" && hit.executed_at && (
+                              <span className="text-[11px] text-gray-600 shrink-0">{formatDate(hit.executed_at)}</span>
+                            )}
+                          </div>
+
+                          {/* Match context */}
+                          <div className="flex items-start gap-2 mt-1">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 shrink-0">
+                              {hit.match_field}
+                            </span>
+                            <span className="text-[11px] text-gray-500 truncate font-mono">{hit.match_context}</span>
+                          </div>
+
+                          {/* URL for version hits */}
+                          {hit.url && hit.result_type !== "request" && (
+                            <div className="text-[11px] text-gray-600 truncate mt-0.5">{hit.url}</div>
+                          )}
+                          {hit.collection_name && hit.result_type !== "collection" && (
+                            <div className="text-[11px] text-gray-600 truncate">{hit.collection_name}</div>
                           )}
                         </div>
-                        {method && colors && (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono border ${colors.bg} ${colors.text} ${colors.border} shrink-0 ml-2`}>
-                            {method}
-                          </span>
-                        )}
                       </button>
                     );
                   })}
@@ -164,22 +187,28 @@ export function GlobalSearch({
           </div>
         )}
 
-        {query && results.length === 0 && (
-          <div className="px-4 py-8 text-center text-sm text-gray-600">
-            No results found
+        {query.trim() && !loading && results.length === 0 && (
+          <div className="px-4 py-10 text-center text-sm text-gray-600">
+            No results for <span className="text-gray-400">"{query}"</span>
           </div>
         )}
 
-        {/* Footer hints */}
+        {!query.trim() && (
+          <div className="px-4 py-8 text-center text-sm text-gray-600">
+            Type to search requests, URLs, headers, body, and execution history
+          </div>
+        )}
+
+        {/* Footer */}
         <div className="border-t border-gray-800 p-2.5 bg-[#121212] flex items-center gap-6 text-[11px] text-gray-500">
           <div className="flex items-center gap-1.5">
-            <span className="bg-gray-800 px-1 rounded shadow-sm border border-gray-700">↑</span>
-            <span className="bg-gray-800 px-1 rounded shadow-sm border border-gray-700">↓</span>
-            to navigate
+            <span className="bg-gray-800 px-1 rounded border border-gray-700">↑</span>
+            <span className="bg-gray-800 px-1 rounded border border-gray-700">↓</span>
+            navigate
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="bg-gray-800 px-1.5 rounded shadow-sm border border-gray-700">↵</span>
-            to select
+            <span className="bg-gray-800 px-1.5 rounded border border-gray-700">↵</span>
+            select
           </div>
         </div>
       </div>

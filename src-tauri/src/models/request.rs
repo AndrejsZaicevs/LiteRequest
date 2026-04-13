@@ -217,3 +217,24 @@ pub struct RequestExecution {
     pub latency_ms: u64,
     pub executed_at: String,
 }
+
+/// A single hit returned by the full-text search across all stored data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchHit {
+    /// "request" | "version" | "execution"
+    pub result_type: String,
+    pub request_id: String,
+    pub request_name: String,
+    pub collection_id: String,
+    pub collection_name: String,
+    pub version_id: Option<String>,
+    pub execution_id: Option<String>,
+    /// What field matched: "Name" | "URL" | "Header" | "Query Param" | "Path Param" | "Body" | "Status" | "Response Header" | "Response Body"
+    pub match_field: String,
+    /// Short context snippet showing what matched
+    pub match_context: String,
+    pub method: Option<String>,
+    pub url: Option<String>,
+    pub executed_at: Option<String>,
+    pub status: Option<u16>,
+}

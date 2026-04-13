@@ -98,6 +98,8 @@ pub fn run() {
             commands::extract_path_params,
             // Maintenance
             commands::prune_old_executions,
+            // Search
+            commands::search_all,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

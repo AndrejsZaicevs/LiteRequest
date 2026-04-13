@@ -188,3 +188,20 @@ export function statusColor(code: number): string {
   if (code >= 500) return "#ff5757";
   return "#8c8c96";
 }
+
+// ── Search ────────────────────────────────────────────────────
+export interface SearchHit {
+  result_type: "request" | "collection" | "version" | "version_old" | "execution";
+  request_id: string;
+  request_name: string;
+  collection_id: string;
+  collection_name: string;
+  version_id: string | null;
+  execution_id: string | null;
+  match_field: string;
+  match_context: string;
+  method: string | null;
+  url: string | null;
+  executed_at: string | null;
+  status: number | null;
+}
