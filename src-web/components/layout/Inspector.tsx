@@ -111,7 +111,7 @@ export function Inspector({
     <div className="h-full flex flex-col overflow-y-auto" style={{ background: "var(--surface-1)" }}>
       {/* Query Params */}
       <div className="section-header" onClick={() => toggleSection("params")}>
-        <span style={{ fontSize: 10 }}>{openSections.has("params") ? "▼" : "▶"}</span>
+        <span style={{ fontSize: 11 }}>{openSections.has("params") ? "▼" : "▶"}</span>
         <span>Query Params</span>
         {enabledParams > 0 && <span className="badge">{enabledParams}</span>}
       </div>
@@ -123,7 +123,7 @@ export function Inspector({
       {pathParams.length > 0 && (
         <>
           <div className="section-header" onClick={() => toggleSection("pathParams")}>
-            <span style={{ fontSize: 10 }}>{openSections.has("pathParams") ? "▼" : "▶"}</span>
+            <span style={{ fontSize: 11 }}>{openSections.has("pathParams") ? "▼" : "▶"}</span>
             <span>Path Params</span>
             <span className="badge">{pathParams.length}</span>
           </div>
@@ -135,7 +135,7 @@ export function Inspector({
 
       {/* Headers */}
       <div className="section-header" onClick={() => toggleSection("headers")}>
-        <span style={{ fontSize: 10 }}>{openSections.has("headers") ? "▼" : "▶"}</span>
+        <span style={{ fontSize: 11 }}>{openSections.has("headers") ? "▼" : "▶"}</span>
         <span>Headers</span>
         {enabledHeaders > 0 && <span className="badge">{enabledHeaders}</span>}
       </div>
@@ -145,7 +145,7 @@ export function Inspector({
 
       {/* Versions */}
       <div className="section-header" onClick={() => toggleSection("versions")}>
-        <span style={{ fontSize: 10 }}>{openSections.has("versions") ? "▼" : "▶"}</span>
+        <span style={{ fontSize: 11 }}>{openSections.has("versions") ? "▼" : "▶"}</span>
         <span>Versions</span>
         <span className="badge">{versions.length}</span>
       </div>
@@ -154,7 +154,7 @@ export function Inspector({
           {groupedVersions.map(group => (
             <div key={group.label}>
               <div
-                className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider"
+                className="px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-wider"
                 style={{ color: "var(--text-muted)", background: "var(--surface-0)" }}
               >
                 {group.label}
@@ -166,7 +166,7 @@ export function Inspector({
                   <button
                     key={v.id}
                     onClick={() => onSelectVersion(v.id)}
-                    className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors"
+                    className="w-full text-left px-3.5 py-2 text-xs flex items-center gap-2 transition-colors"
                     style={{
                       background: isSelected ? "var(--surface-2)" : "transparent",
                       borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
@@ -174,13 +174,13 @@ export function Inspector({
                     onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--row-hover)"; }}
                     onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
                   >
-                    <span className="font-mono text-[10px] font-bold" style={{ color: "var(--text-muted)" }}>
+                    <span className="font-mono text-[11px] font-bold" style={{ color: "var(--text-muted)" }}>
                       {v.data.method}
                     </span>
-                    <span className="truncate flex-1 font-mono text-[11px]" style={{ color: "var(--text-secondary)" }}>
+                    <span className="truncate flex-1 font-mono text-xs" style={{ color: "var(--text-secondary)" }}>
                       {v.data.url || "(empty)"}
                     </span>
-                    <span className="text-[10px] flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
+                    <span className="text-[11px] flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
                       {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </button>
@@ -193,7 +193,7 @@ export function Inspector({
 
       {/* Executions */}
       <div className="section-header" onClick={() => toggleSection("executions")}>
-        <span style={{ fontSize: 10 }}>{openSections.has("executions") ? "▼" : "▶"}</span>
+        <span style={{ fontSize: 11 }}>{openSections.has("executions") ? "▼" : "▶"}</span>
         <span>Executions</span>
         <span className="badge">{executions.length}</span>
       </div>
@@ -201,13 +201,12 @@ export function Inspector({
         <div>
           {/* Filters */}
           {(environments.length > 0 || versions.length > 1) && (
-            <div className="flex items-center gap-2 px-3 py-1.5" style={{ background: "var(--surface-0)", borderBottom: "1px solid var(--border-subtle)" }}>
+            <div className="flex items-center gap-2 px-3.5 py-2" style={{ background: "var(--surface-0)", borderBottom: "1px solid var(--border-subtle)" }}>
               {environments.length > 0 && (
                 <select
                   value={execEnvFilter}
                   onChange={(e) => setExecEnvFilter(e.target.value)}
-                  className="text-[10px] py-0.5 px-1"
-                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: 3, fontSize: 10, padding: "2px 16px 2px 4px" }}
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: 4, fontSize: 11, padding: "4px 20px 4px 8px" }}
                 >
                   <option value="all">All envs</option>
                   {environments.map(env => (
@@ -219,8 +218,7 @@ export function Inspector({
                 <select
                   value={execVersionFilter}
                   onChange={(e) => setExecVersionFilter(e.target.value)}
-                  className="text-[10px] py-0.5 px-1"
-                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: 3, fontSize: 10, padding: "2px 16px 2px 4px" }}
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: 4, fontSize: 11, padding: "4px 20px 4px 8px" }}
                 >
                   <option value="all">All versions</option>
                   {versions.map((v, i) => (
@@ -234,7 +232,7 @@ export function Inspector({
           {groupedExecutions.map(group => (
             <div key={group.label}>
               <div
-                className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider"
+                className="px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-wider"
                 style={{ color: "var(--text-muted)", background: "var(--surface-0)" }}
               >
                 {group.label}
@@ -247,7 +245,7 @@ export function Inspector({
                   <button
                     key={exec.id}
                     onClick={() => onSelectExecution(exec.id)}
-                    className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors"
+                    className="w-full text-left px-3.5 py-2 text-xs flex items-center gap-2.5 transition-colors"
                     style={{
                       background: isSelected ? "var(--surface-2)" : "transparent",
                       borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
@@ -256,7 +254,7 @@ export function Inspector({
                     onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
                   >
                     <span
-                      className="font-mono font-bold text-[11px] w-8 text-center rounded px-1"
+                      className="font-mono font-bold text-xs w-9 text-center rounded px-1 py-0.5"
                       style={{
                         color: statusColor(status),
                         background: `${statusColor(status)}15`,
@@ -264,11 +262,11 @@ export function Inspector({
                     >
                       {status}
                     </span>
-                    <span className="text-[11px] tabular-nums font-mono" style={{ color: "var(--text-secondary)" }}>
+                    <span className="text-xs tabular-nums font-mono" style={{ color: "var(--text-secondary)" }}>
                       {exec.latency_ms}ms
                     </span>
                     <span className="flex-1" />
-                    <span className="text-[10px] flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
+                    <span className="text-[11px] flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
                       {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </button>
@@ -278,7 +276,7 @@ export function Inspector({
           ))}
 
           {filteredExecutions.length === 0 && (
-            <div className="px-3 py-3 text-[11px] text-center" style={{ color: "var(--text-muted)" }}>
+            <div className="px-3.5 py-4 text-xs text-center" style={{ color: "var(--text-muted)" }}>
               No executions{execEnvFilter !== "all" || execVersionFilter !== "all" ? " matching filters" : ""}
             </div>
           )}

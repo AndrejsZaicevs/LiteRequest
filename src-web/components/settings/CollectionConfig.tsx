@@ -124,7 +124,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
         <h2 className="text-lg font-semibold flex items-center gap-2">
           <span>📦</span> {collection.name}
         </h2>
-        <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
           Collection settings — configure base path, authentication, headers, and variables
         </p>
       </div>
@@ -138,7 +138,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="px-3 py-2 text-[11px] font-medium capitalize transition-colors"
+            className="px-4 py-2.5 text-xs font-medium capitalize transition-colors"
             style={{
               color: tab === t ? "var(--accent)" : "var(--text-muted)",
               borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
@@ -162,7 +162,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                 placeholder="https://api.example.com"
                 className="w-full font-mono text-xs"
               />
-              <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+              <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
                 Prepended to request paths that don't start with http(s)://
               </p>
             </div>
@@ -253,7 +253,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
         {/* Headers tab */}
         {tab === "headers" && (
           <div>
-            <p className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
+            <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
               Default headers sent with every request in this collection
             </p>
             <div style={{ border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden" }}>
@@ -275,7 +275,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                   Environment Variables
                 </span>
                 {activeEnv && (
-                  <span className="ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded"
+                  <span className="ml-2 text-[11px] font-medium px-2 py-0.5 rounded"
                     style={{ background: "var(--accent)", color: "#fff" }}>
                     {activeEnv.name}
                   </span>
@@ -299,7 +299,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                       value={def.key}
                       onChange={(e) => updateVarKey(def.id, e.target.value)}
                       className="kv-cell"
-                      style={{ border: "none", borderRadius: 0, padding: "4px 10px", fontWeight: 500 }}
+                      style={{ border: "none", borderRadius: 0, fontWeight: 500 }}
                     />
                     <div className="kv-divider" />
                     <input
@@ -314,7 +314,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                       }}
                       placeholder="value"
                       className="kv-cell"
-                      style={{ border: "none", borderRadius: 0, padding: "4px 10px" }}
+                      style={{ border: "none", borderRadius: 0 }}
                       disabled={!activeEnv}
                     />
                     <button
@@ -327,7 +327,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                 );
               })}
               {varDefs.length === 0 && (
-                <div className="px-3 py-3 text-[11px] text-center" style={{ color: "var(--text-muted)" }}>
+                <div className="px-4 py-4 text-xs text-center" style={{ color: "var(--text-muted)" }}>
                   No variables defined yet
                 </div>
               )}

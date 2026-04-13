@@ -39,7 +39,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
         <select
           value={data.method}
           onChange={(e) => updateField("method", e.target.value as HttpMethod)}
-          className="h-10 px-3 font-mono text-xs font-bold border-r cursor-pointer flex-shrink-0"
+          className="h-11 px-3 font-mono text-sm font-bold border-r cursor-pointer flex-shrink-0"
           style={{
             background: "var(--surface-1)",
             color: methodColor(data.method),
@@ -48,7 +48,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
             outline: "none",
             border: "none",
             borderRight: "1px solid var(--border)",
-            minWidth: 80,
+            minWidth: 90,
           }}
         >
           {HTTP_METHODS.map(m => (
@@ -59,7 +59,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
         {/* Base path prefix (non-editable) */}
         {showBasePath && (
           <span
-            className="h-10 flex items-center px-2 font-mono text-xs flex-shrink-0 select-none"
+            className="h-11 flex items-center px-2.5 font-mono text-xs flex-shrink-0 select-none"
             style={{ color: "var(--text-muted)", background: "var(--surface-1)", borderRight: "1px solid var(--border-subtle)" }}
             title={basePath}
           >
@@ -72,7 +72,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           value={data.url}
           onChange={(e) => updateField("url", e.target.value)}
           placeholder={showBasePath ? "/path..." : "https://api.example.com/path"}
-          className="flex-1 h-10 px-3 font-mono text-xs bg-transparent outline-none"
+          className="flex-1 h-11 px-3 font-mono text-sm bg-transparent outline-none"
           style={{ color: "var(--text-primary)", border: "none", borderRadius: 0 }}
           onKeyDown={(e) => { if (e.key === "Enter") onSend(); }}
         />
@@ -81,7 +81,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
         <button
           onClick={onSend}
           disabled={isLoading}
-          className="h-10 px-5 font-semibold text-xs text-white transition-colors flex-shrink-0"
+          className="h-11 px-6 font-semibold text-sm text-white transition-colors flex-shrink-0"
           style={{
             background: isLoading ? "var(--surface-2)" : "var(--accent)",
             cursor: isLoading ? "wait" : "pointer",
@@ -93,14 +93,14 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
 
       {/* Body tabs */}
       <div
-        className="flex items-center border-b flex-shrink-0 gap-1 px-2"
+        className="flex items-center border-b flex-shrink-0 gap-1 px-3"
         style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}
       >
         {(["none", "json", "form", "raw"] as const).map(tab => (
           <button
             key={tab}
             onClick={() => handleBodyTabChange(tab)}
-            className="px-3 py-2 text-[11px] font-medium capitalize transition-colors"
+            className="px-3 py-2.5 text-xs font-medium capitalize transition-colors"
             style={{
               color: bodyTab === tab ? "var(--accent)" : "var(--text-muted)",
               borderBottom: bodyTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
@@ -110,7 +110,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           </button>
         ))}
         <div className="flex-1" />
-        <span className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>
+        <span className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
           {requestName}
         </span>
       </div>
@@ -118,7 +118,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
       {/* Body editor */}
       <div className="flex-1 overflow-auto">
         {bodyTab === "none" && (
-          <div className="flex items-center justify-center h-full text-xs" style={{ color: "var(--text-muted)" }}>
+          <div className="flex items-center justify-center h-full text-sm" style={{ color: "var(--text-muted)" }}>
             This request has no body
           </div>
         )}
@@ -127,7 +127,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           <textarea
             value={data.body}
             onChange={(e) => updateField("body", e.target.value)}
-            className="w-full h-full p-4 font-mono text-xs resize-none bg-transparent outline-none"
+            className="w-full h-full p-4 font-mono text-sm resize-none bg-transparent outline-none"
             style={{ color: "var(--text-primary)", border: "none" }}
             placeholder='{"key": "value"}'
             spellCheck={false}
@@ -145,7 +145,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           <textarea
             value={data.body}
             onChange={(e) => updateField("body", e.target.value)}
-            className="w-full h-full p-4 font-mono text-xs resize-none bg-transparent outline-none"
+            className="w-full h-full p-4 font-mono text-sm resize-none bg-transparent outline-none"
             style={{ color: "var(--text-primary)", border: "none" }}
             placeholder="Raw body content..."
             spellCheck={false}
@@ -189,19 +189,19 @@ function FormEditor({ body, onChange }: { body: string; onChange: (body: string)
       {pairs.map((p, i) => (
         <div key={i} className="kv-row">
           <button className="kv-action" onClick={() => update(i, "enabled", !p.enabled)}>
-            <span style={{ color: p.enabled ? "var(--accent)" : "var(--text-muted)", fontSize: 13 }}>
+            <span style={{ color: p.enabled ? "var(--accent)" : "var(--text-muted)", fontSize: 14 }}>
               {p.enabled ? "✓" : "○"}
             </span>
           </button>
           <input value={p.key} onChange={(e) => update(i, "key", e.target.value)}
             placeholder="key"
             className="kv-cell"
-            style={{ border: "none", borderRadius: 0, padding: "4px 10px" }} />
+            style={{ border: "none", borderRadius: 0 }} />
           <div className="kv-divider" />
           <input value={p.value} onChange={(e) => update(i, "value", e.target.value)}
             placeholder="value"
             className="kv-cell"
-            style={{ border: "none", borderRadius: 0, padding: "4px 10px" }} />
+            style={{ border: "none", borderRadius: 0 }} />
           {(p.key || p.value) && (
             <button className="kv-action" style={{ color: "var(--text-muted)" }} onClick={() => remove(i)}>×</button>
           )}
@@ -209,10 +209,10 @@ function FormEditor({ body, onChange }: { body: string; onChange: (body: string)
       ))}
       {needsEmpty && (
         <div className="kv-row placeholder-row" onClick={add}>
-          <div style={{ width: 28 }} />
-          <div className="kv-cell" style={{ color: "var(--text-muted)", padding: "4px 10px" }}>key</div>
+          <div style={{ width: 34 }} />
+          <div className="kv-cell" style={{ color: "var(--text-muted)" }}>key</div>
           <div className="kv-divider" />
-          <div className="kv-cell" style={{ color: "var(--text-muted)", padding: "4px 10px" }}>value</div>
+          <div className="kv-cell" style={{ color: "var(--text-muted)" }}>value</div>
         </div>
       )}
     </div>

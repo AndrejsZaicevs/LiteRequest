@@ -39,19 +39,19 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys }: KvTableProps
               className="kv-action"
               onClick={() => update(i, "enabled", !row.enabled)}
             >
-              <span style={{ color: row.enabled ? "var(--accent)" : "var(--text-muted)", fontSize: 13 }}>
+              <span style={{ color: row.enabled ? "var(--accent)" : "var(--text-muted)", fontSize: 14 }}>
                 {row.enabled ? "✓" : "○"}
               </span>
             </button>
           )}
-          {fixedKeys && <div style={{ width: 8 }} />}
+          {fixedKeys && <div style={{ width: 10 }} />}
 
           <input
             value={row.key}
             onChange={(e) => update(i, "key", e.target.value)}
             placeholder={placeholder?.key ?? "key"}
             className="kv-cell"
-            style={{ borderRight: "none", borderRadius: 0, border: "none", padding: "4px 10px" }}
+            style={{ borderRight: "none", borderRadius: 0, border: "none" }}
             readOnly={fixedKeys}
           />
 
@@ -62,7 +62,7 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys }: KvTableProps
             onChange={(e) => update(i, "value", e.target.value)}
             placeholder={placeholder?.value ?? "value"}
             className="kv-cell"
-            style={{ border: "none", borderRadius: 0, padding: "4px 10px" }}
+            style={{ border: "none", borderRadius: 0 }}
           />
 
           {!fixedKeys && (row.key !== "" || row.value !== "") ? (
@@ -74,22 +74,22 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys }: KvTableProps
               ×
             </button>
           ) : (
-            <div style={{ width: 28 }} />
+            <div style={{ width: 34 }} />
           )}
         </div>
       ))}
 
       {needsEmptyRow && (
         <div className="kv-row placeholder-row" onClick={addRow}>
-          {!fixedKeys && <div style={{ width: 28 }} />}
-          <div className="kv-cell" style={{ color: "var(--text-muted)", padding: "4px 10px" }}>
+          {!fixedKeys && <div style={{ width: 34 }} />}
+          <div className="kv-cell" style={{ color: "var(--text-muted)" }}>
             {placeholder?.key ?? "key"}
           </div>
           <div className="kv-divider" />
-          <div className="kv-cell" style={{ color: "var(--text-muted)", padding: "4px 10px" }}>
+          <div className="kv-cell" style={{ color: "var(--text-muted)" }}>
             {placeholder?.value ?? "value"}
           </div>
-          <div style={{ width: 28 }} />
+          <div style={{ width: 34 }} />
         </div>
       )}
     </div>

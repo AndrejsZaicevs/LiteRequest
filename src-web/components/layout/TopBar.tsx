@@ -18,20 +18,20 @@ export function TopBar({
 
   return (
     <div
-      className="flex items-center h-10 px-3 gap-2 border-b flex-shrink-0"
+      className="flex items-center h-12 px-4 gap-3 border-b flex-shrink-0"
       style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
     >
-      <div className="font-semibold text-sm tracking-tight mr-3" style={{ color: "var(--accent)" }}>
+      <div className="font-bold text-base tracking-tight mr-4" style={{ color: "var(--accent)" }}>
         LiteRequest
       </div>
 
       {/* Environment chips */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
         {environments.map(env => (
           <button
             key={env.id}
             onClick={() => onEnvChange(env.is_active ? null : env.id)}
-            className="px-2 py-0.5 rounded text-xs font-medium transition-colors"
+            className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
             style={{
               background: env.is_active ? "var(--accent)" : "var(--surface-2)",
               color: env.is_active ? "#fff" : "var(--text-secondary)",
@@ -65,7 +65,7 @@ export function TopBar({
       {/* Search button */}
       <button
         onClick={onSearch}
-        className="px-2 py-1 rounded text-xs hover:opacity-80 transition-opacity flex items-center gap-1"
+        className="px-3 py-1.5 rounded-md text-xs hover:opacity-80 transition-opacity flex items-center gap-1.5"
         style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
       >
         🔍 <span style={{ color: "var(--text-muted)" }}>Ctrl+K</span>
@@ -74,7 +74,7 @@ export function TopBar({
       {/* Settings */}
       <button
         onClick={onSettings}
-        className="px-2 py-1 rounded text-xs hover:opacity-80 transition-opacity"
+        className="px-3 py-1.5 rounded-md text-sm hover:opacity-80 transition-opacity"
         style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
       >
         ⚙️

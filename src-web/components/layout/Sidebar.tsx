@@ -121,15 +121,15 @@ export function Sidebar({
     return (
       <div key={folder.id}>
         <div
-          className="flex items-center gap-1.5 py-1.5 cursor-pointer hover:bg-[var(--surface-2)] transition-colors"
-          style={{ paddingLeft: 12 + depth * 16, paddingRight: 8 }}
+          className="flex items-center gap-2 py-2 cursor-pointer hover:bg-[var(--surface-2)] transition-colors"
+          style={{ paddingLeft: 14 + depth * 18, paddingRight: 10 }}
           onClick={() => toggle(folder.id)}
           onContextMenu={(e) => handleContextMenu(e, "folder", folder.id)}
         >
-          <span className="text-[9px] w-3 text-center flex-shrink-0" style={{ color: "var(--text-muted)" }}>
+          <span className="text-[11px] w-3.5 text-center flex-shrink-0" style={{ color: "var(--text-muted)" }}>
             {isCollapsed ? "▶" : "▼"}
           </span>
-          <span style={{ fontSize: 12 }}>📁</span>
+          <span style={{ fontSize: 14 }}>📁</span>
           {renaming?.id === folder.id ? (
             <input
               ref={renameRef}
@@ -137,12 +137,12 @@ export function Sidebar({
               onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
               onBlur={handleRename}
               onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setRenaming(null); }}
-              className="flex-1 bg-transparent outline-none text-xs"
-              style={{ border: "none", borderBottom: "1px solid var(--accent)", borderRadius: 0, padding: "0 2px" }}
+              className="flex-1 bg-transparent outline-none text-sm"
+              style={{ border: "none", borderBottom: "1px solid var(--accent)", borderRadius: 0, padding: "1px 3px" }}
               autoFocus
             />
           ) : (
-            <span className="truncate flex-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+            <span className="truncate flex-1 text-sm" style={{ color: "var(--text-secondary)" }}>
               {folder.name}
             </span>
           )}
@@ -163,10 +163,10 @@ export function Sidebar({
     return (
       <div
         key={req.id}
-        className="flex items-center gap-1.5 py-1.5 cursor-pointer transition-colors"
+        className="flex items-center gap-2 py-2 cursor-pointer transition-colors"
         style={{
-          paddingLeft: 12 + depth * 16 + 14,
-          paddingRight: 8,
+          paddingLeft: 14 + depth * 18 + 16,
+          paddingRight: 10,
           background: isSelected ? "var(--surface-2)" : "transparent",
           borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
         }}
@@ -178,13 +178,13 @@ export function Sidebar({
       >
         {meta && (
           <span
-            className="font-mono text-[9px] font-bold flex-shrink-0"
-            style={{ color: methodColor(meta.method), width: 28, textAlign: "right" }}
+            className="font-mono text-[11px] font-bold flex-shrink-0"
+            style={{ color: methodColor(meta.method), width: 34, textAlign: "right" }}
           >
             {meta.method.length > 3 ? meta.method.slice(0, 3) : meta.method}
           </span>
         )}
-        {!meta && <span style={{ width: 28 }} />}
+        {!meta && <span style={{ width: 34 }} />}
         {renaming?.id === req.id ? (
           <input
             ref={renameRef}
@@ -192,12 +192,12 @@ export function Sidebar({
             onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
             onBlur={handleRename}
             onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setRenaming(null); }}
-            className="flex-1 bg-transparent outline-none text-xs"
-            style={{ border: "none", borderBottom: "1px solid var(--accent)", borderRadius: 0, padding: "0 2px" }}
+            className="flex-1 bg-transparent outline-none text-sm"
+            style={{ border: "none", borderBottom: "1px solid var(--accent)", borderRadius: 0, padding: "1px 3px" }}
             autoFocus
           />
         ) : (
-          <span className="truncate flex-1 text-xs">{req.name}</span>
+          <span className="truncate flex-1 text-sm">{req.name}</span>
         )}
       </div>
     );
@@ -207,16 +207,15 @@ export function Sidebar({
     <div className="h-full flex flex-col" style={{ background: "var(--surface-1)" }}>
       {/* Header */}
       <div
-        className="flex items-center justify-between px-3 py-2.5 border-b flex-shrink-0"
+        className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
         style={{ borderColor: "var(--border)" }}
       >
-        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
           Collections
         </span>
         <button
           onClick={handleNewCollection}
           className="btn-pill accent"
-          style={{ padding: "2px 8px", fontSize: 10 }}
           title="New Collection"
         >
           + New
@@ -224,7 +223,7 @@ export function Sidebar({
       </div>
 
       {/* Tree */}
-      <div className="flex-1 overflow-y-auto py-1" onClick={closeContextMenu}>
+      <div className="flex-1 overflow-y-auto py-1.5" onClick={closeContextMenu}>
         {collections.map(col => {
           const isCollapsed = collapsed.has(col.id);
           const isSelected = col.id === selectedCollectionId;
@@ -235,10 +234,10 @@ export function Sidebar({
             <div key={col.id}>
               {/* Collection header */}
               <div
-                className="flex items-center gap-1.5 py-2 cursor-pointer transition-colors"
+                className="flex items-center gap-2 py-2.5 cursor-pointer transition-colors"
                 style={{
-                  paddingLeft: 8,
-                  paddingRight: 8,
+                  paddingLeft: 10,
+                  paddingRight: 10,
                   background: isSelected ? "var(--surface-2)" : "transparent",
                   borderBottom: "1px solid var(--border-subtle)",
                 }}
@@ -248,10 +247,10 @@ export function Sidebar({
                 onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--row-hover)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = isSelected ? "var(--surface-2)" : "transparent"; }}
               >
-                <span className="text-[9px] w-3 text-center flex-shrink-0" style={{ color: "var(--text-muted)" }}>
+                <span className="text-[11px] w-3.5 text-center flex-shrink-0" style={{ color: "var(--text-muted)" }}>
                   {isCollapsed ? "▶" : "▼"}
                 </span>
-                <span style={{ fontSize: 13 }}>📦</span>
+                <span style={{ fontSize: 15 }}>📦</span>
                 {renaming?.id === col.id ? (
                   <input
                     ref={renameRef}
@@ -259,19 +258,19 @@ export function Sidebar({
                     onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
                     onBlur={handleRename}
                     onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setRenaming(null); }}
-                    className="flex-1 bg-transparent outline-none text-xs font-medium"
-                    style={{ border: "none", borderBottom: "1px solid var(--accent)", borderRadius: 0, padding: "0 2px" }}
+                    className="flex-1 bg-transparent outline-none text-sm font-medium"
+                    style={{ border: "none", borderBottom: "1px solid var(--accent)", borderRadius: 0, padding: "1px 3px" }}
                     autoFocus
                   />
                 ) : (
-                  <span className="truncate flex-1 text-xs font-medium">{col.name}</span>
+                  <span className="truncate flex-1 text-sm font-medium">{col.name}</span>
                 )}
-                <span className="text-[10px] flex-shrink-0" style={{ color: "var(--text-muted)" }}>
+                <span className="text-xs flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
                   {requests.filter(r => r.collection_id === col.id).length}
                 </span>
               </div>
               {!isCollapsed && (
-                <div className="pb-1">
+                <div className="pb-1.5">
                   {colFolders.map(f => renderFolder(f, 0))}
                   {orphanRequests.map(r => renderRequest(r, 0))}
                 </div>
@@ -284,33 +283,33 @@ export function Sidebar({
       {/* Context menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 rounded shadow-lg text-xs overflow-hidden"
+          className="fixed z-50 rounded-md shadow-lg text-sm overflow-hidden"
           style={{
             left: contextMenu.x, top: contextMenu.y,
             background: "var(--surface-2)", border: "1px solid var(--border)",
-            minWidth: 160,
+            minWidth: 180,
           }}
         >
           {contextMenu.type === "collection" && (
             <>
-              <button className="w-full text-left px-3 py-2 hover:bg-[var(--surface-3)] transition-colors"
+              <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)] transition-colors"
                 onClick={() => { handleNewRequest(contextMenu.id); }}>
                 New Request
               </button>
-              <button className="w-full text-left px-3 py-2 hover:bg-[var(--surface-3)] transition-colors"
+              <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)] transition-colors"
                 onClick={() => { handleNewFolder(contextMenu.id); }}>
                 New Folder
               </button>
-              <button className="w-full text-left px-3 py-2 hover:bg-[var(--surface-3)] transition-colors"
+              <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)] transition-colors"
                 onClick={() => { onSelectCollection(contextMenu.id); closeContextMenu(); }}>
                 Settings
               </button>
               <div className="my-0.5" style={{ borderTop: "1px solid var(--border)" }} />
-              <button className="w-full text-left px-3 py-2 hover:bg-[var(--surface-3)] transition-colors"
+              <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)] transition-colors"
                 onClick={() => { setRenaming({ type: "collection", id: contextMenu.id, value: collections.find(c => c.id === contextMenu.id)?.name ?? "" }); closeContextMenu(); }}>
                 Rename
               </button>
-              <button className="w-full text-left px-3 py-2 hover:bg-[var(--surface-3)] transition-colors" style={{ color: "var(--danger)" }}
+              <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)] transition-colors" style={{ color: "var(--danger)" }}
                 onClick={() => handleDelete("collection", contextMenu.id)}>
                 Delete
               </button>
@@ -318,14 +317,14 @@ export function Sidebar({
           )}
           {contextMenu.type === "folder" && (
             <>
-              <button className="w-full text-left px-3 py-2 hover:bg-[var(--surface-3)] transition-colors"
+              <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)] transition-colors"
                 onClick={() => {
                   const f = folders.find(ff => ff.id === contextMenu.id);
                   if (f) handleNewRequest(f.collection_id, f.id);
                 }}>
                 New Request
               </button>
-              <button className="w-full text-left px-3 py-2 hover:bg-[var(--surface-3)] transition-colors"
+              <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)] transition-colors"
                 onClick={() => {
                   const f = folders.find(ff => ff.id === contextMenu.id);
                   if (f) handleNewFolder(f.collection_id, f.id);
@@ -333,11 +332,11 @@ export function Sidebar({
                 New Subfolder
               </button>
               <div className="my-0.5" style={{ borderTop: "1px solid var(--border)" }} />
-              <button className="w-full text-left px-3 py-2 hover:bg-[var(--surface-3)] transition-colors"
+              <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)] transition-colors"
                 onClick={() => { setRenaming({ type: "folder", id: contextMenu.id, value: folders.find(f => f.id === contextMenu.id)?.name ?? "" }); closeContextMenu(); }}>
                 Rename
               </button>
-              <button className="w-full text-left px-3 py-2 hover:bg-[var(--surface-3)] transition-colors" style={{ color: "var(--danger)" }}
+              <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)] transition-colors" style={{ color: "var(--danger)" }}
                 onClick={() => handleDelete("folder", contextMenu.id)}>
                 Delete
               </button>
@@ -345,11 +344,11 @@ export function Sidebar({
           )}
           {contextMenu.type === "request" && (
             <>
-              <button className="w-full text-left px-3 py-2 hover:bg-[var(--surface-3)] transition-colors"
+              <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)] transition-colors"
                 onClick={() => { setRenaming({ type: "request", id: contextMenu.id, value: requests.find(r => r.id === contextMenu.id)?.name ?? "" }); closeContextMenu(); }}>
                 Rename
               </button>
-              <button className="w-full text-left px-3 py-2 hover:bg-[var(--surface-3)] transition-colors" style={{ color: "var(--danger)" }}
+              <button className="w-full text-left px-4 py-2.5 hover:bg-[var(--surface-3)] transition-colors" style={{ color: "var(--danger)" }}
                 onClick={() => handleDelete("request", contextMenu.id)}>
                 Delete
               </button>

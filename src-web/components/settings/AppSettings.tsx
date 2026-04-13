@@ -139,7 +139,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
         <h2 className="text-lg font-semibold flex items-center gap-2">
           <span>⚙️</span> Settings
         </h2>
-        <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
           Global application settings — environments, default headers, variables, and certificates
         </p>
       </div>
@@ -153,7 +153,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="px-3 py-2 text-[11px] font-medium capitalize transition-colors"
+            className="px-4 py-2.5 text-xs font-medium capitalize transition-colors"
             style={{
               color: tab === t ? "var(--accent)" : "var(--text-muted)",
               borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
@@ -181,7 +181,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                 {environments.map(env => (
                   <div
                     key={env.id}
-                    className="flex items-center px-3 py-2 cursor-pointer transition-colors"
+                    className="flex items-center px-3.5 py-2.5 cursor-pointer transition-colors"
                     style={{
                       background: selectedEnv === env.id ? "var(--surface-2)" : "transparent",
                       borderBottom: "1px solid var(--border-subtle)",
@@ -206,7 +206,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                       <span className="flex-1 text-xs truncate">{env.name}</span>
                     )}
                     {env.is_active && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded font-medium ml-2 flex-shrink-0"
+                      <span className="text-[10px] px-2 py-0.5 rounded font-medium ml-2 flex-shrink-0"
                         style={{ background: "var(--accent)", color: "#fff" }}>
                         active
                       </span>
@@ -214,7 +214,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                   </div>
                 ))}
                 {environments.length === 0 && (
-                  <div className="px-3 py-4 text-[11px] text-center" style={{ color: "var(--text-muted)" }}>
+                  <div className="px-4 py-4 text-xs text-center" style={{ color: "var(--text-muted)" }}>
                     No environments
                   </div>
                 )}
@@ -242,7 +242,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                           value={v.key}
                           onChange={(e) => updateEnvVar({ ...v, key: e.target.value })}
                           className="kv-cell"
-                          style={{ border: "none", borderRadius: 0, padding: "4px 10px", fontWeight: 500 }}
+                          style={{ border: "none", borderRadius: 0, fontWeight: 500 }}
                         />
                         <div className="kv-divider" />
                         <input
@@ -250,7 +250,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                           type={v.is_secret ? "password" : "text"}
                           onChange={(e) => updateEnvVar({ ...v, value: e.target.value })}
                           className="kv-cell"
-                          style={{ border: "none", borderRadius: 0, padding: "4px 10px" }}
+                          style={{ border: "none", borderRadius: 0 }}
                         />
                         <button
                           onClick={() => updateEnvVar({ ...v, is_secret: !v.is_secret })}
@@ -263,7 +263,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                       </div>
                     ))}
                     {envVars.length === 0 && (
-                      <div className="px-3 py-3 text-[11px] text-center" style={{ color: "var(--text-muted)" }}>
+                      <div className="px-4 py-4 text-xs text-center" style={{ color: "var(--text-muted)" }}>
                         No variables — click + Add to create one
                       </div>
                     )}
@@ -277,7 +277,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
         {/* Default Headers tab */}
         {tab === "headers" && (
           <div>
-            <p className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
+            <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
               Default headers sent with every request across all collections
             </p>
             <div style={{ border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden", maxWidth: 600 }}>
@@ -293,7 +293,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
         {/* App-wide Variables tab */}
         {tab === "variables" && (
           <div>
-            <p className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
+            <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
               Global variables available in all collections (not environment-specific)
             </p>
             <div style={{ border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden", maxWidth: 600 }}>
@@ -310,14 +310,14 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
         {tab === "certificates" && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                 Client TLS certificates for mutual TLS authentication
               </p>
               <button onClick={addCert} className="btn-pill accent">+ Add Certificate</button>
             </div>
 
             {clientCerts.length === 0 && (
-              <div className="text-[11px] p-4 rounded text-center" style={{ background: "var(--surface-1)", color: "var(--text-muted)" }}>
+              <div className="text-xs p-5 rounded text-center" style={{ background: "var(--surface-1)", color: "var(--text-muted)" }}>
                 No client certificates configured
               </div>
             )}
@@ -348,7 +348,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="label block">Host Pattern</label>
                       <input

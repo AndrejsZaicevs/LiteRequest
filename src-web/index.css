@@ -17,7 +17,7 @@
   --warning: #fca130;
   --danger: #f93e3e;
   --danger-bright: #ff5757;
-  --row-hover: rgba(255, 255, 255, 0.03);
+  --row-hover: rgba(255, 255, 255, 0.04);
 
   color-scheme: dark;
 }
@@ -35,21 +35,21 @@ html, body, #root {
   background: var(--surface-0);
   color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
 }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--surface-3);
-  border-radius: 3px;
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
@@ -71,9 +71,9 @@ input, textarea, select {
   background: var(--surface-0);
   color: var(--text-primary);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px 10px;
-  font-size: 12px;
+  border-radius: 5px;
+  padding: 8px 12px;
+  font-size: 13px;
   transition: border-color 0.15s;
 }
 input:focus, textarea:focus, select:focus {
@@ -90,8 +90,8 @@ select {
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23636370' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 6px center;
-  padding-right: 22px;
+  background-position: right 8px center;
+  padding-right: 26px;
 }
 
 /* Button reset */
@@ -108,10 +108,10 @@ button {
 .btn-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 11px;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 5px;
+  font-size: 12px;
   font-weight: 500;
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -133,9 +133,9 @@ button {
 .section-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  font-size: 11px;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -150,9 +150,9 @@ button {
 }
 .section-header .badge {
   margin-left: auto;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: 10px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   background: var(--surface-3);
   color: var(--text-secondary);
@@ -163,15 +163,15 @@ button {
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--border-subtle);
-  min-height: 30px;
+  min-height: 38px;
   transition: background 0.1s;
 }
 .kv-row:hover {
   background: var(--row-hover);
 }
 .kv-row .kv-cell {
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: 7px 12px;
+  font-size: 13px;
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
   flex: 1;
   min-width: 0;
@@ -189,13 +189,13 @@ button {
   background: var(--border-subtle);
 }
 .kv-row .kv-action {
-  width: 28px;
+  width: 34px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
   transition: color 0.15s;
 }
@@ -221,8 +221,8 @@ button {
 
 /* Subtle label */
 .label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }

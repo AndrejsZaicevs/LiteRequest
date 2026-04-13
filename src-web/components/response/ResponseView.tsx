@@ -41,7 +41,7 @@ export function ResponseView({ response, latency, isLoading }: ResponseViewProps
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--surface-0)" }}>
       {/* Status bar — full-width separator */}
       <div
-        className="flex items-center gap-3 px-3 h-8 text-[11px] flex-shrink-0"
+        className="flex items-center gap-3 px-4 h-10 text-xs flex-shrink-0"
         style={{ background: "var(--surface-1)", borderBottom: "1px solid var(--border)" }}
       >
         <span
@@ -66,7 +66,7 @@ export function ResponseView({ response, latency, isLoading }: ResponseViewProps
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="capitalize text-[11px] px-2 py-1"
+            className="capitalize text-xs px-3 py-1.5"
             style={{
               color: tab === t ? "var(--accent)" : "var(--text-muted)",
               borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
@@ -103,7 +103,7 @@ function ResponseBody({ body }: { body: string }) {
   }
 
   return (
-    <pre className="p-4 font-mono text-xs whitespace-pre-wrap break-all" style={{ color: "var(--text-primary)" }}>
+    <pre className="p-4 font-mono text-sm whitespace-pre-wrap break-all leading-relaxed" style={{ color: "var(--text-primary)" }}>
       {formatted}
     </pre>
   );
@@ -115,11 +115,11 @@ function ResponseHeaders({ headers }: { headers: Record<string, string> }) {
     <div>
       {entries.map(([key, value], i) => (
         <div key={i} className="kv-row">
-          <div className="kv-cell" style={{ color: "var(--accent)", fontWeight: 500, flex: "0 0 40%", padding: "5px 12px" }}>
+          <div className="kv-cell" style={{ color: "var(--accent)", fontWeight: 500, flex: "0 0 40%" }}>
             {key}
           </div>
           <div className="kv-divider" />
-          <div className="kv-cell" style={{ color: "var(--text-secondary)", padding: "5px 12px", wordBreak: "break-all" }}>
+          <div className="kv-cell" style={{ color: "var(--text-secondary)", wordBreak: "break-all" }}>
             {value}
           </div>
         </div>
