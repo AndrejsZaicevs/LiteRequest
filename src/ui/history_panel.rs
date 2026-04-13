@@ -295,9 +295,9 @@ fn render_single_execution(
     let bg_idx = ui.painter().add(egui::Shape::Noop);
 
     let row_resp = ui.horizontal(|ui| {
+        ui.set_max_width(available_w);
         ui.spacing_mut().item_spacing.x = 5.0;
         ui.add_space(4.0);
-        // Status code as colored monospace text
         ui.label(
             egui::RichText::new(format!("{}", exec.response.status))
                 .strong()
@@ -446,6 +446,7 @@ fn render_single_version(
     let bg_idx = ui.painter().add(egui::Shape::Noop);
 
     let row_resp = ui.horizontal(|ui| {
+        ui.set_max_width(available_w);
         ui.spacing_mut().item_spacing.x = 5.0;
         ui.add_space(4.0);
         ui.label(

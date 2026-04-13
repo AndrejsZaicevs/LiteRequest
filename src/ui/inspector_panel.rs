@@ -89,6 +89,7 @@ pub fn render_inspector(
         .id_salt("inspector_scroll")
         .auto_shrink([false, false])
         .show(ui, |ui| {
+            ui.set_width(ui.available_width());
             // ── PATH PARAMS (only if any exist) ──
             if !data.path_params.is_empty() {
                 let path_count = count_active_pairs(&data.path_params);

@@ -843,6 +843,7 @@ impl eframe::App for LiteRequestApp {
                         .inner_margin(egui::Margin::symmetric(8, 6)),
                 )
                 .show_inside(ui, |ui| {
+                    ui.set_max_width(ui.available_width());
                     let display_vars = self.build_display_variables(
                         self.current_request.as_ref().map(|r| r.collection_id.as_str()).unwrap_or(""),
                     );
