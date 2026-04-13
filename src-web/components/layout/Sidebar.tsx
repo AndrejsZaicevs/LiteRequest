@@ -89,13 +89,26 @@ function DnDRow({ item, dropState, children }: {
   const isBefore = dropState?.overId === item.id && dropState.position === "before";
   const isAfter  = dropState?.overId === item.id && dropState.position === "after";
   const isInside = dropState?.overId === item.id && dropState.position === "inside";
-  const indent   = 28 + item.depth * 20;
+  const indent   = 18 + item.depth * 14;
 
   return (
-    <div ref={setRef} style={{ position: "relative", opacity: isDragging ? 0 : 1 }} {...attributes} {...listeners}>
+    <div ref={setRef} style={{ position: "relative", opacity: isDragging ? 0 : 1, marginBottom: 1 }} {...attributes} {...listeners}>
       {isBefore && <DropLine side="top"    indent={indent} />}
       {children(isInside)}
       {isAfter  && <DropLine side="bottom" indent={indent} />}
+    </div>
+  );
+}
+
+// ── Drop zone at the bottom of a collection (allows dragging to root) ──
+
+function CollectionEndZone({ collectionId, dropState }: { collectionId: string; dropState: DropState | null }) {
+  const zoneId = `col-end-${collectionId}`;
+  const { setNodeRef } = useDroppable({ id: zoneId, data: { type: "col-end", collectionId } });
+  const isTarget = dropState?.overId === zoneId;
+  return (
+    <div ref={setNodeRef} style={{ height: 14, position: "relative", marginLeft: 18 }}>
+      {isTarget && <DropLine side="top" indent={0} />}
     </div>
   );
 }
@@ -184,7 +197,15 @@ export function Sidebar({
     const { active, over } = event;
     if (!over || over.id === active.id) { setDropState(null); return; }
 
-    const overItem = over.data.current as TreeItem | undefined;
+    const overData = over.data.current as any;
+
+    // col-end drop zones
+    if (overData?.type === "col-end") {
+      setDropState({ overId: String(over.id), position: "after" });
+      return;
+    }
+
+    const overItem = overData as TreeItem | undefined;
     if (!overItem) { setDropState(null); return; }
 
     const activeDragRect = active.rect.current.translated;
@@ -216,8 +237,25 @@ export function Sidebar({
     if (!ds) return;
 
     const activeItem = event.active.data.current as TreeItem | undefined;
+    if (!activeItem) return;
+
+    // Handle drop onto collection-end zone → move to collection root
+    if (ds.overId.startsWith("col-end-")) {
+      const colId = ds.overId.slice("col-end-".length);
+      if (activeItem.type === "request") {
+        const req = activeItem.request!;
+        await api.moveRequest(req.id, colId, null);
+        const sibs = requests
+          .filter(r => r.collection_id === colId && !r.folder_id && r.id !== req.id)
+          .sort((a, b) => a.sort_order - b.sort_order);
+        await api.reorderRequests([...sibs.map(r => r.id), req.id]);
+      }
+      onDataChange();
+      return;
+    }
+
     const overItem   = flatItems.find(i => i.id === ds.overId);
-    if (!activeItem || !overItem || activeItem.id === overItem.id) return;
+    if (!overItem || activeItem.id === overItem.id) return;
 
     if (activeItem.type === "request") {
       const req = activeItem.request!;
@@ -311,7 +349,7 @@ export function Sidebar({
   const renderFolder = (folder: FolderType, depth: number): React.ReactNode => {
     const isCollapsed = collapsed.has(folder.id);
     const item = flatItems.find(i => i.id === folder.id);
-    const pl = 28 + depth * 20;
+    const pl = 18 + depth * 14;
 
     const subfolders = folders.filter(f => f.parent_folder_id === folder.id).sort((a, b) => a.sort_order - b.sort_order);
     const folderReqs = requests.filter(r => r.folder_id === folder.id).sort((a, b) => a.sort_order - b.sort_order);
@@ -365,7 +403,7 @@ export function Sidebar({
     const isSelected = req.id === selectedRequestId;
     const meta = requestMeta.get(req.id);
     const item = flatItems.find(i => i.id === req.id);
-    const pl = 28 + depth * 20;
+    const pl = 18 + depth * 14;
 
     if (!item) return null;
 
@@ -410,7 +448,10 @@ export function Sidebar({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0" style={{ borderColor: "var(--border)" }}>
         <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Collections</span>
-        <button onClick={handleNewCollection} className="btn-pill accent" style={{ padding: "8px 18px", fontSize: 13 }}>+ New</button>
+        <button
+          onClick={handleNewCollection}
+          style={{ background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}
+        >+ New</button>
       </div>
 
       {/* Tree */}
@@ -433,7 +474,7 @@ export function Sidebar({
                 {/* Collection header — not draggable */}
                 <div
                   className="flex items-center gap-2 py-3.5 cursor-pointer transition-colors"
-                  style={{ paddingLeft: 10, paddingRight: 10, background: isSelected ? "var(--surface-2)" : "transparent", borderBottom: "1px solid var(--border-subtle)" }}
+                  style={{ paddingLeft: 14, paddingRight: 10, background: isSelected ? "var(--surface-2)" : "transparent", borderBottom: "1px solid var(--border-subtle)" }}
                   onClick={() => toggle(col.id)}
                   onContextMenu={e => handleContextMenu(e, "collection", col.id)}
                   onDoubleClick={() => onSelectCollection(col.id)}
@@ -454,9 +495,10 @@ export function Sidebar({
                 </div>
 
                 {!isCollapsed && (
-                  <div className="pb-1.5">
+                  <div className="pb-1">
                     {colFolders.map(f => renderFolder(f, 0))}
                     {orphans.map(r => renderRequest(r, 0))}
+                    <CollectionEndZone collectionId={col.id} dropState={dropState} />
                   </div>
                 )}
               </div>
@@ -464,24 +506,36 @@ export function Sidebar({
           })}
         </div>
 
-        {/* Floating drag preview */}
-        <DragOverlay>
-          {activeDragItem && (
-            <div className="flex items-center gap-2 rounded text-sm px-3 py-2 shadow-xl" style={{ background: "var(--surface-3)", border: "1px solid var(--accent)", opacity: 0.95, minWidth: 160 }}>
-              {activeDragItem.type === "folder" ? (
-                <><Folder size={14} style={{ color: "var(--accent)" }} /><span>{activeDragItem.folder?.name}</span></>
-              ) : (
-                <>
-                  {activeDragItem.request && requestMeta.get(activeDragItem.request.id) && (
-                    <span className="font-mono text-xs font-bold" style={{ color: methodColor(requestMeta.get(activeDragItem.request.id)!.method) }}>
-                      {requestMeta.get(activeDragItem.request.id)!.method.slice(0, 3)}
-                    </span>
-                  )}
-                  <span>{activeDragItem.request?.name}</span>
-                </>
-              )}
-            </div>
-          )}
+        {/* Floating drag preview — semi-transparent ghost row, no drop animation */}
+        <DragOverlay dropAnimation={null}>
+          {activeDragItem && (() => {
+            const pl = 18 + activeDragItem.depth * 14;
+            const meta = activeDragItem.request ? requestMeta.get(activeDragItem.request.id) : undefined;
+            return (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8,
+                paddingLeft: pl, paddingRight: 10, paddingTop: 12, paddingBottom: 12,
+                background: "var(--surface-2)",
+                borderLeft: "2px solid var(--accent)",
+                opacity: 0.55,
+                pointerEvents: "none",
+              }}>
+                <GripVertical size={13} style={{ color: "var(--text-muted)", opacity: 0.3, flexShrink: 0 }} />
+                {activeDragItem.type === "folder" ? (
+                  <><FolderOpen size={15} style={{ color: "var(--accent)", flexShrink: 0 }} />
+                  <span style={{ color: "var(--text-secondary)" }}>{activeDragItem.folder?.name}</span></>
+                ) : (
+                  <>
+                    {meta
+                      ? <span className="font-mono text-sm font-bold" style={{ color: methodColor(meta.method), width: 44, textAlign: "right", flexShrink: 0 }}>{meta.method.slice(0, 3)}</span>
+                      : <span style={{ width: 44, flexShrink: 0 }} />
+                    }
+                    <span style={{ color: "var(--text-primary)" }}>{activeDragItem.request?.name}</span>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </DragOverlay>
       </DndContext>
 
