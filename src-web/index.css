@@ -1,125 +1,40 @@
 @import "tailwindcss";
 
-/* ─── Dark theme – matches example design system ─── */
 :root {
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --surface-0: #121212;
-  --surface-1: #161616;
-  --surface-2: #1a1a1a;
-  --surface-3: #242424;
-  --surface-deep: #0d0d0d;
-  --border: #232323;
-  --border-subtle: #1c1c1c;
-  --text-primary: #e5e7eb;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
-  --text-faint: #4b5563;
-  --success: #49cc90;
-  --warning: #fca130;
-  --danger: #f93e3e;
-  --danger-bright: #ff5757;
-  --row-hover: rgba(255, 255, 255, 0.04);
-
   color-scheme: dark;
 }
 
+/* App shell — full viewport, no overflow */
 html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  background: var(--surface-0);
-  color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-size: 14px;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar */
+/* Custom scrollbar (no Tailwind equivalent) */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+::-webkit-scrollbar-thumb { background: #242424; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #6b7280; }
 
-/* Monospace */
+/* Extend Tailwind font-mono with better monospace fonts */
 .font-mono {
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, "Liberation Mono", monospace;
 }
 
-/* Focus ring */
+/* Global focus ring */
 *:focus-visible {
-  outline: 1px solid var(--accent);
+  outline: 1px solid #3b82f6;
   outline-offset: -1px;
 }
 
-/* Input base — only for standalone inputs (settings forms etc.) */
-input.form-input, textarea.form-input, select.form-input {
-  background: var(--surface-deep);
-  color: var(--text-primary);
-  border: 1px solid #1f2937;
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 13px;
-  transition: border-color 0.15s;
-}
-input.form-input:focus, textarea.form-input:focus, select.form-input:focus {
-  border-color: var(--accent);
-  outline: none;
-}
+/* Global placeholder color */
 input::placeholder, textarea::placeholder {
-  color: var(--text-faint);
+  color: #4b5563;
 }
 
-/* Select — only for standalone selects */
-select.form-input {
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  padding-right: 26px;
-}
-
-/* Button reset */
-button {
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: 13px;
-  font-family: inherit;
-}
-
-/* ─── Collapsible section header (Inspector pattern) ─── */
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  border-bottom: 1px solid #1f2937;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.15s;
-}
-.section-header:hover {
-  background: var(--surface-2);
-}
-.section-header .badge {
-  margin-left: auto;
-  padding: 1px 7px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 500;
-  background: var(--surface-3);
-  color: var(--text-muted);
-}
-
-/* ─── KV table rows (compact inspector style) ─── */
+/* ─── KV table rows (used in FormEditor, CollectionConfig, AppSettings) ─── */
 .kv-row {
   display: flex;
   align-items: center;
@@ -142,18 +57,18 @@ button {
   border: 1px solid transparent;
   border-radius: 4px;
   outline: none;
-  color: var(--text-primary);
+  color: #e5e7eb;
   transition: all 0.15s;
 }
 .kv-row .kv-cell:focus {
   border-color: #1f2937;
-  background: var(--surface-2);
+  background: #1a1a1a;
 }
 .kv-row .kv-cell::placeholder {
-  color: var(--text-faint);
+  color: #4b5563;
 }
 .kv-row .kv-divider {
-  display: none; /* Hidden in compact mode */
+  display: none;
 }
 .kv-row .kv-action {
   width: 20px;
@@ -161,7 +76,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
+  color: #6b7280;
   font-size: 13px;
   cursor: pointer;
   transition: color 0.15s;
@@ -171,7 +86,7 @@ button {
   opacity: 1;
 }
 .kv-row .kv-action:hover {
-  color: var(--danger);
+  color: #f93e3e;
 }
 .kv-row .kv-action.always-visible {
   opacity: 1;
@@ -181,22 +96,8 @@ button {
   cursor: text;
 }
 
-/* Resizable panels */
+/* Panel resize cursor lock */
 .resizing * {
   user-select: none !important;
   cursor: col-resize !important;
-}
-
-/* Variable highlight */
-.var-highlight {
-  color: #e2b714;
-  font-weight: 500;
-}
-
-/* Subtle label */
-.label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
 }

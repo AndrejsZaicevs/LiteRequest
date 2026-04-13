@@ -190,8 +190,8 @@ function FormEditor({ body, onChange }: { body: string; onChange: (body: string)
       {needsEmpty && (
         <div className="kv-row placeholder-row" onClick={add}>
           <div style={{ width: 20 }} />
-          <div className="kv-cell" style={{ color: "var(--text-faint)" }}>key</div>
-          <div className="kv-cell" style={{ color: "var(--text-faint)" }}>value</div>
+          <div className="kv-cell" style={{ color: "#4b5563" }}>key</div>
+          <div className="kv-cell" style={{ color: "#4b5563" }}>value</div>
         </div>
       )}
     </div>

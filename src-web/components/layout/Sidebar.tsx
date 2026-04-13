@@ -68,8 +68,8 @@ function buildFlatTree(
 
 function DropLine({ side, indent }: { side: "top" | "bottom"; indent: number }) {
   return (
-    <div style={{ position: "absolute", [side]: -1, left: indent, right: 4, height: 2, background: "var(--accent)", borderRadius: 2, zIndex: 30, pointerEvents: "none" }}>
-      <div style={{ position: "absolute", left: -3, top: -2, width: 6, height: 6, borderRadius: "50%", background: "var(--accent)" }} />
+    <div style={{ position: "absolute", [side]: -1, left: indent, right: 4, height: 2, background: "#3b82f6", borderRadius: 2, zIndex: 30, pointerEvents: "none" }}>
+      <div style={{ position: "absolute", left: -3, top: -2, width: 6, height: 6, borderRadius: "50%", background: "#3b82f6" }} />
     </div>
   );
 }
@@ -339,7 +339,7 @@ export function Sidebar({
       onBlur={handleRename}
       onKeyDown={e => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setRenaming(null); }}
       className="flex-1 bg-transparent outline-none text-sm text-gray-200"
-      style={{ border: "none", borderBottom: "1px solid var(--accent)", borderRadius: 0, padding: "1px 3px" }}
+      style={{ border: "none", borderBottom: "1px solid #3b82f6", borderRadius: 0, padding: "1px 3px" }}
       autoFocus
       onClick={e => e.stopPropagation()}
       onPointerDown={e => e.stopPropagation()}
