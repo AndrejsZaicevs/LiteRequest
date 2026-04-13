@@ -34,7 +34,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
       {/* URL Bar */}
       <div className="p-4 border-b border-gray-800 bg-[#121212] flex-shrink-0">
         <div className="flex items-center gap-2">
-          <div className="flex shadow-sm rounded-md overflow-hidden border border-gray-700/60 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500/50 transition-all flex-1 bg-[#1a1a1a]">
+          <div className="flex rounded-md overflow-hidden border border-gray-700/60 flex-1 bg-[#1a1a1a]">
             {/* Method selector */}
             <select
               value={data.method}

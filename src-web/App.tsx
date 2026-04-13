@@ -361,12 +361,8 @@ export default function App() {
         {/* MAIN CENTER COLUMN */}
         <div className="flex-1 flex flex-col overflow-hidden bg-[#121212]" style={{ minWidth: 0 }}>
 
-          {/* Center column header — branding + search + env */}
+          {/* Center column header — search + env */}
           <div className="h-12 border-b border-gray-800 flex items-center px-4 gap-4 bg-[#161616] shrink-0">
-            <div className="font-bold text-blue-500 tracking-tight">
-              Lite<span className="text-gray-200">Request</span>
-            </div>
-            <div className="h-4 w-px bg-gray-700" />
 
             {/* Search trigger */}
             <button
