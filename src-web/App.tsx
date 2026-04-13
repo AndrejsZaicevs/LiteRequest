@@ -153,51 +153,6 @@ export default function App() {
     }
   }, [dirty, currentRequest]);
 
-  // ── Navigate to request (from search) ────────────────────
-  const navigateToRequest = useCallback(async (
-    requestId: string,
-    versionId?: string | null,
-    executionId?: string | null,
-    collectionId?: string | null,
-  ) => {
-    if (collectionId && !requestId) {
-      setCenterView({ type: "collection", collectionId });
-      return;
-    }
-    const req = requests.find(r => r.id === requestId);
-    if (!req) return;
-
-    if (dirty && currentRequest) await saveCurrentVersion();
-
-    setCurrentRequest(req);
-    setCenterView({ type: "request", requestId: req.id });
-
-    try {
-      const [vers, execs] = await Promise.all([
-        api.listVersions(req.id),
-        api.listExecutions(req.id),
-      ]);
-      setVersions(vers);
-      setExecutions(execs);
-
-      const targetVersionId = versionId ?? req.current_version_id;
-      if (targetVersionId) {
-        const v = await api.getVersion(targetVersionId);
-        setEditorData(v.data);
-        setSelectedVersionId(v.id);
-        setRequestMeta(prev => new Map(prev).set(req.id, { method: v.data.method, url: v.data.url }));
-      } else {
-        setEditorData(defaultRequestData());
-        setSelectedVersionId(null);
-      }
-      setDirty(false);
-      setCurrentResponse(null);
-      setSelectedExecutionId(executionId ?? null);
-    } catch (e) {
-      setErrorMessage(String(e));
-    }
-  }, [dirty, currentRequest, requests, saveCurrentVersion]);
-
   // ── Save version ─────────────────────────────────────────
   const saveCurrentVersion = useCallback(async () => {
     if (!currentRequest) return;
@@ -249,6 +204,51 @@ export default function App() {
     const vers = await api.listVersions(currentRequest.id);
     setVersions(vers);
   }, [currentRequest, selectedVersionId, editorData]);
+
+  // ── Navigate to request (from search) ────────────────────
+  const navigateToRequest = useCallback(async (
+    requestId: string,
+    versionId?: string | null,
+    executionId?: string | null,
+    collectionId?: string | null,
+  ) => {
+    if (collectionId && !requestId) {
+      setCenterView({ type: "collection", collectionId });
+      return;
+    }
+    const req = requests.find(r => r.id === requestId);
+    if (!req) return;
+
+    if (dirty && currentRequest) await saveCurrentVersion();
+
+    setCurrentRequest(req);
+    setCenterView({ type: "request", requestId: req.id });
+
+    try {
+      const [vers, execs] = await Promise.all([
+        api.listVersions(req.id),
+        api.listExecutions(req.id),
+      ]);
+      setVersions(vers);
+      setExecutions(execs);
+
+      const targetVersionId = versionId ?? req.current_version_id;
+      if (targetVersionId) {
+        const v = await api.getVersion(targetVersionId);
+        setEditorData(v.data);
+        setSelectedVersionId(v.id);
+        setRequestMeta(prev => new Map(prev).set(req.id, { method: v.data.method, url: v.data.url }));
+      } else {
+        setEditorData(defaultRequestData());
+        setSelectedVersionId(null);
+      }
+      setDirty(false);
+      setCurrentResponse(null);
+      setSelectedExecutionId(executionId ?? null);
+    } catch (e) {
+      setErrorMessage(String(e));
+    }
+  }, [dirty, currentRequest, requests, saveCurrentVersion]);
 
   // ── Execute request ──────────────────────────────────────
   const sendRequest = useCallback(async () => {
