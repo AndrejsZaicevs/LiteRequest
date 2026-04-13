@@ -47,9 +47,17 @@ export function Inspector({
   const [openSections, setOpenSections] = useState<Set<Section>>(
     new Set(["params", "headers", "pathParams"])
   );
-  // "selected" = filter by currently active selection; "all" = no filter
   const [execEnvFilter, setExecEnvFilter] = useState<string>("selected");
   const [execVersionFilter, setExecVersionFilter] = useState<string>("selected");
+
+  // Auto-open executions section + clear filters when navigating to a specific execution from search
+  useEffect(() => {
+    if (selectedExecutionId) {
+      setOpenSections(prev => new Set([...prev, "executions"]));
+      setExecEnvFilter("all");
+      setExecVersionFilter("all");
+    }
+  }, [selectedExecutionId]);
 
   // Collapsed date groups — collapse all except "Today" by default
   const [collapsedVersionGroups, setCollapsedVersionGroups] = useState<Set<string>>(

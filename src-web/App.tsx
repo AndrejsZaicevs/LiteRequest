@@ -244,8 +244,17 @@ export default function App() {
         setSelectedVersionId(null);
       }
       setDirty(false);
-      setCurrentResponse(null);
       setSelectedExecutionId(executionId ?? null);
+      // If navigating to a specific execution, load its response
+      if (executionId) {
+        const exec = execs.find(e => e.id === executionId);
+        if (exec) {
+          setCurrentResponse(exec.response);
+          setCurrentLatency(exec.latency_ms);
+        }
+      } else {
+        setCurrentResponse(null);
+      }
     } catch (e) {
       setErrorMessage(String(e));
     }
