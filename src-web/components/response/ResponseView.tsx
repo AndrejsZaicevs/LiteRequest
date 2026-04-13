@@ -39,27 +39,37 @@ export function ResponseView({ response, latency, isLoading }: ResponseViewProps
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: "var(--surface-0)" }}>
-      {/* Status bar */}
+      {/* Status bar — full-width separator */}
       <div
-        className="flex items-center gap-3 px-3 h-7 text-xs border-b flex-shrink-0"
-        style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}
+        className="flex items-center gap-3 px-3 h-8 text-[11px] flex-shrink-0"
+        style={{ background: "var(--surface-1)", borderBottom: "1px solid var(--border)" }}
       >
-        <span className="font-mono font-bold" style={{ color: statusColor(response.status) }}>
-          {response.status}
+        <span
+          className="font-mono font-bold px-1.5 rounded"
+          style={{
+            color: statusColor(response.status),
+            background: `${statusColor(response.status)}15`,
+          }}
+        >
+          {response.status} {response.status_text}
         </span>
-        <span style={{ color: "var(--text-muted)" }}>⏱ {latency}ms</span>
-        <span style={{ color: "var(--text-muted)" }}>📦 {formattedSize}</span>
+        <span className="tabular-nums font-mono" style={{ color: "var(--text-muted)" }}>
+          {latency}ms
+        </span>
+        <span className="font-mono" style={{ color: "var(--text-muted)" }}>
+          {formattedSize}
+        </span>
 
         <div className="flex-1" />
 
-        {/* Tabs */}
         {(["body", "headers"] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="capitalize"
+            className="capitalize text-[11px] px-2 py-1"
             style={{
               color: tab === t ? "var(--accent)" : "var(--text-muted)",
+              borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
             }}
           >
             {t}{t === "headers" ? ` (${headerCount})` : ""}
@@ -67,7 +77,6 @@ export function ResponseView({ response, latency, isLoading }: ResponseViewProps
         ))}
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-auto">
         {tab === "body" && <ResponseBody body={response.body} />}
         {tab === "headers" && <ResponseHeaders headers={response.headers} />}
@@ -94,7 +103,7 @@ function ResponseBody({ body }: { body: string }) {
   }
 
   return (
-    <pre className="p-3 font-mono text-xs whitespace-pre-wrap break-all" style={{ color: "var(--text-primary)" }}>
+    <pre className="p-4 font-mono text-xs whitespace-pre-wrap break-all" style={{ color: "var(--text-primary)" }}>
       {formatted}
     </pre>
   );
@@ -103,13 +112,14 @@ function ResponseBody({ body }: { body: string }) {
 function ResponseHeaders({ headers }: { headers: Record<string, string> }) {
   const entries = Object.entries(headers);
   return (
-    <div className="text-xs">
+    <div>
       {entries.map(([key, value], i) => (
-        <div key={i} className="flex border-b" style={{ borderColor: "var(--border)" }}>
-          <div className="px-3 py-1.5 font-mono font-medium w-1/3 flex-shrink-0" style={{ color: "var(--accent)", borderRight: "1px solid var(--border)" }}>
+        <div key={i} className="kv-row">
+          <div className="kv-cell" style={{ color: "var(--accent)", fontWeight: 500, flex: "0 0 40%", padding: "5px 12px" }}>
             {key}
           </div>
-          <div className="px-3 py-1.5 font-mono break-all" style={{ color: "var(--text-secondary)" }}>
+          <div className="kv-divider" />
+          <div className="kv-cell" style={{ color: "var(--text-secondary)", padding: "5px 12px", wordBreak: "break-all" }}>
             {value}
           </div>
         </div>

@@ -372,6 +372,11 @@ impl Database {
         Ok(())
     }
 
+    pub fn rename_environment(&self, id: &str, name: &str) -> rusqlite::Result<()> {
+        self.conn.execute("UPDATE environments SET name=?2 WHERE id=?1", params![id, name])?;
+        Ok(())
+    }
+
     pub fn delete_environment(&self, id: &str) -> rusqlite::Result<()> {
         self.conn.execute("DELETE FROM environments WHERE id=?1", params![id])?;
         Ok(())

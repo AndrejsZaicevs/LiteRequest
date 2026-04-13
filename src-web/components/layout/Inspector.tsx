@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { RequestData, RequestVersion, RequestExecution, Environment, KeyValuePair } from "../../lib/types";
 import { statusColor } from "../../lib/types";
 import { KvTable } from "../inspector/KvTable";
+import * as api from "../../lib/api";
 
 interface InspectorProps {
   data: RequestData;
@@ -22,10 +23,35 @@ export function Inspector({
   versions, executions,
   selectedVersionId, selectedExecutionId,
   onSelectVersion, onSelectExecution,
+  environments,
 }: InspectorProps) {
   const [openSections, setOpenSections] = useState<Set<Section>>(
     new Set(["params", "headers", "pathParams"])
   );
+  const [execEnvFilter, setExecEnvFilter] = useState<string>("all");
+  const [execVersionFilter, setExecVersionFilter] = useState<string>("all");
+
+  // Extract path params from URL
+  const [pathParams, setPathParams] = useState<KeyValuePair[]>([]);
+
+  useEffect(() => {
+    if (!data.url) {
+      if (pathParams.length > 0) setPathParams([]);
+      return;
+    }
+    api.extractPathParams(data.url).then((paramNames) => {
+      if (paramNames.length === 0) {
+        if (pathParams.length > 0) setPathParams([]);
+        return;
+      }
+      const existing = data.path_params ?? [];
+      const merged = paramNames.map(name => {
+        const found = existing.find(p => p.key === name);
+        return found ?? { key: name, value: "", enabled: true };
+      });
+      setPathParams(merged);
+    }).catch(() => {});
+  }, [data.url]);
 
   const toggleSection = (s: Section) => {
     setOpenSections(prev => {
@@ -37,56 +63,58 @@ export function Inspector({
 
   const enabledParams = data.query_params.filter(p => p.enabled).length;
   const enabledHeaders = data.headers.filter(h => h.enabled).length;
-  const pathParams = data.path_params ?? [];
 
   const updateParams = (params: KeyValuePair[]) => onChange({ ...data, query_params: params });
   const updateHeaders = (headers: KeyValuePair[]) => onChange({ ...data, headers });
   const updatePathParams = (pp: KeyValuePair[]) => onChange({ ...data, path_params: pp });
 
-  // Group executions by date
-  const groupedExecutions = useMemo(() => {
-    const groups: { label: string; items: RequestExecution[] }[] = [];
+  // Filter executions
+  const filteredExecutions = useMemo(() => {
+    let filtered = executions;
+    if (execEnvFilter !== "all") {
+      filtered = filtered.filter(e => e.environment_id === execEnvFilter);
+    }
+    if (execVersionFilter !== "all") {
+      filtered = filtered.filter(e => e.version_id === execVersionFilter);
+    }
+    return filtered;
+  }, [executions, execEnvFilter, execVersionFilter]);
+
+  // Group by date helper
+  const groupByDate = <T,>(items: T[], getDate: (item: T) => string) => {
+    const groups: { label: string; items: T[] }[] = [];
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today.getTime() - 86400000);
 
-    const todayItems: RequestExecution[] = [];
-    const yesterdayItems: RequestExecution[] = [];
-    const olderItems: RequestExecution[] = [];
+    const todayItems: T[] = [];
+    const yesterdayItems: T[] = [];
+    const olderItems: T[] = [];
 
-    for (const e of executions) {
-      const d = new Date(e.executed_at);
-      if (d >= today) todayItems.push(e);
-      else if (d >= yesterday) yesterdayItems.push(e);
-      else olderItems.push(e);
+    for (const item of items) {
+      const d = new Date(getDate(item));
+      if (d >= today) todayItems.push(item);
+      else if (d >= yesterday) yesterdayItems.push(item);
+      else olderItems.push(item);
     }
 
     if (todayItems.length) groups.push({ label: "Today", items: todayItems });
     if (yesterdayItems.length) groups.push({ label: "Yesterday", items: yesterdayItems });
     if (olderItems.length) groups.push({ label: "Older", items: olderItems });
     return groups;
-  }, [executions]);
+  };
 
-  const SectionHeader = ({ section, label, count }: { section: Section; label: string; count?: number }) => (
-    <button
-      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wider hover:bg-[var(--surface-2)] transition-colors"
-      style={{ color: "var(--text-muted)" }}
-      onClick={() => toggleSection(section)}
-    >
-      <span className="text-[10px]">{openSections.has(section) ? "▼" : "▶"}</span>
-      <span>{label}</span>
-      {count !== undefined && count > 0 && (
-        <span className="ml-auto px-1.5 rounded-full text-[10px]" style={{ background: "var(--surface-2)", color: "var(--text-secondary)" }}>
-          {count}
-        </span>
-      )}
-    </button>
-  );
+  const groupedVersions = useMemo(() => groupByDate(versions, v => v.created_at), [versions]);
+  const groupedExecutions = useMemo(() => groupByDate(filteredExecutions, e => e.executed_at), [filteredExecutions]);
 
   return (
     <div className="h-full flex flex-col overflow-y-auto" style={{ background: "var(--surface-1)" }}>
       {/* Query Params */}
-      <SectionHeader section="params" label="Query Params" count={enabledParams} />
+      <div className="section-header" onClick={() => toggleSection("params")}>
+        <span style={{ fontSize: 10 }}>{openSections.has("params") ? "▼" : "▶"}</span>
+        <span>Query Params</span>
+        {enabledParams > 0 && <span className="badge">{enabledParams}</span>}
+      </div>
       {openSections.has("params") && (
         <KvTable rows={data.query_params} onChange={updateParams} placeholder={{ key: "param", value: "value" }} />
       )}
@@ -94,7 +122,11 @@ export function Inspector({
       {/* Path Params */}
       {pathParams.length > 0 && (
         <>
-          <SectionHeader section="pathParams" label="Path Params" count={pathParams.length} />
+          <div className="section-header" onClick={() => toggleSection("pathParams")}>
+            <span style={{ fontSize: 10 }}>{openSections.has("pathParams") ? "▼" : "▶"}</span>
+            <span>Path Params</span>
+            <span className="badge">{pathParams.length}</span>
+          </div>
           {openSections.has("pathParams") && (
             <KvTable rows={pathParams} onChange={updatePathParams} placeholder={{ key: "param", value: "value" }} fixedKeys />
           )}
@@ -102,50 +134,109 @@ export function Inspector({
       )}
 
       {/* Headers */}
-      <SectionHeader section="headers" label="Headers" count={enabledHeaders} />
+      <div className="section-header" onClick={() => toggleSection("headers")}>
+        <span style={{ fontSize: 10 }}>{openSections.has("headers") ? "▼" : "▶"}</span>
+        <span>Headers</span>
+        {enabledHeaders > 0 && <span className="badge">{enabledHeaders}</span>}
+      </div>
       {openSections.has("headers") && (
         <KvTable rows={data.headers} onChange={updateHeaders} placeholder={{ key: "header", value: "value" }} />
       )}
 
       {/* Versions */}
-      <SectionHeader section="versions" label="Versions" count={versions.length} />
+      <div className="section-header" onClick={() => toggleSection("versions")}>
+        <span style={{ fontSize: 10 }}>{openSections.has("versions") ? "▼" : "▶"}</span>
+        <span>Versions</span>
+        <span className="badge">{versions.length}</span>
+      </div>
       {openSections.has("versions") && (
-        <div className="px-1">
-          {versions.map(v => {
-            const isSelected = v.id === selectedVersionId;
-            const date = new Date(v.created_at);
-            return (
-              <button
-                key={v.id}
-                onClick={() => onSelectVersion(v.id)}
-                className="w-full text-left px-2 py-1 text-xs rounded hover:bg-[var(--surface-2)] transition-colors flex items-center gap-2"
-                style={{
-                  background: isSelected ? "var(--surface-2)" : "transparent",
-                  borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
-                }}
+        <div>
+          {groupedVersions.map(group => (
+            <div key={group.label}>
+              <div
+                className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider"
+                style={{ color: "var(--text-muted)", background: "var(--surface-0)" }}
               >
-                <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
-                  {v.data.method}
-                </span>
-                <span className="truncate flex-1" style={{ color: "var(--text-secondary)" }}>
-                  {v.data.url || "(empty)"}
-                </span>
-                <span className="text-[10px] flex-shrink-0" style={{ color: "var(--text-muted)" }}>
-                  {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              </button>
-            );
-          })}
+                {group.label}
+              </div>
+              {group.items.map(v => {
+                const isSelected = v.id === selectedVersionId;
+                const date = new Date(v.created_at);
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => onSelectVersion(v.id)}
+                    className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors"
+                    style={{
+                      background: isSelected ? "var(--surface-2)" : "transparent",
+                      borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
+                    }}
+                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--row-hover)"; }}
+                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span className="font-mono text-[10px] font-bold" style={{ color: "var(--text-muted)" }}>
+                      {v.data.method}
+                    </span>
+                    <span className="truncate flex-1 font-mono text-[11px]" style={{ color: "var(--text-secondary)" }}>
+                      {v.data.url || "(empty)"}
+                    </span>
+                    <span className="text-[10px] flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
+                      {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
 
       {/* Executions */}
-      <SectionHeader section="executions" label="Executions" count={executions.length} />
+      <div className="section-header" onClick={() => toggleSection("executions")}>
+        <span style={{ fontSize: 10 }}>{openSections.has("executions") ? "▼" : "▶"}</span>
+        <span>Executions</span>
+        <span className="badge">{executions.length}</span>
+      </div>
       {openSections.has("executions") && (
-        <div className="px-1">
+        <div>
+          {/* Filters */}
+          {(environments.length > 0 || versions.length > 1) && (
+            <div className="flex items-center gap-2 px-3 py-1.5" style={{ background: "var(--surface-0)", borderBottom: "1px solid var(--border-subtle)" }}>
+              {environments.length > 0 && (
+                <select
+                  value={execEnvFilter}
+                  onChange={(e) => setExecEnvFilter(e.target.value)}
+                  className="text-[10px] py-0.5 px-1"
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: 3, fontSize: 10, padding: "2px 16px 2px 4px" }}
+                >
+                  <option value="all">All envs</option>
+                  {environments.map(env => (
+                    <option key={env.id} value={env.id}>{env.name}</option>
+                  ))}
+                </select>
+              )}
+              {versions.length > 1 && (
+                <select
+                  value={execVersionFilter}
+                  onChange={(e) => setExecVersionFilter(e.target.value)}
+                  className="text-[10px] py-0.5 px-1"
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-secondary)", borderRadius: 3, fontSize: 10, padding: "2px 16px 2px 4px" }}
+                >
+                  <option value="all">All versions</option>
+                  {versions.map((v, i) => (
+                    <option key={v.id} value={v.id}>v{versions.length - i}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
           {groupedExecutions.map(group => (
             <div key={group.label}>
-              <div className="px-2 py-0.5 text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
+              <div
+                className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider"
+                style={{ color: "var(--text-muted)", background: "var(--surface-0)" }}
+              >
                 {group.label}
               </div>
               {group.items.map(exec => {
@@ -156,20 +247,28 @@ export function Inspector({
                   <button
                     key={exec.id}
                     onClick={() => onSelectExecution(exec.id)}
-                    className="w-full text-left px-2 py-1 text-xs rounded hover:bg-[var(--surface-2)] transition-colors flex items-center gap-2"
+                    className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors"
                     style={{
                       background: isSelected ? "var(--surface-2)" : "transparent",
                       borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
                     }}
+                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--row-hover)"; }}
+                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
                   >
-                    <span className="font-mono font-bold text-[10px]" style={{ color: statusColor(status) }}>
+                    <span
+                      className="font-mono font-bold text-[11px] w-8 text-center rounded px-1"
+                      style={{
+                        color: statusColor(status),
+                        background: `${statusColor(status)}15`,
+                      }}
+                    >
                       {status}
                     </span>
-                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                    <span className="text-[11px] tabular-nums font-mono" style={{ color: "var(--text-secondary)" }}>
                       {exec.latency_ms}ms
                     </span>
                     <span className="flex-1" />
-                    <span className="text-[10px] flex-shrink-0" style={{ color: "var(--text-muted)" }}>
+                    <span className="text-[10px] flex-shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
                       {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </button>
@@ -177,6 +276,12 @@ export function Inspector({
               })}
             </div>
           ))}
+
+          {filteredExecutions.length === 0 && (
+            <div className="px-3 py-3 text-[11px] text-center" style={{ color: "var(--text-muted)" }}>
+              No executions{execEnvFilter !== "all" || execVersionFilter !== "all" ? " matching filters" : ""}
+            </div>
+          )}
         </div>
       )}
     </div>

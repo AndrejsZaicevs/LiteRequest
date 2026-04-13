@@ -67,6 +67,7 @@ pub fn run() {
             commands::list_environments,
             commands::insert_environment,
             commands::set_active_environment,
+            commands::rename_environment,
             commands::delete_environment,
             // Env Variables
             commands::list_env_variables,

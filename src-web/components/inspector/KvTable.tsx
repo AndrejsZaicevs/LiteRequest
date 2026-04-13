@@ -22,77 +22,74 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys }: KvTableProps
     onChange([...rows, { key: "", value: "", enabled: true }]);
   };
 
-  // Auto-add empty row at bottom
   const displayRows = [...rows];
   const lastRow = displayRows[displayRows.length - 1];
   const needsEmptyRow = !fixedKeys && (!lastRow || lastRow.key !== "" || lastRow.value !== "");
 
   return (
-    <div className="text-xs">
+    <div>
       {displayRows.map((row, i) => (
         <div
           key={i}
-          className="flex items-center border-b"
-          style={{ borderColor: "var(--border)", opacity: row.enabled ? 1 : 0.5 }}
+          className="kv-row"
+          style={{ opacity: row.enabled ? 1 : 0.45 }}
         >
-          {/* Enable checkbox */}
           {!fixedKeys && (
             <button
-              className="w-6 flex-shrink-0 flex items-center justify-center"
+              className="kv-action"
               onClick={() => update(i, "enabled", !row.enabled)}
             >
-              <span style={{ color: row.enabled ? "var(--accent)" : "var(--text-muted)" }}>
-                {row.enabled ? "☑" : "☐"}
+              <span style={{ color: row.enabled ? "var(--accent)" : "var(--text-muted)", fontSize: 13 }}>
+                {row.enabled ? "✓" : "○"}
               </span>
             </button>
           )}
+          {fixedKeys && <div style={{ width: 8 }} />}
 
-          {/* Key */}
           <input
             value={row.key}
             onChange={(e) => update(i, "key", e.target.value)}
             placeholder={placeholder?.key ?? "key"}
-            className="flex-1 bg-transparent border-none outline-none px-2 py-1.5 min-w-0"
-            style={{ color: "var(--text-primary)", borderRight: "1px solid var(--border)" }}
+            className="kv-cell"
+            style={{ borderRight: "none", borderRadius: 0, border: "none", padding: "4px 10px" }}
             readOnly={fixedKeys}
           />
 
-          {/* Value */}
+          <div className="kv-divider" />
+
           <input
             value={row.value}
             onChange={(e) => update(i, "value", e.target.value)}
             placeholder={placeholder?.value ?? "value"}
-            className="flex-1 bg-transparent border-none outline-none px-2 py-1.5 min-w-0"
-            style={{ color: "var(--text-primary)" }}
+            className="kv-cell"
+            style={{ border: "none", borderRadius: 0, padding: "4px 10px" }}
           />
 
-          {/* Delete */}
-          {!fixedKeys && (row.key !== "" || row.value !== "") && (
+          {!fixedKeys && (row.key !== "" || row.value !== "") ? (
             <button
-              className="w-6 flex-shrink-0 flex items-center justify-center hover:opacity-80"
-              style={{ color: "var(--text-muted)" }}
+              className="kv-action"
               onClick={() => remove(i)}
+              style={{ color: "var(--text-muted)" }}
             >
               ×
             </button>
+          ) : (
+            <div style={{ width: 28 }} />
           )}
         </div>
       ))}
 
-      {/* Auto-add row trigger */}
       {needsEmptyRow && (
-        <div
-          className="flex items-center border-b cursor-text"
-          style={{ borderColor: "var(--border)" }}
-          onClick={addRow}
-        >
-          {!fixedKeys && <div className="w-6 flex-shrink-0" />}
-          <div className="flex-1 px-2 py-1.5" style={{ color: "var(--text-muted)", borderRight: "1px solid var(--border)" }}>
+        <div className="kv-row placeholder-row" onClick={addRow}>
+          {!fixedKeys && <div style={{ width: 28 }} />}
+          <div className="kv-cell" style={{ color: "var(--text-muted)", padding: "4px 10px" }}>
             {placeholder?.key ?? "key"}
           </div>
-          <div className="flex-1 px-2 py-1.5" style={{ color: "var(--text-muted)" }}>
+          <div className="kv-divider" />
+          <div className="kv-cell" style={{ color: "var(--text-muted)", padding: "4px 10px" }}>
             {placeholder?.value ?? "value"}
           </div>
+          <div style={{ width: 28 }} />
         </div>
       )}
     </div>

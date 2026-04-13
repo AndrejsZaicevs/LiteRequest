@@ -332,6 +332,16 @@ pub fn set_active_environment(state: State<AppState>, id: String) -> CmdResult<(
 }
 
 #[tauri::command]
+pub fn rename_environment(state: State<AppState>, id: String, name: String) -> CmdResult<()> {
+    state
+        .db
+        .lock()
+        .unwrap()
+        .rename_environment(&id, &name)
+        .map_err(map_err)
+}
+
+#[tauri::command]
 pub fn delete_environment(state: State<AppState>, id: String) -> CmdResult<()> {
     state
         .db

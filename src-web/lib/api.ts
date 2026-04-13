@@ -53,6 +53,7 @@ export const listExecutions = (requestId: string) => invoke<RequestExecution[]>(
 export const listEnvironments = () => invoke<Environment[]>("list_environments");
 export const insertEnvironment = (environment: Environment) => invoke<void>("insert_environment", { environment });
 export const setActiveEnvironment = (id: string) => invoke<void>("set_active_environment", { id });
+export const renameEnvironment = (id: string, name: string) => invoke<void>("rename_environment", { id, name });
 export const deleteEnvironment = (id: string) => invoke<void>("delete_environment", { id });
 
 // ── Env Variables ────────────────────────────────────────────

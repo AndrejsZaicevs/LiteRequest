@@ -20,45 +20,35 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
     onChange({ ...data, [field]: value });
   };
 
-  const resolvedUrl = useMemo(() => {
-    if (!basePath) return data.url;
-    if (data.url.startsWith("http://") || data.url.startsWith("https://")) return data.url;
-    const base = basePath.replace(/\/+$/, "");
-    const path = data.url.startsWith("/") ? data.url : `/${data.url}`;
-    return `${base}${path}`;
-  }, [data.url, basePath]);
-
   const handleBodyTabChange = (tab: "none" | "json" | "form" | "raw") => {
     setBodyTab(tab);
     const btMap = { none: "None", json: "Json", form: "FormUrlEncoded", raw: "Raw" } as const;
     updateField("body_type", btMap[tab]);
   };
 
+  const showBasePath = basePath && !(data.url.startsWith("http://") || data.url.startsWith("https://"));
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Request name */}
-      <div className="px-3 py-1 text-xs" style={{ color: "var(--text-muted)", background: "var(--surface-1)" }}>
-        {requestName}
-        {basePath && (
-          <span className="ml-2 font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
-            {basePath}
-          </span>
-        )}
-      </div>
-
       {/* URL Bar */}
-      <div className="flex items-center gap-0 border-b" style={{ borderColor: "var(--border)", background: "var(--surface-0)" }}>
+      <div
+        className="flex items-center border-b flex-shrink-0"
+        style={{ borderColor: "var(--border)", background: "var(--surface-0)" }}
+      >
         {/* Method selector */}
         <select
           value={data.method}
           onChange={(e) => updateField("method", e.target.value as HttpMethod)}
-          className="h-9 px-2 font-mono text-xs font-bold border-r cursor-pointer"
+          className="h-10 px-3 font-mono text-xs font-bold border-r cursor-pointer flex-shrink-0"
           style={{
             background: "var(--surface-1)",
             color: methodColor(data.method),
             borderColor: "var(--border)",
             borderRadius: 0,
             outline: "none",
+            border: "none",
+            borderRight: "1px solid var(--border)",
+            minWidth: 80,
           }}
         >
           {HTTP_METHODS.map(m => (
@@ -66,13 +56,24 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           ))}
         </select>
 
+        {/* Base path prefix (non-editable) */}
+        {showBasePath && (
+          <span
+            className="h-10 flex items-center px-2 font-mono text-xs flex-shrink-0 select-none"
+            style={{ color: "var(--text-muted)", background: "var(--surface-1)", borderRight: "1px solid var(--border-subtle)" }}
+            title={basePath}
+          >
+            {basePath.replace(/\/+$/, "")}
+          </span>
+        )}
+
         {/* URL input */}
         <input
           value={data.url}
           onChange={(e) => updateField("url", e.target.value)}
-          placeholder="Enter URL or path..."
-          className="flex-1 h-9 px-3 font-mono text-sm bg-transparent border-none outline-none"
-          style={{ color: "var(--text-primary)" }}
+          placeholder={showBasePath ? "/path..." : "https://api.example.com/path"}
+          className="flex-1 h-10 px-3 font-mono text-xs bg-transparent outline-none"
+          style={{ color: "var(--text-primary)", border: "none", borderRadius: 0 }}
           onKeyDown={(e) => { if (e.key === "Enter") onSend(); }}
         />
 
@@ -80,7 +81,7 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
         <button
           onClick={onSend}
           disabled={isLoading}
-          className="h-9 px-4 font-semibold text-xs text-white transition-colors"
+          className="h-10 px-5 font-semibold text-xs text-white transition-colors flex-shrink-0"
           style={{
             background: isLoading ? "var(--surface-2)" : "var(--accent)",
             cursor: isLoading ? "wait" : "pointer",
@@ -91,20 +92,27 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
       </div>
 
       {/* Body tabs */}
-      <div className="flex items-center border-b" style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}>
+      <div
+        className="flex items-center border-b flex-shrink-0 gap-1 px-2"
+        style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}
+      >
         {(["none", "json", "form", "raw"] as const).map(tab => (
           <button
             key={tab}
             onClick={() => handleBodyTabChange(tab)}
-            className="px-3 py-1.5 text-xs capitalize transition-colors"
+            className="px-3 py-2 text-[11px] font-medium capitalize transition-colors"
             style={{
               color: bodyTab === tab ? "var(--accent)" : "var(--text-muted)",
               borderBottom: bodyTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
             }}
           >
-            {tab === "none" ? "No Body" : tab}
+            {tab === "none" ? "No Body" : tab === "form" ? "Form" : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
+        <div className="flex-1" />
+        <span className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>
+          {requestName}
+        </span>
       </div>
 
       {/* Body editor */}
@@ -119,8 +127,8 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           <textarea
             value={data.body}
             onChange={(e) => updateField("body", e.target.value)}
-            className="w-full h-full p-3 font-mono text-xs resize-none bg-transparent border-none outline-none"
-            style={{ color: "var(--text-primary)" }}
+            className="w-full h-full p-4 font-mono text-xs resize-none bg-transparent outline-none"
+            style={{ color: "var(--text-primary)", border: "none" }}
             placeholder='{"key": "value"}'
             spellCheck={false}
           />
@@ -137,8 +145,8 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           <textarea
             value={data.body}
             onChange={(e) => updateField("body", e.target.value)}
-            className="w-full h-full p-3 font-mono text-xs resize-none bg-transparent border-none outline-none"
-            style={{ color: "var(--text-primary)" }}
+            className="w-full h-full p-4 font-mono text-xs resize-none bg-transparent outline-none"
+            style={{ color: "var(--text-primary)", border: "none" }}
             placeholder="Raw body content..."
             spellCheck={false}
           />
@@ -149,7 +157,6 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
 }
 
 function FormEditor({ body, onChange }: { body: string; onChange: (body: string) => void }) {
-  // Parse URL-encoded body into key-value pairs for editing
   const pairs: KeyValuePair[] = useMemo(() => {
     if (!body.trim()) return [];
     return body.split("&").map(segment => {
@@ -178,34 +185,34 @@ function FormEditor({ body, onChange }: { body: string; onChange: (body: string)
   const needsEmpty = !last || last.key !== "" || last.value !== "";
 
   return (
-    <div className="text-xs">
+    <div>
       {pairs.map((p, i) => (
-        <div key={i} className="flex items-center border-b" style={{ borderColor: "var(--border)" }}>
-          <button className="w-6 flex-shrink-0 flex items-center justify-center"
-            onClick={() => update(i, "enabled", !p.enabled)}>
-            <span style={{ color: p.enabled ? "var(--accent)" : "var(--text-muted)" }}>
-              {p.enabled ? "☑" : "☐"}
+        <div key={i} className="kv-row">
+          <button className="kv-action" onClick={() => update(i, "enabled", !p.enabled)}>
+            <span style={{ color: p.enabled ? "var(--accent)" : "var(--text-muted)", fontSize: 13 }}>
+              {p.enabled ? "✓" : "○"}
             </span>
           </button>
           <input value={p.key} onChange={(e) => update(i, "key", e.target.value)}
             placeholder="key"
-            className="flex-1 bg-transparent border-none outline-none px-2 py-1.5"
-            style={{ color: "var(--text-primary)", borderRight: "1px solid var(--border)" }} />
+            className="kv-cell"
+            style={{ border: "none", borderRadius: 0, padding: "4px 10px" }} />
+          <div className="kv-divider" />
           <input value={p.value} onChange={(e) => update(i, "value", e.target.value)}
             placeholder="value"
-            className="flex-1 bg-transparent border-none outline-none px-2 py-1.5"
-            style={{ color: "var(--text-primary)" }} />
+            className="kv-cell"
+            style={{ border: "none", borderRadius: 0, padding: "4px 10px" }} />
           {(p.key || p.value) && (
-            <button className="w-6 flex-shrink-0 hover:opacity-80" style={{ color: "var(--text-muted)" }}
-              onClick={() => remove(i)}>×</button>
+            <button className="kv-action" style={{ color: "var(--text-muted)" }} onClick={() => remove(i)}>×</button>
           )}
         </div>
       ))}
       {needsEmpty && (
-        <div className="flex items-center border-b cursor-text" style={{ borderColor: "var(--border)" }} onClick={add}>
-          <div className="w-6" />
-          <div className="flex-1 px-2 py-1.5" style={{ color: "var(--text-muted)", borderRight: "1px solid var(--border)" }}>key</div>
-          <div className="flex-1 px-2 py-1.5" style={{ color: "var(--text-muted)" }}>value</div>
+        <div className="kv-row placeholder-row" onClick={add}>
+          <div style={{ width: 28 }} />
+          <div className="kv-cell" style={{ color: "var(--text-muted)", padding: "4px 10px" }}>key</div>
+          <div className="kv-divider" />
+          <div className="kv-cell" style={{ color: "var(--text-muted)", padding: "4px 10px" }}>value</div>
         </div>
       )}
     </div>
