@@ -538,6 +538,15 @@ pub async fn execute_request(
         .map_err(map_err)
 }
 
+// ── Clipboard ────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn copy_to_clipboard(text: String) -> CmdResult<()> {
+    arboard::Clipboard::new()
+        .and_then(|mut cb| cb.set_text(&text))
+        .map_err(|e| e.to_string())
+}
+
 // ── cURL ─────────────────────────────────────────────────────
 
 #[tauri::command]

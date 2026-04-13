@@ -272,7 +272,7 @@ export default function App() {
                   type="text" 
                   defaultValue="/users/:userId/profile"
                   className="flex-1 bg-transparent text-gray-200 outline-none w-full min-w-[100px]"
-                  placeholder="/endpoint..."
+                  placeholder=""
                 />
               </div>
             </div>

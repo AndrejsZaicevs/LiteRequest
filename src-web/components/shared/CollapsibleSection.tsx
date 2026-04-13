@@ -15,7 +15,7 @@ export function CollapsibleSection({ title, count, isOpen, onToggle, children, a
     <div className="border-b border-gray-700/50 last:border-0">
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-3 bg-[#1e1e1e] hover:bg-[#252525] transition-colors select-none"
+        className="w-full h-10 flex items-center justify-between px-4 bg-[#1e1e1e] hover:bg-[#252525] transition-colors select-none"
       >
         <div className="flex items-center gap-2">
           {isOpen
@@ -25,7 +25,7 @@ export function CollapsibleSection({ title, count, isOpen, onToggle, children, a
         </div>
         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
           {count !== undefined && count > 0 && (
-            <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full font-medium">
+            <span className="text-[10px] leading-none bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full font-medium">
               {count}
             </span>
           )}

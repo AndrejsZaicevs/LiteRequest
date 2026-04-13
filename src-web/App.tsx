@@ -379,7 +379,7 @@ export default function App() {
       const basePath = col?.base_path ?? "";
       const effectiveData = buildEffectiveData(editorData);
       const curlStr = await api.toCurl(effectiveData, variables, basePath);
-      await navigator.clipboard.writeText(curlStr);
+      await api.copyToClipboard(curlStr);
       setErrorMessage(null);
     } catch (e) {
       setErrorMessage(`Copy cURL failed: ${e}`);

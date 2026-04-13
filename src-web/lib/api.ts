@@ -92,6 +92,7 @@ export const executeRequest = (
 export const toCurl = (data: RequestData, variables: Record<string, string>, basePath: string) =>
   invoke<string>("to_curl", { data, variables, basePath });
 export const parseCurl = (input: string) => invoke<RequestData>("parse_curl", { input });
+export const copyToClipboard = (text: string) => invoke<void>("copy_to_clipboard", { text });
 
 // ── Interpolation ────────────────────────────────────────────
 export const interpolateStr = (input: string, variables: Record<string, string>) =>

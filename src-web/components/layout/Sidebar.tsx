@@ -402,7 +402,7 @@ export function Sidebar({
             <span className={`shrink-0 ${isDropInside ? "text-blue-400" : "text-gray-500"}`}>
               {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
             </span>
-            <span className={`shrink-0 ${isDropInside ? "text-blue-400" : "text-gray-500"}`}>
+            <span className={`shrink-0 ${isDropInside ? "text-blue-400" : "text-amber-400"}`}>
               {isCollapsed ? <Folder size={14} /> : <FolderOpen size={14} />}
             </span>
             {renaming?.id === folder.id
@@ -418,7 +418,8 @@ export function Sidebar({
       <div key={folder.id}>
         {content}
         {!isCollapsed && (
-          <div>
+          <div className="relative">
+            <div className="absolute top-0 bottom-2 w-px bg-gray-700/40" style={{ left: depth * 12 + 21 }} />
             {subfolders.map(f => renderFolder(f, depth + 1))}
             {folderReqs.map(r => renderRequest(r, depth + 1))}
           </div>
@@ -451,16 +452,15 @@ export function Sidebar({
           >
             {/* Spacer to align with folder chevrons */}
             <span className="w-3.5 shrink-0" />
-            <FileText size={14} className={isSelected ? "text-blue-400" : "text-gray-500"} />
+            <FileText size={13} className={`shrink-0 ${isSelected ? "text-blue-400" : "text-gray-500"}`} />
             {renaming?.id === req.id
               ? renameInput(renaming.value, v => setRenaming({ ...renaming, value: v }))
               : <span className="truncate flex-1">{req.name}</span>
             }
-            {isSelected && colors && (
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono border shrink-0 ${colors.bg} ${colors.text} ${colors.border}`}>
-                {method}
-              </span>
-            )}
+            {/* Always-visible plain-text method badge */}
+            <span className={`text-[10px] font-mono font-semibold shrink-0 ${colors.text}`}>
+              {method}
+            </span>
           </div>
         )}
       </DnDRow>
@@ -475,7 +475,7 @@ export function Sidebar({
   return (
     <div className="h-full flex flex-col bg-[#161616]">
       {/* Header */}
-      <div className="p-4 border-b border-gray-800 flex items-center justify-between shrink-0">
+      <div className="h-12 border-b border-gray-800 flex items-center px-4 justify-between shrink-0">
         <span className="font-semibold text-sm text-gray-200">Collections</span>
         <button
           onClick={handleNewCollection}
@@ -502,7 +502,11 @@ export function Sidebar({
             const reqCount    = requests.filter(r => r.collection_id === col.id).length;
 
             return (
-              <div key={col.id} className="mb-1">
+              <div key={col.id} className="mb-1 relative">
+                {/* Guide line from chevron center down through all children */}
+                {!isCollapsed && (
+                  <div className="absolute w-px bg-gray-700/40 pointer-events-none" style={{ left: 21, top: 16, bottom: 8 }} />
+                )}
                 {/* Collection header */}
                 <div
                   className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer rounded-md mx-1.5 transition-colors ${
@@ -515,7 +519,7 @@ export function Sidebar({
                   <span className="shrink-0 text-gray-500">
                     {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                   </span>
-                  <Folder size={14} className="shrink-0 text-gray-500" />
+                  <Folder size={14} className="shrink-0 text-violet-400" />
                   {renaming?.id === col.id
                     ? renameInput(renaming.value, v => setRenaming({ ...renaming, value: v }))
                     : <span className="truncate flex-1 text-sm font-medium text-gray-200">{col.name}</span>
@@ -547,7 +551,7 @@ export function Sidebar({
               <div className="flex items-center gap-2 px-3 py-1.5 bg-[#242424] border border-gray-700 rounded-md opacity-80 shadow-xl pointer-events-none">
                 {activeDragItem.type === "folder" ? (
                   <>
-                    <FolderOpen size={14} className="text-gray-500 shrink-0" />
+                    <FolderOpen size={14} className="text-amber-400 shrink-0" />
                     <span className="text-sm text-gray-300">{activeDragItem.folder?.name}</span>
                   </>
                 ) : (

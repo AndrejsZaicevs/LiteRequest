@@ -1,42 +1,60 @@
 import CodeMirror from "@uiw/react-codemirror";
 import { json } from "@codemirror/lang-json";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
 import { useMemo } from "react";
 
-const baseTheme = EditorView.theme({
-  "&": {
-    height: "100%",
-    fontSize: "13px",
-    backgroundColor: "transparent",
+const liteTheme = EditorView.theme(
+  {
+    "&": {
+      height: "100%",
+      fontSize: "13px",
+      backgroundColor: "#0d0d0d",
+      color: "#d1d5db",
+    },
+    ".cm-scroller": {
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+      lineHeight: "1.6",
+      overflow: "auto",
+    },
+    ".cm-content": {
+      padding: "16px",
+      caretColor: "#60a5fa",
+    },
+    ".cm-focused": { outline: "none" },
+    ".cm-editor": { backgroundColor: "#0d0d0d" },
+    ".cm-gutters": {
+      backgroundColor: "#0d0d0d",
+      borderRight: "1px solid #1f2937",
+      color: "#4b5563",
+      paddingRight: "8px",
+    },
+    ".cm-activeLineGutter": { backgroundColor: "#1a1a1a" },
+    ".cm-activeLine": { backgroundColor: "#1a1a1a80" },
+    ".cm-selectionBackground": { backgroundColor: "#3b82f625 !important" },
+    ".cm-focused .cm-selectionBackground": { backgroundColor: "#3b82f625 !important" },
+    ".cm-matchingBracket": {
+      backgroundColor: "#3b82f640",
+      outline: "1px solid #3b82f660",
+    },
+    ".cm-cursor": { borderLeftColor: "#60a5fa" },
+    ".cm-lineNumbers .cm-gutterElement": { color: "#374151" },
   },
-  ".cm-scroller": {
-    fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-    lineHeight: "1.6",
-    overflow: "auto",
-  },
-  ".cm-content": {
-    padding: "16px",
-    caretColor: "#60a5fa",
-  },
-  ".cm-focused": { outline: "none" },
-  ".cm-editor": { backgroundColor: "transparent" },
-  ".cm-gutters": {
-    backgroundColor: "#0d0d0d",
-    border: "none",
-    color: "#4b5563",
-    paddingRight: "8px",
-  },
-  ".cm-activeLineGutter": { backgroundColor: "#1a1a1a" },
-  ".cm-activeLine": { backgroundColor: "#1a1a1a80" },
-  ".cm-selectionBackground, .cm-focused .cm-selectionBackground": {
-    backgroundColor: "#3b82f620 !important",
-  },
-  ".cm-matchingBracket": {
-    backgroundColor: "#3b82f640",
-    outline: "1px solid #3b82f660",
-  },
-});
+  { dark: true }
+);
+
+const liteSyntax = HighlightStyle.define([
+  { tag: tags.propertyName,       color: "#60a5fa" },   // JSON keys — blue-400
+  { tag: tags.string,             color: "#34d399" },   // strings — emerald-400
+  { tag: tags.number,             color: "#f59e0b" },   // numbers — amber-400
+  { tag: tags.bool,               color: "#f59e0b" },   // booleans — amber-400
+  { tag: tags.null,               color: "#9ca3af" },   // null — gray-400
+  { tag: tags.keyword,            color: "#c084fc" },   // keywords — purple-400
+  { tag: tags.comment,            color: "#6b7280", fontStyle: "italic" },
+  { tag: tags.punctuation,        color: "#6b7280" },
+  { tag: tags.bracket,            color: "#9ca3af" },
+]);
 
 interface CodeEditorProps {
   value: string;
@@ -47,7 +65,7 @@ interface CodeEditorProps {
 
 export function CodeEditor({ value, onChange, language = "json", placeholder }: CodeEditorProps) {
   const extensions = useMemo(() => {
-    const exts = [baseTheme, EditorView.lineWrapping];
+    const exts = [liteTheme, syntaxHighlighting(liteSyntax), EditorView.lineWrapping];
     if (language === "json") exts.push(json());
     return exts;
   }, [language]);
@@ -56,7 +74,7 @@ export function CodeEditor({ value, onChange, language = "json", placeholder }: 
     <CodeMirror
       value={value}
       height="100%"
-      theme={oneDark}
+      theme="none"
       extensions={extensions}
       onChange={onChange}
       placeholder={placeholder}

@@ -89,6 +89,8 @@ pub fn run() {
             commands::set_app_setting,
             // HTTP
             commands::execute_request,
+            // Clipboard
+            commands::copy_to_clipboard,
             // cURL
             commands::to_curl,
             commands::parse_curl,

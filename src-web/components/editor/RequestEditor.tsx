@@ -62,7 +62,7 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
               <input
                 value={data.url}
                 onChange={(e) => updateField("url", e.target.value)}
-                placeholder={showBasePath ? "/endpoint..." : "https://api.example.com/path"}
+                placeholder={showBasePath ? "" : "https://api.example.com/path"}
                 className="flex-1 bg-transparent text-gray-200 outline-none w-full min-w-[100px]"
                 style={{ border: "none", borderRadius: 0, padding: 0, fontSize: "inherit" }}
                 onKeyDown={(e) => { if (e.key === "Enter") onSend(); }}
