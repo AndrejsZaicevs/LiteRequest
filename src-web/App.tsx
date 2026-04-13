@@ -260,6 +260,46 @@ export default function App() {
     }
   }, [dirty, currentRequest, requests, saveCurrentVersion]);
 
+  // ── Build effective request data (with collection auth + headers) ──
+  const buildEffectiveData = useCallback((baseData: RequestData): RequestData => {
+    const col = collections.find(c => c.id === currentRequest?.collection_id);
+    const requestHeaderKeys = new Set(
+      baseData.headers.filter(h => h.enabled && h.key).map(h => h.key.toLowerCase())
+    );
+    const extraHeaders: KeyValuePair[] = [];
+    if (col?.headers_config) {
+      try {
+        const defaults = JSON.parse(col.headers_config) as KeyValuePair[];
+        for (const h of defaults.filter(h => h.enabled && h.key)) {
+          if (!requestHeaderKeys.has(h.key.toLowerCase())) {
+            extraHeaders.push(h);
+            requestHeaderKeys.add(h.key.toLowerCase());
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    if (col?.auth_config) {
+      try {
+        const auth = JSON.parse(col.auth_config) as AuthConfig;
+        let authHeader: KeyValuePair | null = null;
+        if (auth.auth_type === "bearer" && auth.bearer_token) {
+          authHeader = { key: "Authorization", value: `Bearer ${auth.bearer_token}`, enabled: true };
+        } else if (auth.auth_type === "basic") {
+          const encoded = btoa(`${auth.basic_username ?? ""}:${auth.basic_password ?? ""}`);
+          authHeader = { key: "Authorization", value: `Basic ${encoded}`, enabled: true };
+        } else if (auth.auth_type === "api_key" && auth.api_key_value) {
+          authHeader = { key: auth.api_key_header ?? "X-API-Key", value: auth.api_key_value, enabled: true };
+        }
+        if (authHeader && !requestHeaderKeys.has(authHeader.key.toLowerCase())) {
+          extraHeaders.push(authHeader);
+        }
+      } catch { /* ignore */ }
+    }
+    return extraHeaders.length > 0
+      ? { ...baseData, headers: [...extraHeaders, ...baseData.headers] }
+      : baseData;
+  }, [collections, currentRequest]);
+
   // ── Execute request ──────────────────────────────────────
   const sendRequest = useCallback(async () => {
     if (!currentRequest) return;
@@ -326,46 +366,6 @@ export default function App() {
     setEditorData(data);
     setDirty(true);
   }, []);
-
-  // ── Build effective request data (with collection auth + headers) ──
-  const buildEffectiveData = useCallback((baseData: RequestData): RequestData => {
-    const col = collections.find(c => c.id === currentRequest?.collection_id);
-    const requestHeaderKeys = new Set(
-      baseData.headers.filter(h => h.enabled && h.key).map(h => h.key.toLowerCase())
-    );
-    const extraHeaders: KeyValuePair[] = [];
-    if (col?.headers_config) {
-      try {
-        const defaults = JSON.parse(col.headers_config) as KeyValuePair[];
-        for (const h of defaults.filter(h => h.enabled && h.key)) {
-          if (!requestHeaderKeys.has(h.key.toLowerCase())) {
-            extraHeaders.push(h);
-            requestHeaderKeys.add(h.key.toLowerCase());
-          }
-        }
-      } catch { /* ignore */ }
-    }
-    if (col?.auth_config) {
-      try {
-        const auth = JSON.parse(col.auth_config) as AuthConfig;
-        let authHeader: KeyValuePair | null = null;
-        if (auth.auth_type === "bearer" && auth.bearer_token) {
-          authHeader = { key: "Authorization", value: `Bearer ${auth.bearer_token}`, enabled: true };
-        } else if (auth.auth_type === "basic") {
-          const encoded = btoa(`${auth.basic_username ?? ""}:${auth.basic_password ?? ""}`);
-          authHeader = { key: "Authorization", value: `Basic ${encoded}`, enabled: true };
-        } else if (auth.auth_type === "api_key" && auth.api_key_value) {
-          authHeader = { key: auth.api_key_header ?? "X-API-Key", value: auth.api_key_value, enabled: true };
-        }
-        if (authHeader && !requestHeaderKeys.has(authHeader.key.toLowerCase())) {
-          extraHeaders.push(authHeader);
-        }
-      } catch { /* ignore */ }
-    }
-    return extraHeaders.length > 0
-      ? { ...baseData, headers: [...extraHeaders, ...baseData.headers] }
-      : baseData;
-  }, [collections, currentRequest]);
 
   // ── Copy as cURL ─────────────────────────────────────────
   const copyCurl = useCallback(async () => {
