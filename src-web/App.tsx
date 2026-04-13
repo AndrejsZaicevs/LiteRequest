@@ -284,48 +284,7 @@ export default function App() {
 
       const basePath = col?.base_path ?? "";
 
-      // Merge collection default headers + auth into request headers
-      // Request-level headers take precedence over collection defaults
-      const requestHeaderKeys = new Set(
-        editorData.headers.filter(h => h.enabled && h.key).map(h => h.key.toLowerCase())
-      );
-      const extraHeaders: KeyValuePair[] = [];
-
-      // Collection default headers (prepend if not overridden by request)
-      if (col?.headers_config) {
-        try {
-          const defaultHeaders = JSON.parse(col.headers_config) as KeyValuePair[];
-          for (const h of defaultHeaders.filter(h => h.enabled && h.key)) {
-            if (!requestHeaderKeys.has(h.key.toLowerCase())) {
-              extraHeaders.push(h);
-              requestHeaderKeys.add(h.key.toLowerCase());
-            }
-          }
-        } catch { /* ignore malformed */ }
-      }
-
-      // Collection auth header (append if key not already present)
-      if (col?.auth_config) {
-        try {
-          const auth = JSON.parse(col.auth_config) as AuthConfig;
-          let authHeader: KeyValuePair | null = null;
-          if (auth.auth_type === "bearer" && auth.bearer_token) {
-            authHeader = { key: "Authorization", value: `Bearer ${auth.bearer_token}`, enabled: true };
-          } else if (auth.auth_type === "basic") {
-            const encoded = btoa(`${auth.basic_username ?? ""}:${auth.basic_password ?? ""}`);
-            authHeader = { key: "Authorization", value: `Basic ${encoded}`, enabled: true };
-          } else if (auth.auth_type === "api_key" && auth.api_key_value) {
-            authHeader = { key: auth.api_key_header ?? "X-API-Key", value: auth.api_key_value, enabled: true };
-          }
-          if (authHeader && !requestHeaderKeys.has(authHeader.key.toLowerCase())) {
-            extraHeaders.push(authHeader);
-          }
-        } catch { /* ignore malformed */ }
-      }
-
-      const effectiveData: RequestData = extraHeaders.length > 0
-        ? { ...editorData, headers: [...extraHeaders, ...editorData.headers] }
-        : editorData;
+      const effectiveData = buildEffectiveData(editorData);
 
       // Get client certs from settings
       let clientCerts: import("./lib/types").ClientCertEntry[] = [];
@@ -360,12 +319,82 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentRequest, editorData, envVariables, collections, environments, selectedVersionId, saveCurrentVersion]);
+  }, [currentRequest, editorData, envVariables, collections, environments, selectedVersionId, saveCurrentVersion, buildEffectiveData]);
 
   // ── Editor data change ───────────────────────────────────
   const onEditorChange = useCallback((data: RequestData) => {
     setEditorData(data);
     setDirty(true);
+  }, []);
+
+  // ── Build effective request data (with collection auth + headers) ──
+  const buildEffectiveData = useCallback((baseData: RequestData): RequestData => {
+    const col = collections.find(c => c.id === currentRequest?.collection_id);
+    const requestHeaderKeys = new Set(
+      baseData.headers.filter(h => h.enabled && h.key).map(h => h.key.toLowerCase())
+    );
+    const extraHeaders: KeyValuePair[] = [];
+    if (col?.headers_config) {
+      try {
+        const defaults = JSON.parse(col.headers_config) as KeyValuePair[];
+        for (const h of defaults.filter(h => h.enabled && h.key)) {
+          if (!requestHeaderKeys.has(h.key.toLowerCase())) {
+            extraHeaders.push(h);
+            requestHeaderKeys.add(h.key.toLowerCase());
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    if (col?.auth_config) {
+      try {
+        const auth = JSON.parse(col.auth_config) as AuthConfig;
+        let authHeader: KeyValuePair | null = null;
+        if (auth.auth_type === "bearer" && auth.bearer_token) {
+          authHeader = { key: "Authorization", value: `Bearer ${auth.bearer_token}`, enabled: true };
+        } else if (auth.auth_type === "basic") {
+          const encoded = btoa(`${auth.basic_username ?? ""}:${auth.basic_password ?? ""}`);
+          authHeader = { key: "Authorization", value: `Basic ${encoded}`, enabled: true };
+        } else if (auth.auth_type === "api_key" && auth.api_key_value) {
+          authHeader = { key: auth.api_key_header ?? "X-API-Key", value: auth.api_key_value, enabled: true };
+        }
+        if (authHeader && !requestHeaderKeys.has(authHeader.key.toLowerCase())) {
+          extraHeaders.push(authHeader);
+        }
+      } catch { /* ignore */ }
+    }
+    return extraHeaders.length > 0
+      ? { ...baseData, headers: [...extraHeaders, ...baseData.headers] }
+      : baseData;
+  }, [collections, currentRequest]);
+
+  // ── Copy as cURL ─────────────────────────────────────────
+  const copyCurl = useCallback(async () => {
+    if (!currentRequest) return;
+    try {
+      const col = collections.find(c => c.id === currentRequest.collection_id);
+      const variables: Record<string, string> = {};
+      for (const v of envVariables) variables[v.key] = v.value;
+      const colVars = await api.getActiveCollectionVariables(currentRequest.collection_id);
+      for (const [k, v] of colVars) variables[k] = v;
+      const basePath = col?.base_path ?? "";
+      const effectiveData = buildEffectiveData(editorData);
+      const curlStr = await api.toCurl(effectiveData, variables, basePath);
+      await navigator.clipboard.writeText(curlStr);
+      setErrorMessage(null);
+    } catch (e) {
+      setErrorMessage(`Copy cURL failed: ${e}`);
+    }
+  }, [currentRequest, collections, envVariables, editorData, buildEffectiveData]);
+
+  // ── Import from cURL ─────────────────────────────────────
+  const importCurl = useCallback(async (curlStr: string) => {
+    try {
+      const parsed = await api.parseCurl(curlStr);
+      setEditorData(parsed);
+      setDirty(true);
+    } catch (e) {
+      setErrorMessage(`Import cURL failed: ${e}`);
+    }
   }, []);
 
   // ── Auto-save on modification (debounced) ────────────────
@@ -538,6 +567,8 @@ export default function App() {
                   data={editorData}
                   onChange={onEditorChange}
                   onSend={sendRequest}
+                  onCopyCurl={copyCurl}
+                  onImportCurl={importCurl}
                   isLoading={isLoading}
                   basePath={collections.find(c => c.id === currentRequest?.collection_id)?.base_path ?? ""}
                   requestName={currentRequest?.name ?? ""}

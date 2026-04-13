@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Play } from "lucide-react";
+import { Play, Terminal, Upload } from "lucide-react";
 import type { RequestData, KeyValuePair, HttpMethod } from "../../lib/types";
 import { methodColor, HTTP_METHODS } from "../../lib/types";
 
@@ -7,15 +7,19 @@ interface RequestEditorProps {
   data: RequestData;
   onChange: (data: RequestData) => void;
   onSend: () => void;
+  onCopyCurl: () => void;
+  onImportCurl: (curlStr: string) => void;
   isLoading: boolean;
   basePath: string;
   requestName: string;
 }
 
-export function RequestEditor({ data, onChange, onSend, isLoading, basePath, requestName }: RequestEditorProps) {
+export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl, isLoading, basePath, requestName }: RequestEditorProps) {
   const [bodyTab, setBodyTab] = useState<"none" | "json" | "form" | "raw">(
     data.body_type === "Json" ? "json" : data.body_type === "FormUrlEncoded" ? "form" : data.body_type === "Raw" ? "raw" : "none"
   );
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
 
   const updateField = <K extends keyof RequestData>(field: K, value: RequestData[K]) => {
     onChange({ ...data, [field]: value });
@@ -73,8 +77,71 @@ export function RequestEditor({ data, onChange, onSend, isLoading, basePath, req
           >
             {isLoading ? "Sending…" : <><span>Send</span> <Play size={14} className="fill-white" /></>}
           </button>
+
+          {/* cURL actions */}
+          <button
+            onClick={onCopyCurl}
+            title="Copy as cURL"
+            className="p-2 rounded-md text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors border border-gray-700/60"
+          >
+            <Terminal size={15} />
+          </button>
+          <button
+            onClick={() => { setImportText(""); setShowImport(true); }}
+            title="Import from cURL"
+            className="p-2 rounded-md text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors border border-gray-700/60"
+          >
+            <Upload size={15} />
+          </button>
         </div>
       </div>
+
+      {/* Import cURL modal */}
+      {showImport && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+          onClick={() => setShowImport(false)}
+        >
+          <div
+            className="w-full max-w-2xl bg-[#161616] border border-gray-700 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-800 flex items-center gap-2">
+              <Terminal size={15} className="text-gray-400" />
+              <span className="text-sm font-semibold text-gray-200">Import from cURL</span>
+            </div>
+            <div className="p-5">
+              <textarea
+                autoFocus
+                value={importText}
+                onChange={e => setImportText(e.target.value)}
+                placeholder={"curl 'https://api.example.com/data' \\\n  -H 'Authorization: Bearer token' \\\n  -H 'Content-Type: application/json' \\\n  --data '{\"key\":\"value\"}'"}
+                className="w-full h-40 bg-[#0d0d0d] border border-gray-700 rounded-md p-3 font-mono text-xs text-gray-200 placeholder-gray-600 outline-none focus:border-gray-600 resize-none"
+              />
+            </div>
+            <div className="px-5 pb-5 flex justify-end gap-3">
+              <button
+                onClick={() => setShowImport(false)}
+                className="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (importText.trim()) {
+                    onImportCurl(importText.trim());
+                    setShowImport(false);
+                  }
+                }}
+                disabled={!importText.trim()}
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-md font-medium transition-colors disabled:opacity-40"
+              >
+                Import
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Body toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-[#121212] flex-shrink-0">
