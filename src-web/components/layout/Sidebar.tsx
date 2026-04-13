@@ -126,6 +126,23 @@ export function Sidebar({
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [dropState,   setDropState]   = useState<DropState | null>(null);
   const renameRef = useRef<HTMLInputElement>(null);
+  // Keep a always-current ref to folders so stable callbacks can read them
+  const foldersRef = useRef(folders);
+  foldersRef.current = folders;
+
+  // Returns true if setting folderId's parent to targetParentId would create a cycle.
+  // Checks whether folderId is already an ancestor of targetParentId.
+  const wouldCreateCycle = useCallback((folderId: string, targetParentId: string | null): boolean => {
+    if (!targetParentId) return false;
+    if (targetParentId === folderId) return true;
+    let cur = foldersRef.current.find(f => f.id === targetParentId);
+    while (cur) {
+      if (cur.parent_folder_id === folderId) return true;
+      if (!cur.parent_folder_id) return false;
+      cur = foldersRef.current.find(f => f.id === cur!.parent_folder_id);
+    }
+    return false;
+  }, []);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -227,8 +244,22 @@ export function Sidebar({
       }
     }
 
+    // Guard: suppress drop indicator for folder moves that would create a circular reference.
+    // This covers both "inside" (newParent = overItem.id) and "before"/"after"
+    // (newParent = overItem.parentFolderId — which could be inside the dragged folder's subtree).
+    const activeItemData = active.data.current as TreeItem | undefined;
+    if (activeItemData?.type === "folder") {
+      const potentialParent = position === "inside" && overItem.type === "folder"
+        ? overItem.id
+        : overItem.parentFolderId;
+      if (wouldCreateCycle(activeItemData.id, potentialParent)) {
+        setDropState(null);
+        return;
+      }
+    }
+
     setDropState({ overId: String(over.id), position });
-  }, []);
+  }, [wouldCreateCycle]);
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const ds = dropState;
@@ -303,6 +334,8 @@ export function Sidebar({
       }
 
       if (fld.parent_folder_id !== newParent || fld.collection_id !== newCol) {
+        // Safety guard — should normally be prevented by handleDragMove, but double-check
+        if (wouldCreateCycle(fld.id, newParent)) return;
         await api.moveFolder(fld.id, newCol, newParent);
       }
 
@@ -322,7 +355,7 @@ export function Sidebar({
     }
 
     onDataChange();
-  }, [dropState, flatItems, requests, folders, onDataChange]);
+  }, [dropState, flatItems, requests, folders, wouldCreateCycle, onDataChange]);
 
   const handleDragCancel = useCallback(() => {
     setActiveDragId(null);
