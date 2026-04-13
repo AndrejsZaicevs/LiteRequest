@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { Play, Terminal, Upload } from "lucide-react";
 import type { RequestData, KeyValuePair, HttpMethod } from "../../lib/types";
 import { methodColor, HTTP_METHODS } from "../../lib/types";
+import { CodeEditor } from "./CodeEditor";
 
 interface RequestEditorProps {
   data: RequestData;
@@ -145,7 +146,23 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
 
       {/* Body toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-[#121212] flex-shrink-0">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Request Body</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Request Body</span>
+          {bodyTab === "json" && (
+            <button
+              onClick={() => {
+                try {
+                  const formatted = JSON.stringify(JSON.parse(data.body), null, 2);
+                  updateField("body", formatted);
+                } catch { /* invalid JSON, ignore */ }
+              }}
+              className="text-[10px] px-2 py-0.5 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 border border-gray-700/50 transition-colors font-mono"
+              title="Format JSON"
+            >
+              {"{ }"}
+            </button>
+          )}
+        </div>
         <div className="flex bg-[#1a1a1a] rounded p-0.5 border border-gray-800">
           {(["none", "json", "form", "raw"] as const).map(tab => (
             <button
@@ -164,7 +181,7 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
       </div>
 
       {/* Body editor */}
-      <div className="flex-1 overflow-auto bg-[#0d0d0d]">
+      <div className="flex-1 overflow-hidden bg-[#0d0d0d]">
         {bodyTab === "none" && (
           <div className="flex items-center justify-center h-full text-sm text-gray-600">
             This request has no body
@@ -172,14 +189,12 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
         )}
 
         {bodyTab === "json" && (
-          <div className="relative h-full">
-            <textarea
+          <div className="h-full overflow-hidden">
+            <CodeEditor
               value={data.body}
-              onChange={(e) => updateField("body", e.target.value)}
-              className="w-full h-full p-4 font-mono text-sm leading-relaxed resize-none bg-transparent outline-none text-gray-300"
-              style={{ border: "none" }}
+              onChange={(v) => updateField("body", v)}
+              language="json"
               placeholder={'{\n  "key": "value"\n}'}
-              spellCheck={false}
             />
           </div>
         )}
@@ -192,13 +207,11 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
         )}
 
         {bodyTab === "raw" && (
-          <textarea
+          <CodeEditor
             value={data.body}
-            onChange={(e) => updateField("body", e.target.value)}
-            className="w-full h-full p-4 font-mono text-sm leading-relaxed resize-none bg-transparent outline-none text-gray-300"
-            style={{ border: "none" }}
+            onChange={(v) => updateField("body", v)}
+            language="text"
             placeholder="Raw body content..."
-            spellCheck={false}
           />
         )}
       </div>
