@@ -3,6 +3,9 @@ import { Settings, Plus, Trash2, Eye, EyeOff } from "lucide-react";
 import type { Environment, EnvVariable, KeyValuePair, ClientCertEntry } from "../../lib/types";
 import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
+import { CollapsibleSection } from "../shared/CollapsibleSection";
+
+type Section = "environments" | "headers" | "variables" | "certificates";
 
 interface AppSettingsProps {
   environments: Environment[];
@@ -10,7 +13,7 @@ interface AppSettingsProps {
 }
 
 export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
-  const [tab, setTab] = useState<"environments" | "headers" | "variables" | "certificates">("environments");
+  const [open, setOpen] = useState<Set<Section>>(new Set(["environments", "headers", "variables", "certificates"]));
   const [selectedEnv, setSelectedEnv] = useState<string | null>(environments[0]?.id ?? null);
   const [envVars, setEnvVars] = useState<EnvVariable[]>([]);
   const [renamingEnv, setRenamingEnv] = useState<string | null>(null);
@@ -131,7 +134,12 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
     api.setAppSetting("client_certs", JSON.stringify(next)).catch(console.error);
   };
 
-  const tabs = ["environments", "headers", "variables", "certificates"] as const;
+  const toggle = (s: Section) => setOpen(prev => {
+    const next = new Set(prev);
+    if (next.has(s)) next.delete(s); else next.add(s);
+    return next;
+  });
+
   const inputClass = "w-full bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-gray-700 focus:bg-[#1a1a1a] transition-colors";
   const selectClass = "bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-gray-700 transition-colors";
   const labelClass = "block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5";
@@ -139,253 +147,188 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
   const btnDangerClass = "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 bg-[#1a1a1a] border border-red-500/30 rounded-md hover:bg-red-500/10 transition-colors";
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-[#121212]">
+    <div className="h-full overflow-y-auto bg-[#121212]">
       {/* Header */}
-      <div className="px-6 pt-5 pb-3 shrink-0">
-        <h2 className="text-lg font-semibold text-gray-200 flex items-center gap-2">
-          <Settings size={18} className="text-gray-500" /> Settings
-        </h2>
-        <p className="text-xs mt-1 text-gray-600">
-          Global application settings — environments, default headers, variables, and certificates
-        </p>
+      <div className="px-4 py-4 border-b border-gray-800 flex items-center gap-2">
+        <Settings size={16} className="text-gray-500 shrink-0" />
+        <h2 className="text-sm font-semibold text-gray-200">Settings</h2>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 px-6 border-b border-gray-800 shrink-0">
-        {tabs.map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-3 text-sm font-medium capitalize transition-colors ${
-              tab === t
-                ? "text-blue-400 border-b-2 border-blue-500"
-                : "text-gray-500 border-b-2 border-transparent hover:text-gray-300"
-            }`}
-          >
-            {t}
+      {/* Environments */}
+      <CollapsibleSection
+        title="Environments"
+        count={environments.length}
+        isOpen={open.has("environments")}
+        onToggle={() => toggle("environments")}
+        action={
+          <button onClick={addEnvironment} className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 hover:text-gray-200 hover:bg-[#2a2a2a] rounded transition-colors">
+            <Plus size={11} /> New
           </button>
-        ))}
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-6 py-5">
-        {/* Environments tab */}
-        {tab === "environments" && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-medium text-gray-400">
-                Manage environments and their variables
-              </span>
-              <button onClick={addEnvironment} className={btnClass}>
-                <Plus size={12} /> New Environment
-              </button>
-            </div>
-
-            <div className="flex gap-5">
-              {/* Env list */}
-              <div className="w-52 shrink-0 border border-gray-800 rounded-md overflow-hidden">
-                {environments.map(env => (
-                  <div
-                    key={env.id}
-                    className={`flex items-center px-3 py-2.5 cursor-pointer transition-colors border-b border-gray-800/50 ${
-                      selectedEnv === env.id ? "bg-[#242424]" : "hover:bg-[#1a1a1a]"
-                    }`}
-                    onClick={() => setSelectedEnv(env.id)}
-                    onDoubleClick={() => { setRenamingEnv(env.id); setRenameValue(env.name); }}
-                  >
-                    {renamingEnv === env.id ? (
-                      <input
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onBlur={handleRenameEnv}
-                        onKeyDown={(e) => { if (e.key === "Enter") handleRenameEnv(); if (e.key === "Escape") setRenamingEnv(null); }}
-                        className="flex-1 bg-transparent text-sm text-gray-200 outline-none"
-                        style={{ border: "none", borderBottom: "1px solid #3b82f6", borderRadius: 0, padding: "0 2px" }}
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <span className="flex-1 text-sm text-gray-300 truncate">{env.name}</span>
-                    )}
-                    {env.is_active && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-medium ml-2 shrink-0 bg-green-500/20 text-green-400 border border-green-500/30">
-                        active
-                      </span>
-                    )}
-                  </div>
-                ))}
-                {environments.length === 0 && (
-                  <div className="px-4 py-4 text-xs text-center text-gray-600">
-                    No environments
-                  </div>
+        }
+      >
+        <div className="flex gap-4">
+          {/* Env list */}
+          <div className="w-44 shrink-0 border border-gray-800 rounded-md overflow-hidden">
+            {environments.map(env => (
+              <div
+                key={env.id}
+                className={`flex items-center px-3 py-2.5 cursor-pointer transition-colors border-b border-gray-800/50 last:border-0 ${
+                  selectedEnv === env.id ? "bg-[#242424]" : "hover:bg-[#1a1a1a]"
+                }`}
+                onClick={() => setSelectedEnv(env.id)}
+                onDoubleClick={() => { setRenamingEnv(env.id); setRenameValue(env.name); }}
+              >
+                {renamingEnv === env.id ? (
+                  <input
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onBlur={handleRenameEnv}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleRenameEnv(); if (e.key === "Escape") setRenamingEnv(null); }}
+                    className="flex-1 bg-transparent text-sm text-gray-200 outline-none"
+                    style={{ border: "none", borderBottom: "1px solid #3b82f6", borderRadius: 0, padding: "0 2px" }}
+                    autoFocus
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <span className="flex-1 text-sm text-gray-300 truncate">{env.name}</span>
+                )}
+                {env.is_active && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium ml-1 shrink-0 bg-green-500/20 text-green-400 border border-green-500/30">
+                    active
+                  </span>
                 )}
               </div>
-
-              {/* Env variables */}
-              {selectedEnv && (
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-gray-400">
-                      Variables
-                    </span>
-                    <div className="flex gap-2">
-                      <button onClick={addEnvVar} className={btnClass}>
-                        <Plus size={12} /> Add
-                      </button>
-                      <button onClick={() => { setRenamingEnv(selectedEnv); setRenameValue(environments.find(e => e.id === selectedEnv)?.name ?? ""); }}
-                        className={btnClass}>Rename</button>
-                      <button onClick={() => deleteEnvironment(selectedEnv)} className={btnDangerClass}>
-                        <Trash2 size={12} /> Delete
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="border border-gray-800 rounded-md overflow-hidden">
-                    {envVars.map(v => (
-                      <div key={v.id} className="kv-row">
-                        <input
-                          value={v.key}
-                          onChange={(e) => updateEnvVar({ ...v, key: e.target.value })}
-                          className="kv-cell"
-                          style={{ border: "none", borderRadius: 0, fontWeight: 500 }}
-                        />
-                        <div className="kv-divider" />
-                        <input
-                          value={v.value}
-                          type={v.is_secret ? "password" : "text"}
-                          onChange={(e) => updateEnvVar({ ...v, value: e.target.value })}
-                          className="kv-cell"
-                          style={{ border: "none", borderRadius: 0 }}
-                        />
-                        <button
-                          onClick={() => updateEnvVar({ ...v, is_secret: !v.is_secret })}
-                          className="kv-action text-gray-600 hover:text-gray-300"
-                          title={v.is_secret ? "Show" : "Hide"}
-                        >
-                          {v.is_secret ? <EyeOff size={12} /> : <Eye size={12} />}
-                        </button>
-                        <button onClick={() => deleteEnvVar(v.id)} className="kv-action text-gray-600 hover:text-red-400">
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    ))}
-                    {envVars.length === 0 && (
-                      <div className="px-4 py-4 text-xs text-center text-gray-600">
-                        No variables — click + Add to create one
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Default Headers tab */}
-        {tab === "headers" && (
-          <div>
-            <p className="text-xs mb-3 text-gray-600">
-              Default headers sent with every request across all collections
-            </p>
-            <div className="border border-gray-800 rounded-md overflow-hidden" style={{ maxWidth: 600 }}>
-              <KvTable
-                rows={defaultHeaders}
-                onChange={saveDefaultHeaders}
-                placeholder={{ key: "Header-Name", value: "value" }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* App-wide Variables tab */}
-        {tab === "variables" && (
-          <div>
-            <p className="text-xs mb-3 text-gray-600">
-              Global variables available in all collections (not environment-specific)
-            </p>
-            <div className="border border-gray-800 rounded-md overflow-hidden" style={{ maxWidth: 600 }}>
-              <KvTable
-                rows={appWideVars}
-                onChange={saveAppVars}
-                placeholder={{ key: "VARIABLE_NAME", value: "value" }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Client Certificates tab */}
-        {tab === "certificates" && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-gray-600">
-                Client TLS certificates for mutual TLS authentication
-              </p>
-              <button onClick={addCert} className={btnClass}>
-                <Plus size={12} /> Add Certificate
-              </button>
-            </div>
-
-            {clientCerts.length === 0 && (
-              <div className="text-xs p-5 rounded-md text-center bg-[#1a1a1a] text-gray-600 border border-gray-800">
-                No client certificates configured
-              </div>
+            ))}
+            {environments.length === 0 && (
+              <div className="px-4 py-4 text-xs text-center text-gray-600">No environments</div>
             )}
+          </div>
 
-            <div className="space-y-3">
-              {clientCerts.map((cert, i) => (
-                <div
-                  key={i}
-                  className={`rounded-md p-4 border border-gray-800 bg-[#1a1a1a] ${cert.enabled ? "" : "opacity-50"}`}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => updateCert(i, { enabled: !cert.enabled })}
-                        className={`w-4 h-4 rounded border flex items-center justify-center ${cert.enabled ? "bg-blue-600 border-blue-500" : "border-gray-600"}`}
-                      >
-                        {cert.enabled && <span className="text-white text-[10px]">✓</span>}
-                      </button>
-                      <span className="text-sm font-medium text-gray-300">Certificate {i + 1}</span>
-                    </div>
-                    <button onClick={() => removeCert(i)} className={btnDangerClass} style={{ padding: "2px 8px" }}>
-                      <Trash2 size={12} /> Remove
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className={labelClass}>Host Pattern</label>
-                      <input value={cert.host} onChange={(e) => updateCert(i, { host: e.target.value })} placeholder="*.example.com" className={inputClass} />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Type</label>
-                      <select value={cert.cert_type} onChange={(e) => updateCert(i, { cert_type: e.target.value as "Pem" | "Pkcs12" })} className={selectClass}>
-                        <option value="Pem">PEM</option>
-                        <option value="Pkcs12">PKCS#12</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className={labelClass}>Certificate Path</label>
-                      <input value={cert.cert_path} onChange={(e) => updateCert(i, { cert_path: e.target.value })} placeholder="/path/to/cert.pem" className={inputClass} />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Key Path</label>
-                      <input value={cert.key_path} onChange={(e) => updateCert(i, { key_path: e.target.value })} placeholder="/path/to/key.pem" className={inputClass} />
-                    </div>
-                    <div>
-                      <label className={labelClass}>CA Path (optional)</label>
-                      <input value={cert.ca_path} onChange={(e) => updateCert(i, { ca_path: e.target.value })} placeholder="/path/to/ca.pem" className={inputClass} />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Passphrase (optional)</label>
-                      <input type="password" value={cert.passphrase} onChange={(e) => updateCert(i, { passphrase: e.target.value })} className={inputClass} />
-                    </div>
-                  </div>
+          {/* Env variables */}
+          {selectedEnv && (
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-gray-400">Variables</span>
+                <div className="flex gap-1.5">
+                  <button onClick={addEnvVar} className={btnClass}><Plus size={12} /> Add</button>
+                  <button onClick={() => { setRenamingEnv(selectedEnv); setRenameValue(environments.find(e => e.id === selectedEnv)?.name ?? ""); }} className={btnClass}>Rename</button>
+                  <button onClick={() => deleteEnvironment(selectedEnv)} className={btnDangerClass}><Trash2 size={12} /></button>
                 </div>
-              ))}
+              </div>
+              <div className="border border-gray-800 rounded-md overflow-hidden">
+                {envVars.map(v => (
+                  <div key={v.id} className="kv-row">
+                    <input value={v.key} onChange={(e) => updateEnvVar({ ...v, key: e.target.value })} className="kv-cell" style={{ border: "none", borderRadius: 0, fontWeight: 500 }} />
+                    <div className="kv-divider" />
+                    <input value={v.value} type={v.is_secret ? "password" : "text"} onChange={(e) => updateEnvVar({ ...v, value: e.target.value })} className="kv-cell" style={{ border: "none", borderRadius: 0 }} />
+                    <button onClick={() => updateEnvVar({ ...v, is_secret: !v.is_secret })} className="kv-action text-gray-600 hover:text-gray-300" title={v.is_secret ? "Show" : "Hide"}>
+                      {v.is_secret ? <EyeOff size={12} /> : <Eye size={12} />}
+                    </button>
+                    <button onClick={() => deleteEnvVar(v.id)} className="kv-action text-gray-600 hover:text-red-400"><Trash2 size={12} /></button>
+                  </div>
+                ))}
+                {envVars.length === 0 && (
+                  <div className="px-4 py-4 text-xs text-center text-gray-600">No variables — click + Add</div>
+                )}
+              </div>
             </div>
+          )}
+        </div>
+      </CollapsibleSection>
+
+      {/* Default Headers */}
+      <CollapsibleSection
+        title="Default Headers"
+        count={defaultHeaders.filter(h => h.key).length}
+        isOpen={open.has("headers")}
+        onToggle={() => toggle("headers")}
+      >
+        <p className="text-xs mb-3 text-gray-600">Sent with every request across all collections</p>
+        <div className="border border-gray-800 rounded-md overflow-hidden" style={{ maxWidth: 600 }}>
+          <KvTable rows={defaultHeaders} onChange={saveDefaultHeaders} placeholder={{ key: "Header-Name", value: "value" }} />
+        </div>
+      </CollapsibleSection>
+
+      {/* Global Variables */}
+      <CollapsibleSection
+        title="Global Variables"
+        count={appWideVars.filter(v => v.key).length}
+        isOpen={open.has("variables")}
+        onToggle={() => toggle("variables")}
+      >
+        <p className="text-xs mb-3 text-gray-600">Available in all collections, not environment-specific</p>
+        <div className="border border-gray-800 rounded-md overflow-hidden" style={{ maxWidth: 600 }}>
+          <KvTable rows={appWideVars} onChange={saveAppVars} placeholder={{ key: "VARIABLE_NAME", value: "value" }} />
+        </div>
+      </CollapsibleSection>
+
+      {/* Client Certificates */}
+      <CollapsibleSection
+        title="Client Certificates"
+        count={clientCerts.length}
+        isOpen={open.has("certificates")}
+        onToggle={() => toggle("certificates")}
+        action={
+          <button onClick={addCert} className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 hover:text-gray-200 hover:bg-[#2a2a2a] rounded transition-colors">
+            <Plus size={11} /> Add
+          </button>
+        }
+      >
+        {clientCerts.length === 0 && (
+          <div className="text-xs p-4 rounded-md text-center bg-[#1a1a1a] text-gray-600 border border-gray-800">
+            No client certificates configured
           </div>
         )}
-      </div>
+        <div className="space-y-3">
+          {clientCerts.map((cert, i) => (
+            <div key={i} className={`rounded-md p-4 border border-gray-800 bg-[#1a1a1a] ${cert.enabled ? "" : "opacity-50"}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => updateCert(i, { enabled: !cert.enabled })}
+                    className={`w-4 h-4 rounded border flex items-center justify-center ${cert.enabled ? "bg-blue-600 border-blue-500" : "border-gray-600"}`}
+                  >
+                    {cert.enabled && <span className="text-white text-[10px]">✓</span>}
+                  </button>
+                  <span className="text-sm font-medium text-gray-300">Certificate {i + 1}</span>
+                </div>
+                <button onClick={() => removeCert(i)} className={btnDangerClass} style={{ padding: "2px 8px" }}>
+                  <Trash2 size={12} /> Remove
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Host Pattern</label>
+                  <input value={cert.host} onChange={(e) => updateCert(i, { host: e.target.value })} placeholder="*.example.com" className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Type</label>
+                  <select value={cert.cert_type} onChange={(e) => updateCert(i, { cert_type: e.target.value as "Pem" | "Pkcs12" })} className={selectClass}>
+                    <option value="Pem">PEM</option>
+                    <option value="Pkcs12">PKCS#12</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Certificate Path</label>
+                  <input value={cert.cert_path} onChange={(e) => updateCert(i, { cert_path: e.target.value })} placeholder="/path/to/cert.pem" className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Key Path</label>
+                  <input value={cert.key_path} onChange={(e) => updateCert(i, { key_path: e.target.value })} placeholder="/path/to/key.pem" className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>CA Path (optional)</label>
+                  <input value={cert.ca_path} onChange={(e) => updateCert(i, { ca_path: e.target.value })} placeholder="/path/to/ca.pem" className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Passphrase (optional)</label>
+                  <input type="password" value={cert.passphrase} onChange={(e) => updateCert(i, { passphrase: e.target.value })} className={inputClass} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }
