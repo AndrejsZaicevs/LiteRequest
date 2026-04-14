@@ -3,6 +3,7 @@ import { Play, Terminal, Upload } from "lucide-react";
 import type { RequestData, KeyValuePair, HttpMethod } from "../../lib/types";
 import { methodColor, HTTP_METHODS } from "../../lib/types";
 import { CodeEditor } from "./CodeEditor";
+import { VariableInput } from "../shared/VariableInput";
 
 interface RequestEditorProps {
   data: RequestData;
@@ -13,9 +14,10 @@ interface RequestEditorProps {
   isLoading: boolean;
   basePath: string;
   requestName: string;
+  variables?: Record<string, string>;
 }
 
-export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl, isLoading, basePath, requestName }: RequestEditorProps) {
+export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl, isLoading, basePath, requestName, variables = {} }: RequestEditorProps) {
   const [bodyTab, setBodyTab] = useState<"none" | "json" | "form" | "raw">(
     data.body_type === "Json" ? "json" : data.body_type === "FormUrlEncoded" ? "form" : data.body_type === "Raw" ? "raw" : "none"
   );
@@ -53,18 +55,20 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
             </select>
 
             {/* Base path + URL input */}
-            <div className="flex-1 flex items-center px-3 py-2 font-mono text-sm overflow-hidden">
+            <div className="flex-1 flex items-center px-3 py-2 font-mono text-sm relative overflow-visible">
               {showBasePath && (
                 <span className="text-gray-500 shrink-0 select-none mr-px" title={basePath}>
                   {basePath.replace(/\/+$/, "")}
                 </span>
               )}
-              <input
+              <VariableInput
                 value={data.url}
-                onChange={(e) => updateField("url", e.target.value)}
+                onChange={(v) => updateField("url", v)}
+                variables={variables}
+                wrapperClassName="flex-1 min-w-[100px]"
+                className="bg-transparent text-gray-200 outline-none"
+                inputStyle={{ border: "none", borderRadius: 0, padding: 0, fontSize: "inherit" }}
                 placeholder={showBasePath ? "" : "https://api.example.com/path"}
-                className="flex-1 bg-transparent text-gray-200 outline-none w-full min-w-[100px]"
-                style={{ border: "none", borderRadius: 0, padding: 0, fontSize: "inherit" }}
                 onKeyDown={(e) => { if (e.key === "Enter") onSend(); }}
               />
             </div>
@@ -184,7 +188,6 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
       <div className="flex-1 overflow-hidden bg-[#0d0d0d]">
         {bodyTab === "none" && (
           <div className="flex items-center justify-center h-full text-sm text-gray-600">
-            This request has no body
           </div>
         )}
 
@@ -194,6 +197,7 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
               value={data.body}
               onChange={(v) => updateField("body", v)}
               language="json"
+              variables={variables}
             />
           </div>
         )}
@@ -210,6 +214,7 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
             value={data.body}
             onChange={(v) => updateField("body", v)}
             language="text"
+            variables={variables}
           />
         )}
       </div>

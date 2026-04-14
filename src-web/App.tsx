@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type {
   Collection, Folder, Request, RequestVersion, RequestExecution,
   Environment, EnvVariable, RequestData, ResponseData, HttpMethod,
@@ -60,6 +60,27 @@ export default function App() {
   // ── Error/status ─────────────────────────────────────────
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // ── Variable map for display/highlighting ────────────────
+  const [collectionDisplayVars, setCollectionDisplayVars] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!currentRequest) { setCollectionDisplayVars({}); return; }
+    api.getActiveCollectionVariables(currentRequest.collection_id)
+      .then(vars => {
+        const obj: Record<string, string> = {};
+        for (const [k, v] of vars) obj[k] = v;
+        setCollectionDisplayVars(obj);
+      })
+      .catch(() => setCollectionDisplayVars({}));
+  }, [currentRequest?.collection_id]);
+
+  const displayVariables = useMemo(() => {
+    // Collection vars as base, env vars override (same priority as request execution)
+    const vars: Record<string, string> = { ...collectionDisplayVars };
+    for (const v of envVariables) vars[v.key] = v.value;
+    return vars;
+  }, [envVariables, collectionDisplayVars]);
 
   // ── Refs for drag tracking ───────────────────────────────
   const dragging = useRef<"sidebar" | "inspector" | "split" | null>(null);
@@ -546,6 +567,7 @@ export default function App() {
                   isLoading={isLoading}
                   basePath={collections.find(c => c.id === currentRequest?.collection_id)?.base_path ?? ""}
                   requestName={currentRequest?.name ?? ""}
+                  variables={displayVariables}
                 />
               </div>
 
@@ -621,6 +643,7 @@ export default function App() {
                 }
               }}
               environments={environments}
+              variables={displayVariables}
             />
           </div>
         )}

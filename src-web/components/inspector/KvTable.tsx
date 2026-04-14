@@ -1,14 +1,16 @@
 import { Trash2, Check } from "lucide-react";
 import type { KeyValuePair } from "../../lib/types";
+import { VariableInput } from "../shared/VariableInput";
 
 interface KvTableProps {
   rows: KeyValuePair[];
   onChange: (rows: KeyValuePair[]) => void;
   placeholder?: { key: string; value: string };
   fixedKeys?: boolean;
+  variables?: Record<string, string>;
 }
 
-export function KvTable({ rows, onChange, placeholder, fixedKeys }: KvTableProps) {
+export function KvTable({ rows, onChange, placeholder, fixedKeys, variables = {} }: KvTableProps) {
   const update = (index: number, field: keyof KeyValuePair, value: string | boolean) => {
     const next = [...rows];
     next[index] = { ...next[index], [field]: value };
@@ -66,13 +68,15 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys }: KvTableProps
           />
 
           {/* Value input */}
-          <input
+          <VariableInput
             value={row.value}
-            onChange={(e) => update(i, "value", e.target.value)}
-            placeholder={placeholder?.value ?? "value"}
-            className={`w-0 flex-1 bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent focus:border-gray-700 focus:bg-[#1a1a1a] rounded px-1.5 py-1 transition-all text-gray-200 ${
+            onChange={(v) => update(i, "value", v)}
+            variables={variables}
+            wrapperClassName="w-0 flex-1"
+            className={`bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent focus:border-gray-700 focus:bg-[#1a1a1a] rounded px-1.5 py-1 transition-all text-gray-200 ${
               !row.enabled ? "opacity-40 line-through" : ""
             }`}
+            placeholder={placeholder?.value ?? "value"}
           />
 
           {/* Delete */}

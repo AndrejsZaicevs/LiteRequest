@@ -21,6 +21,7 @@ interface InspectorProps {
   onSelectVersion: (id: string) => void;
   onSelectExecution: (id: string) => void;
   environments: Environment[];
+  variables?: Record<string, string>;
 }
 
 type Section = "params" | "headers" | "pathParams" | "versions" | "executions";
@@ -47,7 +48,7 @@ export function Inspector({
   versions, executions,
   selectedVersionId, selectedExecutionId,
   onSelectVersion, onSelectExecution,
-  environments,
+  environments, variables = {},
 }: InspectorProps) {
   const [openSections, setOpenSections] = useState<Set<Section>>(
     new Set(["params", "headers", "pathParams"])
@@ -164,7 +165,7 @@ export function Inspector({
           isOpen={openSections.has("params")}
           onToggle={() => toggleSection("params")}
         >
-          <KvTable rows={data.query_params} onChange={updateParams} placeholder={{ key: "param", value: "value" }} />
+          <KvTable rows={data.query_params} onChange={updateParams} placeholder={{ key: "param", value: "value" }} variables={variables} />
         </CollapsibleSection>
 
         {/* Path Params */}
@@ -175,7 +176,7 @@ export function Inspector({
             isOpen={openSections.has("pathParams")}
             onToggle={() => toggleSection("pathParams")}
           >
-            <KvTable rows={pathParams} onChange={updatePathParams} placeholder={{ key: "param", value: "value" }} fixedKeys />
+            <KvTable rows={pathParams} onChange={updatePathParams} placeholder={{ key: "param", value: "value" }} fixedKeys variables={variables} />
           </CollapsibleSection>
         )}
 
@@ -186,7 +187,7 @@ export function Inspector({
           isOpen={openSections.has("headers")}
           onToggle={() => toggleSection("headers")}
         >
-          <KvTable rows={data.headers} onChange={updateHeaders} placeholder={{ key: "header", value: "value" }} />
+          <KvTable rows={data.headers} onChange={updateHeaders} placeholder={{ key: "header", value: "value" }} variables={variables} />
         </CollapsibleSection>
 
         {/* Versions */}
