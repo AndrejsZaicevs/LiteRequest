@@ -34,10 +34,19 @@ export interface KeyValuePair {
 
 // ── Body Type ────────────────────────────────────────────────
 // Matches Rust enum variant names exactly
-export type BodyType = "None" | "Json" | "FormUrlEncoded" | "Raw";
+export type BodyType = "None" | "Json" | "FormUrlEncoded" | "Raw" | "Multipart";
 
 // Form data (for FormUrlEncoded body)
 export type FormData = KeyValuePair[];
+
+// ── Multipart Field ──────────────────────────────────────────
+export interface MultipartField {
+  key: string;
+  value: string;
+  is_file: boolean;
+  file_path: string;
+  enabled: boolean;
+}
 
 // ── Client Certificate ───────────────────────────────────────
 export type CertType = "Pem" | "Pkcs12";
@@ -61,6 +70,7 @@ export interface RequestData {
   path_params: KeyValuePair[];
   body: string;
   body_type: BodyType;
+  multipart_fields: MultipartField[];
 }
 
 export function defaultRequestData(): RequestData {
@@ -72,6 +82,7 @@ export function defaultRequestData(): RequestData {
     path_params: [],
     body: "",
     body_type: "None",
+    multipart_fields: [],
   };
 }
 
@@ -102,6 +113,8 @@ export interface ResponseData {
   headers: Record<string, string>;
   body: string;
   size_bytes: number;
+  /** True when body is base64-encoded binary content */
+  is_binary?: boolean;
 }
 
 // ── Request Execution ────────────────────────────────────────
@@ -205,7 +218,12 @@ export function computeVersionFingerprint(data: RequestData): string {
     .map(h => h.key.toLowerCase())
     .sort()
     .join(",");
-  return `${data.method}|${data.url}|${qpKeys}|${hKeys}|${data.body_type}`;
+  const mpKeys = (data.multipart_fields ?? [])
+    .filter(f => f.enabled && f.key)
+    .map(f => f.key)
+    .sort()
+    .join(",");
+  return `${data.method}|${data.url}|${qpKeys}|${hKeys}|${data.body_type}|${mpKeys}`;
 }
 
 // ── Search ────────────────────────────────────────────────────

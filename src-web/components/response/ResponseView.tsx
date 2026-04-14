@@ -1,6 +1,9 @@
 import { useState, useMemo } from "react";
+import { Download } from "lucide-react";
 import type { ResponseData } from "../../lib/types";
 import { statusColor } from "../../lib/types";
+import { save as dialogSave } from "@tauri-apps/plugin-dialog";
+import * as api from "../../lib/api";
 
 interface ResponseViewProps {
   response: ResponseData | null;
@@ -20,6 +23,29 @@ function statusDotColor(code: number): string {
 
 export function ResponseView({ response, latency, isLoading }: ResponseViewProps) {
   const [tab, setTab] = useState<Tab>("body");
+
+  const handleDownload = async () => {
+    if (!response) return;
+    const ct = response.headers["content-type"] ?? "";
+    // Guess a file extension from content-type
+    const ext = ct.includes("json") ? "json"
+      : ct.includes("xml") ? "xml"
+      : ct.includes("html") ? "html"
+      : ct.includes("text/plain") ? "txt"
+      : ct.includes("csv") ? "csv"
+      : ct.includes("pdf") ? "pdf"
+      : ct.includes("png") ? "png"
+      : ct.includes("jpeg") || ct.includes("jpg") ? "jpg"
+      : ct.includes("gif") ? "gif"
+      : ct.includes("webp") ? "webp"
+      : ct.includes("svg") ? "svg"
+      : ct.includes("zip") ? "zip"
+      : "bin";
+    const path = await dialogSave({ defaultPath: `response.${ext}` });
+    if (path) {
+      await api.saveFile(path, response.body, response.is_binary ?? false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -41,7 +67,7 @@ export function ResponseView({ response, latency, isLoading }: ResponseViewProps
   }
 
   const headerCount = Object.keys(response.headers).length;
-  const bodySize = new Blob([response.body]).size;
+  const bodySize = response.size_bytes;
   const formattedSize = bodySize > 1024 ? `${(bodySize / 1024).toFixed(1)} KB` : `${bodySize} B`;
 
   return (
@@ -59,7 +85,7 @@ export function ResponseView({ response, latency, isLoading }: ResponseViewProps
           <span className="text-gray-500 font-mono text-xs">{formattedSize}</span>
         </div>
 
-        <div className="flex gap-4 text-gray-400">
+        <div className="flex items-center gap-4 text-gray-400">
           {(["body", "headers"] as const).map(t => (
             <button
               key={t}
@@ -73,30 +99,47 @@ export function ResponseView({ response, latency, isLoading }: ResponseViewProps
               {t}{t === "headers" ? ` (${headerCount})` : ""}
             </button>
           ))}
+          <button
+            onClick={handleDownload}
+            title="Save response to file"
+            className="p-1.5 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/50 transition-colors"
+          >
+            <Download size={13} />
+          </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto bg-[#0d0d0d]">
-        {tab === "body" && <ResponseBody body={response.body} />}
+        {tab === "body" && <ResponseBody body={response.body} isBinary={response.is_binary ?? false} />}
         {tab === "headers" && <ResponseHeaders headers={response.headers} />}
       </div>
     </div>
   );
 }
 
-function ResponseBody({ body }: { body: string }) {
+function ResponseBody({ body, isBinary }: { body: string; isBinary: boolean }) {
   const formatted = useMemo(() => {
+    if (isBinary) return null;
     try {
       return JSON.stringify(JSON.parse(body), null, 2);
     } catch {
       return body;
     }
-  }, [body]);
+  }, [body, isBinary]);
 
   if (!body) {
     return (
       <div className="flex items-center justify-center h-full text-xs text-gray-600">
         Empty response body
+      </div>
+    );
+  }
+
+  if (isBinary) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
+        <span className="text-2xl">📦</span>
+        <span className="text-sm">Binary response — use the download button to save it</span>
       </div>
     );
   }

@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
-import { Play, Terminal, Upload } from "lucide-react";
-import type { RequestData, KeyValuePair, HttpMethod } from "../../lib/types";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { Play, Terminal, Upload, Paperclip, Check } from "lucide-react";
+import type { RequestData, KeyValuePair, HttpMethod, MultipartField } from "../../lib/types";
 import { methodColor, HTTP_METHODS } from "../../lib/types";
 import { CodeEditor } from "./CodeEditor";
 import { VariableInput } from "../shared/VariableInput";
+import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 
 interface RequestEditorProps {
   data: RequestData;
@@ -17,20 +18,40 @@ interface RequestEditorProps {
   variables?: Record<string, string>;
 }
 
+type BodyTab = "none" | "json" | "form" | "raw" | "multipart";
+
+function bodyTypeToTab(bt: string): BodyTab {
+  if (bt === "Json") return "json";
+  if (bt === "FormUrlEncoded") return "form";
+  if (bt === "Raw") return "raw";
+  if (bt === "Multipart") return "multipart";
+  return "none";
+}
+
 export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl, isLoading, basePath, requestName, variables = {} }: RequestEditorProps) {
-  const [bodyTab, setBodyTab] = useState<"none" | "json" | "form" | "raw">(
-    data.body_type === "Json" ? "json" : data.body_type === "FormUrlEncoded" ? "form" : data.body_type === "Raw" ? "raw" : "none"
-  );
+  const [bodyTab, setBodyTab] = useState<BodyTab>(() => bodyTypeToTab(data.body_type));
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
+  const [curlCopied, setCurlCopied] = useState(false);
+
+  // Sync tab when switching to a different request
+  useEffect(() => {
+    setBodyTab(bodyTypeToTab(data.body_type));
+  }, [data.body_type]);
+
+  const handleCopyCurl = () => {
+    onCopyCurl();
+    setCurlCopied(true);
+    setTimeout(() => setCurlCopied(false), 2000);
+  };
 
   const updateField = <K extends keyof RequestData>(field: K, value: RequestData[K]) => {
     onChange({ ...data, [field]: value });
   };
 
-  const handleBodyTabChange = (tab: "none" | "json" | "form" | "raw") => {
+  const handleBodyTabChange = (tab: BodyTab) => {
     setBodyTab(tab);
-    const btMap = { none: "None", json: "Json", form: "FormUrlEncoded", raw: "Raw" } as const;
+    const btMap = { none: "None", json: "Json", form: "FormUrlEncoded", raw: "Raw", multipart: "Multipart" } as const;
     updateField("body_type", btMap[tab]);
   };
 
@@ -85,11 +106,17 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
 
           {/* cURL actions */}
           <button
-            onClick={onCopyCurl}
+            onClick={handleCopyCurl}
             title="Copy as cURL"
-            className="p-2 rounded-md text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-colors border border-gray-700/60"
+            className={`p-2 rounded-md transition-all border ${
+              curlCopied
+                ? "text-green-400 bg-green-500/10 border-green-500/40"
+                : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 border-gray-700/60"
+            }`}
           >
-            <Terminal size={15} />
+            <span className={`block transition-all duration-200 ${curlCopied ? "scale-110" : "scale-100"}`}>
+              {curlCopied ? <Check size={15} /> : <Terminal size={15} />}
+            </span>
           </button>
           <button
             onClick={() => { setImportText(""); setShowImport(true); }}
@@ -168,7 +195,7 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
           )}
         </div>
         <div className="flex bg-[#1a1a1a] rounded p-0.5 border border-gray-800">
-          {(["none", "json", "form", "raw"] as const).map(tab => (
+          {(["none", "json", "form", "raw", "multipart"] as const).map(tab => (
             <button
               key={tab}
               onClick={() => handleBodyTabChange(tab)}
@@ -178,7 +205,7 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
                   : "text-gray-500 hover:text-gray-300"
               }`}
             >
-              {tab === "none" ? "None" : tab === "form" ? "Form" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === "none" ? "None" : tab === "form" ? "Form" : tab === "multipart" ? "Multipart" : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -217,35 +244,70 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
             variables={variables}
           />
         )}
+
+        {bodyTab === "multipart" && (
+          <MultipartEditor
+            fields={data.multipart_fields ?? []}
+            onChange={(fields) => updateField("multipart_fields", fields)}
+            variables={variables}
+          />
+        )}
       </div>
     </div>
   );
 }
 
+function decodePairs(body: string): KeyValuePair[] {
+  if (!body.trim()) return [];
+  return body.split("&").map(segment => {
+    const [k, ...rest] = segment.split("=");
+    return {
+      key: decodeURIComponent(k ?? ""),
+      value: decodeURIComponent(rest.join("=") ?? ""),
+      enabled: true,
+    };
+  });
+}
+
+function encodePairs(pairs: KeyValuePair[]): string {
+  return pairs
+    .filter(kv => kv.key || kv.value)
+    .map(kv => `${encodeURIComponent(kv.key)}=${encodeURIComponent(kv.value)}`)
+    .join("&");
+}
+
 function FormEditor({ body, onChange }: { body: string; onChange: (body: string) => void }) {
-  const pairs: KeyValuePair[] = useMemo(() => {
-    if (!body.trim()) return [];
-    return body.split("&").map(segment => {
-      const [k, ...rest] = segment.split("=");
-      return { key: decodeURIComponent(k ?? ""), value: decodeURIComponent(rest.join("=") ?? ""), enabled: true };
-    });
+  const [pairs, setPairs] = useState<KeyValuePair[]>(() => decodePairs(body));
+  // Track the last body string we emitted so we can distinguish external changes
+  const lastEmitted = useRef(body);
+
+  useEffect(() => {
+    // Only re-initialize from body if it changed externally (not from our own onChange)
+    if (body !== lastEmitted.current) {
+      lastEmitted.current = body;
+      setPairs(decodePairs(body));
+    }
   }, [body]);
 
-  const encodePairs = (p: KeyValuePair[]) => {
-    return p
-      .filter(kv => kv.key || kv.value)
-      .map(kv => `${encodeURIComponent(kv.key)}=${encodeURIComponent(kv.value)}`)
-      .join("&");
+  const commit = (next: KeyValuePair[]) => {
+    setPairs(next);
+    const encoded = encodePairs(next);
+    lastEmitted.current = encoded;
+    onChange(encoded);
   };
 
   const update = (i: number, field: keyof KeyValuePair, value: string | boolean) => {
     const next = [...pairs];
     next[i] = { ...next[i], [field]: value };
-    onChange(encodePairs(next));
+    commit(next);
   };
 
-  const remove = (i: number) => onChange(encodePairs(pairs.filter((_, idx) => idx !== i)));
-  const add = () => onChange(encodePairs([...pairs, { key: "", value: "", enabled: true }]));
+  const remove = (i: number) => commit(pairs.filter((_, idx) => idx !== i));
+
+  const addRow = () => {
+    const next = [...pairs, { key: "", value: "", enabled: true }];
+    setPairs(next); // don't encode empty row — just show it locally
+  };
 
   const last = pairs[pairs.length - 1];
   const needsEmpty = !last || last.key !== "" || last.value !== "";
@@ -271,10 +333,129 @@ function FormEditor({ body, onChange }: { body: string; onChange: (body: string)
         </div>
       ))}
       {needsEmpty && (
-        <div className="kv-row placeholder-row" onClick={add}>
+        <div className="kv-row placeholder-row" onClick={addRow}>
           <div style={{ width: 20 }} />
           <div className="kv-cell" style={{ color: "#4b5563" }}>key</div>
           <div className="kv-cell" style={{ color: "#4b5563" }}>value</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MultipartEditor ───────────────────────────────────────────
+
+function MultipartEditor({
+  fields,
+  onChange,
+  variables = {},
+}: {
+  fields: MultipartField[];
+  onChange: (fields: MultipartField[]) => void;
+  variables?: Record<string, string>;
+}) {
+  const [rows, setRows] = useState<MultipartField[]>(fields);
+  const lastEmitted = useRef(JSON.stringify(fields));
+
+  useEffect(() => {
+    const incoming = JSON.stringify(fields);
+    if (incoming !== lastEmitted.current) {
+      lastEmitted.current = incoming;
+      setRows(fields);
+    }
+  }, [fields]);
+
+  const commit = (next: MultipartField[]) => {
+    setRows(next);
+    lastEmitted.current = JSON.stringify(next);
+    onChange(next);
+  };
+
+  const update = (i: number, patch: Partial<MultipartField>) => {
+    const next = rows.map((r, idx) => idx === i ? { ...r, ...patch } : r);
+    commit(next);
+  };
+
+  const remove = (i: number) => commit(rows.filter((_, idx) => idx !== i));
+
+  const addRow = () => {
+    setRows(prev => [...prev, { key: "", value: "", is_file: false, file_path: "", enabled: true }]);
+  };
+
+  const pickFile = async (i: number) => {
+    const selected = await dialogOpen({ multiple: false, directory: false });
+    if (typeof selected === "string") {
+      update(i, { file_path: selected, is_file: true });
+    }
+  };
+
+  const last = rows[rows.length - 1];
+  const needsEmpty = !last || last.key !== "" || last.value !== "" || last.file_path !== "";
+
+  return (
+    <div className="p-2">
+      {rows.map((f, i) => (
+        <div key={i} className="kv-row">
+          {/* enabled */}
+          <button className="kv-action always-visible" onClick={() => update(i, { enabled: !f.enabled })}>
+            <div className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center border transition-colors ${
+              f.enabled ? "bg-blue-500 border-blue-500" : "border-gray-600"
+            }`}>
+              {f.enabled && <span className="text-white text-[10px]">✓</span>}
+            </div>
+          </button>
+          {/* key */}
+          <VariableInput
+            value={f.key}
+            onChange={(v) => update(i, { key: v })}
+            placeholder="key"
+            className="kv-cell"
+            variables={variables}
+          />
+          {/* type toggle */}
+          <button
+            title={f.is_file ? "Switch to text" : "Switch to file"}
+            onClick={() => update(i, { is_file: !f.is_file, value: "", file_path: "" })}
+            className={`kv-action always-visible transition-colors ${f.is_file ? "text-blue-400" : "text-gray-600 hover:text-gray-400"}`}
+          >
+            <Paperclip size={12} />
+          </button>
+          {/* value or file path */}
+          {f.is_file ? (
+            <div className="flex flex-1 min-w-0 items-center gap-1">
+              <span
+                className="kv-cell truncate cursor-default text-gray-400"
+                title={f.file_path}
+              >
+                {f.file_path ? f.file_path.split(/[\\/]/).pop() : <span style={{ color: "#4b5563" }}>no file chosen</span>}
+              </span>
+              <button
+                onClick={() => pickFile(i)}
+                className="flex-shrink-0 text-[10px] px-2 py-0.5 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/60 border border-gray-700/50 transition-colors"
+              >
+                Browse
+              </button>
+            </div>
+          ) : (
+            <VariableInput
+              value={f.value}
+              onChange={(v) => update(i, { value: v })}
+              placeholder="value"
+              className="kv-cell"
+              variables={variables}
+            />
+          )}
+          {(f.key || f.value || f.file_path) && (
+            <button className="kv-action" onClick={() => remove(i)}>×</button>
+          )}
+        </div>
+      ))}
+      {needsEmpty && (
+        <div className="kv-row placeholder-row" onClick={addRow}>
+          <div style={{ width: 20 }} />
+          <div className="kv-cell" style={{ color: "#4b5563" }}>key</div>
+          <div style={{ width: 20 }} />
+          <div className="kv-cell" style={{ color: "#4b5563" }}>value or file</div>
         </div>
       )}
     </div>

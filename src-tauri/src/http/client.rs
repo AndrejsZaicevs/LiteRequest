@@ -1,5 +1,7 @@
 use crate::models::*;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::collections::HashMap;
+use std::path::Path;
 use std::time::Instant;
 
 /// Check whether `pattern` matches `host`.
@@ -155,6 +157,38 @@ pub async fn execute_request(
             let body = super::interpolation::interpolate(&data.body, variables);
             builder = builder.body(body);
         }
+        BodyType::Multipart => {
+            let mut form = reqwest::multipart::Form::new();
+            for field in &data.multipart_fields {
+                if !field.enabled || field.key.is_empty() {
+                    continue;
+                }
+                let key = super::interpolation::interpolate(&field.key, variables);
+                if field.is_file {
+                    if field.file_path.is_empty() {
+                        continue;
+                    }
+                    let bytes = std::fs::read(&field.file_path)
+                        .map_err(|e| format!("Failed to read file '{}': {e}", field.file_path))?;
+                    let file_name = Path::new(&field.file_path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "file".to_string());
+                    let mime = mime_guess::from_path(&field.file_path)
+                        .first_or_octet_stream()
+                        .to_string();
+                    let part = reqwest::multipart::Part::bytes(bytes)
+                        .file_name(file_name)
+                        .mime_str(&mime)
+                        .map_err(|e| format!("Invalid MIME type: {e}"))?;
+                    form = form.part(key, part);
+                } else {
+                    let value = super::interpolation::interpolate(&field.value, variables);
+                    form = form.text(key, value);
+                }
+            }
+            builder = builder.multipart(form);
+        }
         BodyType::None => {}
     }
 
@@ -178,7 +212,28 @@ pub async fn execute_request(
 
     let body_bytes = response.bytes().await.map_err(|e| format!("Failed to read body: {e}"))?;
     let size_bytes = body_bytes.len() as u64;
-    let body = String::from_utf8_lossy(&body_bytes).to_string();
+
+    // Detect binary content-type so we can preserve the bytes as base64
+    let is_binary = headers.get("content-type")
+        .map(|ct| {
+            let ct = ct.to_lowercase();
+            ct.starts_with("image/")
+                || ct.starts_with("audio/")
+                || ct.starts_with("video/")
+                || ct == "application/octet-stream"
+                || ct.starts_with("application/pdf")
+                || ct.starts_with("application/zip")
+                || ct.starts_with("application/x-tar")
+                || ct.starts_with("application/gzip")
+                || ct.starts_with("font/")
+        })
+        .unwrap_or(false);
+
+    let body = if is_binary {
+        BASE64.encode(&body_bytes)
+    } else {
+        String::from_utf8_lossy(&body_bytes).to_string()
+    };
 
     Ok((
         ResponseData {
@@ -187,6 +242,7 @@ pub async fn execute_request(
             headers,
             body,
             size_bytes,
+            is_binary,
         },
         latency_ms,
     ))

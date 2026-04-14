@@ -92,6 +92,21 @@ pub fn to_curl(
                 parts.push(format!("-d {}", shell_quote(&body)));
             }
         }
+        BodyType::Multipart => {
+            // Represent multipart as -F fields in the cURL output
+            for field in &data.multipart_fields {
+                if !field.enabled || field.key.is_empty() {
+                    continue;
+                }
+                let k = shell_quote(&field.key);
+                if field.is_file {
+                    parts.push(format!("-F {}=@{}", k, shell_quote(&field.file_path)));
+                } else {
+                    let v = super::interpolation::interpolate(&field.value, variables);
+                    parts.push(format!("-F {}={}", k, shell_quote(&v)));
+                }
+            }
+        }
         BodyType::None => {}
     }
 
@@ -217,6 +232,7 @@ pub fn parse_curl(input: &str) -> Result<RequestData, String> {
         path_params: Vec::new(),
         body,
         body_type,
+        multipart_fields: Vec::new(),
     })
 }
 

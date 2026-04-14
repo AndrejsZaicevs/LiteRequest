@@ -105,6 +105,8 @@ pub fn run() {
             commands::search_all,
             // Fingerprint
             commands::compute_fingerprint,
+            // File I/O
+            commands::save_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

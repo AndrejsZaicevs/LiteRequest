@@ -18,7 +18,9 @@ tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 
 # HTTP
-reqwest = { version = "0.12", features = ["json", "brotli", "http2", "rustls-tls", "native-tls-alpn", "socks"] }
+reqwest = { version = "0.12", features = ["json", "brotli", "http2", "rustls-tls", "native-tls-alpn", "socks", "multipart"] }
+mime_guess = "2"
+base64 = "0.22"
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

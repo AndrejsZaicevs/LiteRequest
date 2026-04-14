@@ -403,6 +403,7 @@ impl Database {
                     headers: Default::default(),
                     body: String::new(),
                     size_bytes: 0,
+                    is_binary: false,
                 });
             let body_hash: String = row.get(7)?;
             let request_data_json: String = row.get(8)?;
@@ -802,6 +803,28 @@ impl Database {
         if !data.body.is_empty() && data.body.to_lowercase().contains(&q) {
             return ("Body".to_string(), Self::extract_snippet(&data.body, query, 60));
         }
+        for f in &data.multipart_fields {
+            if f.key.to_lowercase().contains(&q) {
+                return ("Multipart".to_string(), format!("{}", f.key));
+            }
+            if !f.is_file && f.value.to_lowercase().contains(&q) {
+                return ("Multipart".to_string(), format!("{}={}", f.key, f.value));
+            }
+            if f.is_file {
+                // Match against file name only, not full path
+                let file_name = std::path::Path::new(&f.file_path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                if file_name.contains(&q) || f.file_path.to_lowercase().contains(&q) {
+                    let name = std::path::Path::new(&f.file_path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| f.file_path.clone());
+                    return ("Multipart File".to_string(), format!("{}: {}", f.key, name));
+                }
+            }
+        }
         (String::new(), String::new())
     }
 
@@ -1019,6 +1042,7 @@ impl Database {
                         headers: Default::default(),
                         body: String::new(),
                         size_bytes: 0,
+                        is_binary: false,
                     });
 
                 // Check response match

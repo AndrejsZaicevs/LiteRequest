@@ -1,5 +1,6 @@
 use crate::AppState;
 use crate::models::*;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::collections::HashMap;
 use tauri::State;
 
@@ -629,4 +630,17 @@ pub fn search_all(state: State<AppState>, query: String) -> CmdResult<Vec<crate:
 #[tauri::command]
 pub fn compute_fingerprint(data: RequestData) -> String {
     data.fingerprint()
+}
+
+// ── File I/O ─────────────────────────────────────────────────
+
+/// Write `data` to `path`. If `is_base64` is true, decode from base64 first (binary responses).
+#[tauri::command]
+pub fn save_file(path: String, data: String, is_base64: bool) -> CmdResult<()> {
+    if is_base64 {
+        let bytes = BASE64.decode(&data).map_err(|e| format!("Failed to decode base64: {e}"))?;
+        std::fs::write(&path, bytes).map_err(|e| format!("Failed to write file: {e}"))
+    } else {
+        std::fs::write(&path, data.as_bytes()).map_err(|e| format!("Failed to write file: {e}"))
+    }
 }

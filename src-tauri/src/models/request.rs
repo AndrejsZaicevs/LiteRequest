@@ -130,6 +130,31 @@ impl Default for ClientCertEntry {
     }
 }
 
+/// A single field in a multipart/form-data body.
+/// Can be either a text value or a file attachment.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MultipartField {
+    pub key: String,
+    /// Text value (used when `is_file` is false)
+    pub value: String,
+    pub is_file: bool,
+    /// Absolute path to the file (used when `is_file` is true)
+    pub file_path: String,
+    pub enabled: bool,
+}
+
+impl Default for MultipartField {
+    fn default() -> Self {
+        Self {
+            key: String::new(),
+            value: String::new(),
+            is_file: false,
+            file_path: String::new(),
+            enabled: true,
+        }
+    }
+}
+
 /// The mutable data of a request at a point in time
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RequestData {
@@ -141,6 +166,8 @@ pub struct RequestData {
     pub path_params: Vec<KeyValuePair>,
     pub body: String,
     pub body_type: BodyType,
+    #[serde(default)]
+    pub multipart_fields: Vec<MultipartField>,
 }
 
 impl RequestData {
@@ -161,13 +188,21 @@ impl RequestData {
             .collect();
         h_keys.sort();
 
+        // For multipart, fingerprint on field keys (like FormUrlEncoded on param keys)
+        let mut mp_keys: Vec<&str> = self.multipart_fields.iter()
+            .filter(|f| f.enabled && !f.key.is_empty())
+            .map(|f| f.key.as_str())
+            .collect();
+        mp_keys.sort();
+
         format!(
-            "{}|{}|{}|{}|{:?}",
+            "{}|{}|{}|{}|{:?}|{}",
             self.method.as_str(),
             self.url,
             qp_keys.join(","),
             h_keys.join(","),
             self.body_type,
+            mp_keys.join(","),
         )
     }
 }
@@ -182,6 +217,7 @@ impl Default for RequestData {
             path_params: Vec::new(),
             body: String::new(),
             body_type: BodyType::None,
+            multipart_fields: Vec::new(),
         }
     }
 }
@@ -192,6 +228,7 @@ pub enum BodyType {
     Json,
     FormUrlEncoded,
     Raw,
+    Multipart,
 }
 
 impl BodyType {
@@ -201,11 +238,12 @@ impl BodyType {
             BodyType::Json => "JSON",
             BodyType::FormUrlEncoded => "Form URL Encoded",
             BodyType::Raw => "Raw",
+            BodyType::Multipart => "Multipart",
         }
     }
 
     pub fn all() -> &'static [BodyType] {
-        &[BodyType::None, BodyType::Json, BodyType::FormUrlEncoded, BodyType::Raw]
+        &[BodyType::None, BodyType::Json, BodyType::FormUrlEncoded, BodyType::Raw, BodyType::Multipart]
     }
 }
 
@@ -235,6 +273,9 @@ pub struct ResponseData {
     pub headers: HashMap<String, String>,
     pub body: String,
     pub size_bytes: u64,
+    /// True when the response body is base64-encoded binary data
+    #[serde(default)]
+    pub is_binary: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

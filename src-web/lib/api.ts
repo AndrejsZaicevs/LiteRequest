@@ -109,3 +109,7 @@ export const pruneOldExecutions = (days: number) => invoke<number>("prune_old_ex
 
 // ── Search ────────────────────────────────────────────────────
 export const searchAll = (query: string) => invoke<import("./types").SearchHit[]>("search_all", { query });
+
+// ── File I/O ─────────────────────────────────────────────────
+export const saveFile = (path: string, data: string, isBase64: boolean) =>
+  invoke<void>("save_file", { path, data, isBase64 });
