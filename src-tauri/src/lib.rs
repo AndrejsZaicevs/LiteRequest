@@ -77,6 +77,13 @@ pub fn run() {
             commands::update_env_variable,
             commands::delete_env_variable,
             commands::get_active_variables,
+            // Env Variable Defs (split model)
+            commands::list_env_var_defs,
+            commands::insert_env_var_def,
+            commands::update_env_var_def_key,
+            commands::delete_env_var_def,
+            commands::upsert_env_var_value,
+            commands::load_env_var_rows,
             // Collection Variables
             commands::insert_var_def,
             commands::update_var_def_key,

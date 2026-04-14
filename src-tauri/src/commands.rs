@@ -433,6 +433,47 @@ pub fn get_active_variables(state: State<AppState>) -> CmdResult<Vec<EnvVariable
         .map_err(map_err)
 }
 
+// ── Env Variable Defs (split model) ─────────────────────────
+
+#[tauri::command]
+pub fn list_env_var_defs(state: State<AppState>) -> CmdResult<Vec<EnvVarDef>> {
+    state.db.lock().unwrap().list_env_var_defs().map_err(map_err)
+}
+
+#[tauri::command]
+pub fn insert_env_var_def(state: State<AppState>, def: EnvVarDef) -> CmdResult<()> {
+    state.db.lock().unwrap().insert_env_var_def(&def).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn update_env_var_def_key(state: State<AppState>, def_id: String, key: String) -> CmdResult<()> {
+    state.db.lock().unwrap().update_env_var_def_key(&def_id, &key).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn delete_env_var_def(state: State<AppState>, def_id: String) -> CmdResult<()> {
+    state.db.lock().unwrap().delete_env_var_def(&def_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn upsert_env_var_value(
+    state: State<AppState>,
+    val_id: String,
+    def_id: String,
+    environment_id: String,
+    value: String,
+    is_secret: bool,
+) -> CmdResult<()> {
+    state.db.lock().unwrap()
+        .upsert_env_var_value(&val_id, &def_id, &environment_id, &value, is_secret)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn load_env_var_rows(state: State<AppState>, environment_id: String) -> CmdResult<Vec<VarRow>> {
+    state.db.lock().unwrap().load_env_var_rows(&environment_id).map_err(map_err)
+}
+
 // ── Collection Variables ─────────────────────────────────────
 
 #[tauri::command]

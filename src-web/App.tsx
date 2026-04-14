@@ -4,7 +4,7 @@ import type {
   Environment, EnvVariable, RequestData, ResponseData, HttpMethod,
   KeyValuePair, AuthConfig,
 } from "./lib/types";
-import { defaultRequestData } from "./lib/types";
+import { defaultRequestData, resolveVariableRefs, findUnresolvedVars } from "./lib/types";
 import * as api from "./lib/api";
 import { Search, Settings } from "lucide-react";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -79,7 +79,7 @@ export default function App() {
     // Collection vars as base, env vars override (same priority as request execution)
     const vars: Record<string, string> = { ...collectionDisplayVars };
     for (const v of envVariables) vars[v.key] = v.value;
-    return vars;
+    return resolveVariableRefs(vars);
   }, [envVariables, collectionDisplayVars]);
 
   // ── Refs for drag tracking ───────────────────────────────
@@ -123,11 +123,18 @@ export default function App() {
       );
       setRequestMeta(metaMap);
 
-      // Load active env variables
+      // Load active env variables from new split model
       const activeEnv = envs.find(e => e.is_active);
       if (activeEnv) {
-        const vars = await api.listEnvVariables(activeEnv.id);
-        setEnvVariables(vars);
+        const rows = await api.loadEnvVarRows(activeEnv.id);
+        // Map VarRow → EnvVariable shape for downstream consumers
+        setEnvVariables(rows.map(r => ({
+          id: r.value_id ?? r.def_id,
+          environment_id: activeEnv.id,
+          key: r.key,
+          value: r.value,
+          is_secret: r.is_secret,
+        })));
       } else {
         setEnvVariables([]);
       }
@@ -316,9 +323,18 @@ export default function App() {
       const col = collections.find(c => c.id === currentRequest.collection_id);
       if (col) variables["collectionName"] = col.name;
 
+      const resolvedVariables = resolveVariableRefs(variables);
+
       const basePath = col?.base_path ?? "";
 
       const effectiveData = buildEffectiveData(editorData);
+
+      // Block send if any {{variable}} references are unresolved
+      const unresolved = findUnresolvedVars(effectiveData, basePath, resolvedVariables);
+      if (unresolved.length > 0) {
+        setErrorMessage(`Unresolved variables: ${unresolved.map(v => `{{${v}}}`).join(", ")}`);
+        return;
+      }
 
       // Get client certs from settings
       let clientCerts: import("./lib/types").ClientCertEntry[] = [];
@@ -328,7 +344,7 @@ export default function App() {
       } catch { /* ignore */ }
 
       const [response, latency] = await api.executeRequest(
-        effectiveData, variables, basePath, clientCerts,
+        effectiveData, resolvedVariables, basePath, clientCerts,
       );
       setCurrentResponse(response);
       setCurrentLatency(latency);
@@ -371,9 +387,10 @@ export default function App() {
       for (const v of envVariables) variables[v.key] = v.value;
       const colVars = await api.getActiveCollectionVariables(currentRequest.collection_id);
       for (const [k, v] of colVars) variables[k] = v;
+      const resolvedVariables = resolveVariableRefs(variables);
       const basePath = col?.base_path ?? "";
       const effectiveData = buildEffectiveData(editorData);
-      const curlStr = await api.toCurl(effectiveData, variables, basePath);
+      const curlStr = await api.toCurl(effectiveData, resolvedVariables, basePath);
       await api.copyToClipboard(curlStr);
       setErrorMessage(null);
     } catch (e) {

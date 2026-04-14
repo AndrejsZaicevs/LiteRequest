@@ -17,7 +17,15 @@ pub struct EnvVariable {
     pub is_secret: bool,
 }
 
-/// Variable definition shared across all environments for a collection.
+/// Global env variable definition (key shared across all environments).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvVarDef {
+    pub id: String,
+    pub key: String,
+    pub sort_order: i32,
+}
+
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VarDef {
     pub id: String,

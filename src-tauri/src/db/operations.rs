@@ -525,14 +525,15 @@ impl Database {
         Ok(())
     }
 
-    /// Get all variables for the currently active environment
+    /// Get all variables for the currently active environment (from new split tables)
     pub fn get_active_variables(&self) -> rusqlite::Result<Vec<EnvVariable>> {
         let mut stmt = self.conn.prepare(
-            "SELECT v.id, v.environment_id, v.key, v.value, v.is_secret
-             FROM env_variables v
-             JOIN environments e ON v.environment_id = e.id
+            "SELECT d.id, e.id, d.key, COALESCE(v.value, '') as value, COALESCE(v.is_secret, 0) as is_secret
+             FROM env_var_defs d
+             CROSS JOIN environments e
+             LEFT JOIN env_var_values v ON v.def_id = d.id AND v.environment_id = e.id
              WHERE e.is_active = 1
-             ORDER BY v.key",
+             ORDER BY d.sort_order, d.key",
         )?;
         let rows = stmt.query_map([], |row| {
             let is_secret: i32 = row.get(4)?;
@@ -661,6 +662,87 @@ impl Database {
         )?;
         let rows = stmt.query_map(params![collection_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        rows.collect()
+    }
+
+    // ── Env Variable Defs (global keys, shared across envs) ──────────
+
+    pub fn insert_env_var_def(&self, d: &EnvVarDef) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO env_var_defs (id, key, sort_order) VALUES (?1, ?2, ?3)",
+            params![d.id, d.key, d.sort_order],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_env_var_def_key(&self, def_id: &str, key: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE env_var_defs SET key=?2 WHERE id=?1",
+            params![def_id, key],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_env_var_def(&self, def_id: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "DELETE FROM env_var_defs WHERE id=?1",
+            params![def_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_env_var_defs(&self) -> rusqlite::Result<Vec<EnvVarDef>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, key, sort_order FROM env_var_defs ORDER BY sort_order, key",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(EnvVarDef { id: row.get(0)?, key: row.get(1)?, sort_order: row.get(2)? })
+        })?;
+        rows.collect()
+    }
+
+    pub fn upsert_env_var_value(
+        &self,
+        val_id: &str,
+        def_id: &str,
+        environment_id: &str,
+        value: &str,
+        is_secret: bool,
+    ) -> rusqlite::Result<()> {
+        let updated = self.conn.execute(
+            "UPDATE env_var_values SET value=?3, is_secret=?4
+             WHERE def_id=?1 AND environment_id=?2",
+            params![def_id, environment_id, value, is_secret as i32],
+        )?;
+        if updated == 0 {
+            self.conn.execute(
+                "INSERT INTO env_var_values (id, def_id, environment_id, value, is_secret)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![val_id, def_id, environment_id, value, is_secret as i32],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Load VarRows for an environment (joins defs with values).
+    pub fn load_env_var_rows(&self, environment_id: &str) -> rusqlite::Result<Vec<VarRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT d.id, d.key, v.value, v.is_secret, v.id
+             FROM env_var_defs d
+             LEFT JOIN env_var_values v
+               ON v.def_id = d.id AND v.environment_id = ?1
+             ORDER BY d.sort_order, d.key",
+        )?;
+        let rows = stmt.query_map(params![environment_id], |row| {
+            let is_secret: Option<i32> = row.get(3)?;
+            Ok(VarRow {
+                def_id: row.get(0)?,
+                key: row.get(1)?,
+                value: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                is_secret: is_secret.unwrap_or(0) != 0,
+                value_id: row.get(4)?,
+            })
         })?;
         rows.collect()
     }

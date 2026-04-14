@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Collection, Folder, Request, RequestVersion, RequestExecution,
-  RequestData, ResponseData, Environment, EnvVariable, VarDef, VarRow,
+  RequestData, ResponseData, Environment, EnvVariable, EnvVarDef, VarDef, VarRow,
   ClientCertEntry,
 } from "./types";
 
@@ -66,6 +66,15 @@ export const insertEnvVariable = (variable: EnvVariable) => invoke<void>("insert
 export const updateEnvVariable = (variable: EnvVariable) => invoke<void>("update_env_variable", { variable });
 export const deleteEnvVariable = (id: string) => invoke<void>("delete_env_variable", { id });
 export const getActiveVariables = () => invoke<EnvVariable[]>("get_active_variables");
+
+// ── Env Variable Defs (split model) ─────────────────────────
+export const listEnvVarDefs = () => invoke<EnvVarDef[]>("list_env_var_defs");
+export const insertEnvVarDef = (def: EnvVarDef) => invoke<void>("insert_env_var_def", { def });
+export const updateEnvVarDefKey = (defId: string, key: string) => invoke<void>("update_env_var_def_key", { defId, key });
+export const deleteEnvVarDef = (defId: string) => invoke<void>("delete_env_var_def", { defId });
+export const upsertEnvVarValue = (valId: string, defId: string, environmentId: string, value: string, isSecret: boolean) =>
+  invoke<void>("upsert_env_var_value", { valId, defId, environmentId, value, isSecret });
+export const loadEnvVarRows = (environmentId: string) => invoke<VarRow[]>("load_env_var_rows", { environmentId });
 
 // ── Collection Variables ─────────────────────────────────────
 export const insertVarDef = (def: VarDef) => invoke<void>("insert_var_def", { def });

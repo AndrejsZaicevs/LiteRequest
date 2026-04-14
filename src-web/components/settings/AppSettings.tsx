@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Settings, Plus, Trash2, Eye, EyeOff } from "lucide-react";
-import type { Environment, EnvVariable, KeyValuePair, ClientCertEntry } from "../../lib/types";
+import type { Environment, EnvVarDef, VarRow, KeyValuePair, ClientCertEntry } from "../../lib/types";
 import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
@@ -15,18 +15,31 @@ interface AppSettingsProps {
 export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
   const [open, setOpen] = useState<Set<Section>>(new Set(["environments", "headers", "variables", "certificates"]));
   const [selectedEnv, setSelectedEnv] = useState<string | null>(environments[0]?.id ?? null);
-  const [envVars, setEnvVars] = useState<EnvVariable[]>([]);
   const [renamingEnv, setRenamingEnv] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  // Split-model env vars
+  const [envVarDefs, setEnvVarDefs] = useState<EnvVarDef[]>([]);
+  const [envVarRows, setEnvVarRows] = useState<VarRow[]>([]);
 
   // App-wide settings
   const [defaultHeaders, setDefaultHeaders] = useState<KeyValuePair[]>([]);
   const [appWideVars, setAppWideVars] = useState<KeyValuePair[]>([]);
   const [clientCerts, setClientCerts] = useState<ClientCertEntry[]>([]);
 
+  const reloadVars = async (envId: string | null) => {
+    const defs = await api.listEnvVarDefs();
+    setEnvVarDefs(defs);
+    if (envId) {
+      const rows = await api.loadEnvVarRows(envId);
+      setEnvVarRows(rows);
+    } else {
+      setEnvVarRows([]);
+    }
+  };
+
   useEffect(() => {
-    if (!selectedEnv) return;
-    api.listEnvVariables(selectedEnv).then(setEnvVars).catch(console.error);
+    reloadVars(selectedEnv);
   }, [selectedEnv]);
 
   // Load app-wide settings on mount
@@ -69,34 +82,36 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
     onUpdate();
   };
 
-  const addEnvVar = async () => {
-    if (!selectedEnv) return;
-    const v: EnvVariable = {
+  const addEnvVarDef = async () => {
+    const def: EnvVarDef = {
       id: crypto.randomUUID(),
-      environment_id: selectedEnv,
       key: "NEW_VAR",
-      value: "",
-      is_secret: false,
+      sort_order: envVarDefs.length,
     };
-    await api.insertEnvVariable(v);
-    const vars = await api.listEnvVariables(selectedEnv);
-    setEnvVars(vars);
+    await api.insertEnvVarDef(def);
+    await reloadVars(selectedEnv);
   };
 
-  const updateEnvVar = async (v: EnvVariable) => {
-    await api.updateEnvVariable(v);
-    if (selectedEnv) {
-      const vars = await api.listEnvVariables(selectedEnv);
-      setEnvVars(vars);
-    }
+  const updateEnvVarKey = async (defId: string, key: string) => {
+    await api.updateEnvVarDefKey(defId, key);
+    setEnvVarDefs(await api.listEnvVarDefs());
   };
 
-  const deleteEnvVar = async (id: string) => {
-    await api.deleteEnvVariable(id);
-    if (selectedEnv) {
-      const vars = await api.listEnvVariables(selectedEnv);
-      setEnvVars(vars);
-    }
+  const updateEnvVarValue = async (row: VarRow, value: string) => {
+    if (!selectedEnv) return;
+    await api.upsertEnvVarValue(row.value_id ?? crypto.randomUUID(), row.def_id, selectedEnv, value, row.is_secret);
+    setEnvVarRows(await api.loadEnvVarRows(selectedEnv));
+  };
+
+  const toggleEnvVarSecret = async (row: VarRow) => {
+    if (!selectedEnv) return;
+    await api.upsertEnvVarValue(row.value_id ?? crypto.randomUUID(), row.def_id, selectedEnv, row.value, !row.is_secret);
+    setEnvVarRows(await api.loadEnvVarRows(selectedEnv));
+  };
+
+  const deleteEnvVarDef = async (defId: string) => {
+    await api.deleteEnvVarDef(defId);
+    await reloadVars(selectedEnv);
   };
 
   const saveDefaultHeaders = async (headers: KeyValuePair[]) => {
@@ -166,74 +181,125 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
           </button>
         }
       >
-        <div className="flex gap-4">
-          {/* Env list */}
-          <div className="w-44 shrink-0 border border-gray-800 rounded-md overflow-hidden">
-            {environments.map(env => (
-              <div
-                key={env.id}
-                className={`flex items-center px-3 py-2.5 cursor-pointer transition-colors border-b border-gray-800/50 last:border-0 ${
-                  selectedEnv === env.id ? "bg-[#242424]" : "hover:bg-[#1a1a1a]"
-                }`}
-                onClick={() => setSelectedEnv(env.id)}
-                onDoubleClick={() => { setRenamingEnv(env.id); setRenameValue(env.name); }}
-              >
-                {renamingEnv === env.id ? (
-                  <input
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onBlur={handleRenameEnv}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleRenameEnv(); if (e.key === "Escape") setRenamingEnv(null); }}
-                    className="flex-1 bg-transparent text-sm text-gray-200 outline-none"
-                    style={{ border: "none", borderBottom: "1px solid #3b82f6", borderRadius: 0, padding: "0 2px" }}
-                    autoFocus
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span className="flex-1 text-sm text-gray-300 truncate">{env.name}</span>
-                )}
+        <div className="border border-gray-800 rounded-md overflow-hidden" style={{ maxWidth: 320 }}>
+          {environments.map(env => (
+            <div
+              key={env.id}
+              className={`flex items-center px-3 py-2.5 cursor-pointer transition-colors border-b border-gray-800/50 last:border-0 ${
+                selectedEnv === env.id ? "bg-[#242424]" : "hover:bg-[#1a1a1a]"
+              }`}
+              onClick={() => setSelectedEnv(env.id)}
+              onDoubleClick={() => { setRenamingEnv(env.id); setRenameValue(env.name); }}
+            >
+              {renamingEnv === env.id ? (
+                <input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={handleRenameEnv}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleRenameEnv(); if (e.key === "Escape") setRenamingEnv(null); }}
+                  className="flex-1 bg-transparent text-sm text-gray-200 outline-none"
+                  style={{ border: "none", borderBottom: "1px solid #3b82f6", borderRadius: 0, padding: "0 2px" }}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span className="flex-1 text-sm text-gray-300 truncate">{env.name}</span>
+              )}
+              <div className="flex items-center gap-1.5 shrink-0 ml-2">
                 {env.is_active && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium ml-1 shrink-0 bg-green-500/20 text-green-400 border border-green-500/30">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
                     active
                   </span>
                 )}
-              </div>
-            ))}
-            {environments.length === 0 && (
-              <div className="px-4 py-4 text-xs text-center text-gray-600">No environments</div>
-            )}
-          </div>
-
-          {/* Env variables */}
-          {selectedEnv && (
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-gray-400">Variables</span>
-                <div className="flex gap-1.5">
-                  <button onClick={addEnvVar} className={btnClass}><Plus size={12} /> Add</button>
-                  <button onClick={() => { setRenamingEnv(selectedEnv); setRenameValue(environments.find(e => e.id === selectedEnv)?.name ?? ""); }} className={btnClass}>Rename</button>
-                  <button onClick={() => deleteEnvironment(selectedEnv)} className={btnDangerClass}><Trash2 size={12} /></button>
-                </div>
-              </div>
-              <div className="border border-gray-800 rounded-md overflow-hidden">
-                {envVars.map(v => (
-                  <div key={v.id} className="kv-row">
-                    <input value={v.key} onChange={(e) => updateEnvVar({ ...v, key: e.target.value })} className="kv-cell" style={{ border: "none", borderRadius: 0, fontWeight: 500 }} />
-                    <div className="kv-divider" />
-                    <input value={v.value} type={v.is_secret ? "password" : "text"} onChange={(e) => updateEnvVar({ ...v, value: e.target.value })} className="kv-cell" style={{ border: "none", borderRadius: 0 }} />
-                    <button onClick={() => updateEnvVar({ ...v, is_secret: !v.is_secret })} className="kv-action text-gray-600 hover:text-gray-300" title={v.is_secret ? "Show" : "Hide"}>
-                      {v.is_secret ? <EyeOff size={12} /> : <Eye size={12} />}
-                    </button>
-                    <button onClick={() => deleteEnvVar(v.id)} className="kv-action text-gray-600 hover:text-red-400"><Trash2 size={12} /></button>
-                  </div>
-                ))}
-                {envVars.length === 0 && (
-                  <div className="px-4 py-4 text-xs text-center text-gray-600">No variables — click + Add</div>
+                {selectedEnv === env.id && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteEnvironment(env.id); }}
+                    className="text-gray-600 hover:text-red-400 transition-colors"
+                    title="Delete environment"
+                  >
+                    <Trash2 size={12} />
+                  </button>
                 )}
               </div>
             </div>
+          ))}
+          {environments.length === 0 && (
+            <div className="px-4 py-4 text-xs text-center text-gray-600">No environments</div>
           )}
         </div>
+      </CollapsibleSection>
+
+      {/* Environment Variables */}
+      <CollapsibleSection
+        title="Environment Variables"
+        count={envVarDefs.length}
+        isOpen={open.has("variables")}
+        onToggle={() => toggle("variables")}
+        action={
+          <button onClick={addEnvVarDef} className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 hover:text-gray-200 hover:bg-[#2a2a2a] rounded transition-colors">
+            <Plus size={11} /> Add
+          </button>
+        }
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs text-gray-500">Values for env:</span>
+          {selectedEnv
+            ? <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                {environments.find(e => e.id === selectedEnv)?.name ?? selectedEnv}
+              </span>
+            : <span className="text-[10px] text-gray-600">select an env above to edit values</span>
+          }
+        </div>
+        <div className="border border-gray-800 rounded-md overflow-hidden">
+          {envVarDefs.map(def => {
+            const row = envVarRows.find(r => r.def_id === def.id);
+            return (
+              <div key={def.id} className="kv-row">
+                <input
+                  value={def.key}
+                  onChange={(e) => updateEnvVarKey(def.id, e.target.value)}
+                  className="kv-cell"
+                  style={{ border: "none", borderRadius: 0, fontWeight: 500 }}
+                />
+                <div className="kv-divider" />
+                <input
+                  value={row?.value ?? ""}
+                  type={row?.is_secret ? "password" : "text"}
+                  onChange={(e) => {
+                    if (row) updateEnvVarValue(row, e.target.value);
+                    else if (selectedEnv) {
+                      api.upsertEnvVarValue(crypto.randomUUID(), def.id, selectedEnv, e.target.value, false)
+                        .then(() => api.loadEnvVarRows(selectedEnv))
+                        .then(setEnvVarRows);
+                    }
+                  }}
+                  placeholder={selectedEnv ? "value" : "—"}
+                  className="kv-cell"
+                  style={{ border: "none", borderRadius: 0 }}
+                  disabled={!selectedEnv}
+                />
+                {row && (
+                  <button
+                    onClick={() => toggleEnvVarSecret(row)}
+                    className="kv-action text-gray-600 hover:text-gray-300"
+                    title={row.is_secret ? "Show" : "Hide"}
+                  >
+                    {row.is_secret ? <EyeOff size={12} /> : <Eye size={12} />}
+                  </button>
+                )}
+                <button onClick={() => deleteEnvVarDef(def.id)} className="kv-action text-gray-600 hover:text-red-400">
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            );
+          })}
+          {envVarDefs.length === 0 && (
+            <div className="px-4 py-4 text-xs text-center text-gray-600">No variables — click + Add</div>
+          )}
+        </div>
+        <p className="text-xs mt-2 text-gray-600">
+          Variable keys are shared across all environments. Each environment has its own values.
+        </p>
       </CollapsibleSection>
 
       {/* Default Headers */}
@@ -253,8 +319,8 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
       <CollapsibleSection
         title="Global Variables"
         count={appWideVars.filter(v => v.key).length}
-        isOpen={open.has("variables")}
-        onToggle={() => toggle("variables")}
+        isOpen={open.has("environments")}
+        onToggle={() => toggle("environments")}
       >
         <p className="text-xs mb-3 text-gray-600">Available in all collections, not environment-specific</p>
         <div className="border border-gray-800 rounded-md overflow-hidden" style={{ maxWidth: 600 }}>
@@ -332,3 +398,4 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
     </div>
   );
 }
+

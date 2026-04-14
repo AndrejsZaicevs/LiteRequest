@@ -130,6 +130,29 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
         );",
     )?;
 
+    // Global env variable defs (keys shared across all environments)
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS env_var_defs (
+            id         TEXT PRIMARY KEY,
+            key        TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS env_var_values (
+            id             TEXT PRIMARY KEY,
+            def_id         TEXT NOT NULL REFERENCES env_var_defs(id) ON DELETE CASCADE,
+            environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+            value          TEXT NOT NULL DEFAULT '',
+            is_secret      INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(def_id, environment_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_env_var_values_def ON env_var_values(def_id);
+        CREATE INDEX IF NOT EXISTS idx_env_var_values_env ON env_var_values(environment_id);
+        ",
+    )?;
+
+    // Migrate old env_variables → new env_var_defs + env_var_values
+    migrate_env_variables(conn);
+
     Ok(())
 }
 
@@ -252,4 +275,62 @@ fn migrate_add_execution_request_data(conn: &Connection) {
     let _ = conn.execute_batch(
         "ALTER TABLE request_executions ADD COLUMN request_data_json TEXT NOT NULL DEFAULT '';"
     );
+}
+
+/// Migrate legacy `env_variables` (per-env rows) into the split
+/// `env_var_defs` (global keys) + `env_var_values` (per-env values) tables.
+/// Only runs once — when env_var_defs is empty but env_variables has data.
+fn migrate_env_variables(conn: &Connection) {
+    let new_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM env_var_defs", [], |r| r.get(0))
+        .unwrap_or(0);
+    if new_count > 0 {
+        return; // already migrated
+    }
+
+    let old_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM env_variables", [], |r| r.get(0))
+        .unwrap_or(0);
+    if old_count == 0 {
+        return; // nothing to migrate
+    }
+
+    let mut stmt = conn
+        .prepare("SELECT environment_id, key, value, is_secret FROM env_variables WHERE key != '' ORDER BY key")
+        .unwrap();
+    let rows: Vec<(String, String, String, bool)> = stmt
+        .query_map([], |row| {
+            let is_secret: i32 = row.get(3)?;
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, is_secret != 0))
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Build def map: key → def_id
+    let mut def_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut sort = 0i32;
+
+    for (_eid, key, _val, _secret) in &rows {
+        if !def_map.contains_key(key) {
+            let def_id = uuid::Uuid::new_v4().to_string();
+            let _ = conn.execute(
+                "INSERT INTO env_var_defs (id, key, sort_order) VALUES (?1, ?2, ?3)",
+                rusqlite::params![def_id, key, sort],
+            );
+            def_map.insert(key.clone(), def_id);
+            sort += 1;
+        }
+    }
+
+    for (eid, key, val, secret) in &rows {
+        if let Some(def_id) = def_map.get(key) {
+            let val_id = uuid::Uuid::new_v4().to_string();
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO env_var_values (id, def_id, environment_id, value, is_secret)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![val_id, def_id, eid, val, *secret as i32],
+            );
+        }
+    }
 }

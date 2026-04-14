@@ -169,6 +169,13 @@ export interface EnvVariable {
   is_secret: boolean;
 }
 
+// ── Env Variable Def (global key, shared across environments) ─
+export interface EnvVarDef {
+  id: string;
+  key: string;
+  sort_order: number;
+}
+
 // ── Collection Variable Def ──────────────────────────────────
 export interface VarDef {
   id: string;
@@ -224,6 +231,74 @@ export function computeVersionFingerprint(data: RequestData): string {
     .sort()
     .join(",");
   return `${data.method}|${data.url}|${qpKeys}|${hKeys}|${data.body_type}|${mpKeys}`;
+}
+
+// ── Variable resolution ───────────────────────────────────────
+
+/**
+ * Resolves {{variable}} references within variable values themselves.
+ * Runs multiple passes until stable, allowing chained definitions like:
+ *   base_path = "https://{{service_name}}.example.com"
+ *   service_name = "users"  →  base_path becomes "https://users.example.com"
+ *
+ * Circular references are silently left unresolved (the {{ref}} stays as-is).
+ */
+export function resolveVariableRefs(
+  vars: Record<string, string>,
+  maxPasses = 10,
+): Record<string, string> {
+  const resolved = { ...vars };
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let changed = false;
+    for (const key of Object.keys(resolved)) {
+      const newVal = resolved[key].replace(/\{\{([^}]+)\}\}/g, (match, name) => {
+        const trimmed = name.trim();
+        if (trimmed in resolved && resolved[trimmed] !== resolved[key]) {
+          changed = true;
+          return resolved[trimmed];
+        }
+        return match;
+      });
+      resolved[key] = newVal;
+    }
+    if (!changed) break;
+  }
+  return resolved;
+}
+
+/**
+ * Extracts all {{variable}} names referenced in a string.
+ */
+export function collectVarRefs(text: string): string[] {
+  const refs: string[] = [];
+  const re = /\{\{([^}]+)\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) refs.push(m[1].trim());
+  return refs;
+}
+
+/**
+ * Returns the set of {{variable}} names that appear in the request data
+ * (url, params, headers, body, base path, multipart fields) but are NOT
+ * present in the resolved variables map.
+ */
+export function findUnresolvedVars(
+  data: RequestData,
+  basePath: string,
+  resolvedVars: Record<string, string>,
+): string[] {
+  const refs = new Set<string>();
+
+  const scan = (s: string) => collectVarRefs(s).forEach(r => refs.add(r));
+
+  scan(basePath);
+  scan(data.url);
+  data.query_params.forEach(p => { scan(p.key); scan(p.value); });
+  data.headers.forEach(h => { scan(h.key); scan(h.value); });
+  if (data.body) scan(data.body);
+  data.multipart_fields?.forEach(f => { scan(f.key); if (!f.is_file) scan(f.value); });
+
+  return [...refs].filter(name => !(name in resolvedVars));
 }
 
 // ── Search ────────────────────────────────────────────────────
