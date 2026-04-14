@@ -289,6 +289,22 @@ pub fn version_has_executions(state: State<AppState>, version_id: String) -> Cmd
         .version_has_executions(&version_id))
 }
 
+/// Single entry-point: the backend decides whether to update in place or
+/// create a new version.  Returns the resulting version.
+#[tauri::command]
+pub fn save_version(
+    state: State<AppState>,
+    request_id: String,
+    data: RequestData,
+) -> CmdResult<RequestVersion> {
+    state
+        .db
+        .lock()
+        .unwrap()
+        .save_version(&request_id, &data)
+        .map_err(map_err)
+}
+
 // ── Executions ───────────────────────────────────────────────
 
 #[tauri::command]
@@ -606,4 +622,11 @@ pub fn search_all(state: State<AppState>, query: String) -> CmdResult<Vec<crate:
         .unwrap()
         .search_all(&query, 80)
         .map_err(map_err)
+}
+
+// ── Fingerprint ──────────────────────────────────────────────
+
+#[tauri::command]
+pub fn compute_fingerprint(data: RequestData) -> String {
+    data.fingerprint()
 }

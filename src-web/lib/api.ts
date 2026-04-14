@@ -45,6 +45,9 @@ export const updateVersionData = (versionId: string, data: RequestData, createdA
   invoke<void>("update_version_data", { versionId, data, createdAt });
 export const deleteVersion = (versionId: string) => invoke<void>("delete_version", { versionId });
 export const versionHasExecutions = (versionId: string) => invoke<boolean>("version_has_executions", { versionId });
+/** Backend decides update-in-place vs new version. Returns the resulting version. */
+export const saveVersion = (requestId: string, data: RequestData) =>
+  invoke<RequestVersion>("save_version", { requestId, data });
 
 // ── Executions ───────────────────────────────────────────────
 export const insertExecution = (execution: RequestExecution) => invoke<void>("insert_execution", { execution });

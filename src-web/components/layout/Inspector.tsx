@@ -4,7 +4,12 @@ import type { RequestData, RequestVersion, RequestExecution, Environment, KeyVal
 import { statusColor } from "../../lib/types";
 import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
-import * as api from "../../lib/api";
+
+/** Extracts path param names from a URL inline — mirrors the Rust logic. */
+function parsePathParamNames(url: string): string[] {
+  const path = url.split("?")[0].split("#")[0];
+  return path.split("/").filter(seg => seg.startsWith(":") && seg.length > 1).map(seg => seg.slice(1));
+}
 
 interface InspectorProps {
   data: RequestData;
@@ -70,14 +75,12 @@ export function Inspector({
   const [pathParams, setPathParams] = useState<KeyValuePair[]>([]);
 
   useEffect(() => {
-    if (!data.url) { setPathParams([]); return; }
-    api.extractPathParams(data.url).then((paramNames) => {
-      if (paramNames.length === 0) { setPathParams([]); return; }
-      const existing = data.path_params ?? [];
-      const merged = paramNames.map(name => existing.find(p => p.key === name) ?? { key: name, value: "", enabled: true });
-      setPathParams(merged);
-    }).catch(() => {});
-  }, [data.url]);
+    const paramNames = parsePathParamNames(data.url ?? "");
+    if (paramNames.length === 0) { setPathParams([]); return; }
+    const existing = data.path_params ?? [];
+    const merged = paramNames.map(name => existing.find(p => p.key === name) ?? { key: name, value: "", enabled: true });
+    setPathParams(merged);
+  }, [data.url, data.path_params]);
 
   const toggleSection = (s: Section) => {
     setOpenSections(prev => {
@@ -108,7 +111,10 @@ export function Inspector({
 
   const updateParams = (params: KeyValuePair[]) => onChange({ ...data, query_params: params });
   const updateHeaders = (headers: KeyValuePair[]) => onChange({ ...data, headers });
-  const updatePathParams = (pp: KeyValuePair[]) => onChange({ ...data, path_params: pp });
+  const updatePathParams = (pp: KeyValuePair[]) => {
+    setPathParams(pp);
+    onChange({ ...data, path_params: pp });
+  };
 
   const activeEnvId = environments.find(e => e.is_active)?.id ?? null;
 

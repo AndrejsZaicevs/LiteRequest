@@ -143,6 +143,35 @@ pub struct RequestData {
     pub body_type: BodyType,
 }
 
+impl RequestData {
+    /// Compute a structural fingerprint that only changes when the
+    /// "shape" of the request changes (method, URL template, param/header
+    /// keys, body type). Value-only edits (body content, param values,
+    /// header values, path-param values) produce the same fingerprint.
+    pub fn fingerprint(&self) -> String {
+        let mut qp_keys: Vec<&str> = self.query_params.iter()
+            .filter(|p| p.enabled && !p.key.is_empty())
+            .map(|p| p.key.as_str())
+            .collect();
+        qp_keys.sort();
+
+        let mut h_keys: Vec<String> = self.headers.iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .map(|h| h.key.to_lowercase())
+            .collect();
+        h_keys.sort();
+
+        format!(
+            "{}|{}|{}|{}|{:?}",
+            self.method.as_str(),
+            self.url,
+            qp_keys.join(","),
+            h_keys.join(","),
+            self.body_type,
+        )
+    }
+}
+
 impl Default for RequestData {
     fn default() -> Self {
         Self {
@@ -195,6 +224,7 @@ pub struct RequestVersion {
     pub id: String,
     pub request_id: String,
     pub data: RequestData,
+    pub fingerprint: String,
     pub created_at: String,
 }
 
@@ -216,6 +246,9 @@ pub struct RequestExecution {
     pub response: ResponseData,
     pub latency_ms: u64,
     pub executed_at: String,
+    /// Snapshot of the request data at send time (None for legacy executions)
+    #[serde(default)]
+    pub request_data: Option<RequestData>,
 }
 
 /// A single hit returned by the full-text search across all stored data.

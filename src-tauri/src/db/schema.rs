@@ -116,6 +116,12 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
     // Migrate old collection_variables → new split tables
     migrate_collection_variables(conn);
 
+    // Add fingerprint column to request_versions (for version dedup by structure)
+    migrate_add_version_fingerprint(conn);
+
+    // Add request_data_json column to request_executions (execution request snapshot)
+    migrate_add_execution_request_data(conn);
+
     // Global app settings (key-value store for JSON blobs)
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS app_settings (
@@ -197,4 +203,53 @@ fn migrate_collection_variables(conn: &Connection) {
             );
         }
     }
+}
+
+/// Add `fingerprint` column to `request_versions` and backfill from data_json.
+fn migrate_add_version_fingerprint(conn: &Connection) {
+    // Check if column already exists
+    let has_col: bool = conn
+        .prepare("SELECT fingerprint FROM request_versions LIMIT 0")
+        .is_ok();
+    if has_col {
+        return;
+    }
+
+    let _ = conn.execute_batch(
+        "ALTER TABLE request_versions ADD COLUMN fingerprint TEXT NOT NULL DEFAULT '';"
+    );
+
+    // Backfill fingerprints from existing data_json
+    let mut stmt = conn
+        .prepare("SELECT id, data_json FROM request_versions")
+        .unwrap();
+    let rows: Vec<(String, String)> = stmt
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for (id, data_json) in rows {
+        if let Ok(data) = serde_json::from_str::<crate::models::RequestData>(&data_json) {
+            let fp = data.fingerprint();
+            let _ = conn.execute(
+                "UPDATE request_versions SET fingerprint=?2 WHERE id=?1",
+                rusqlite::params![id, fp],
+            );
+        }
+    }
+}
+
+/// Add `request_data_json` column to `request_executions`.
+fn migrate_add_execution_request_data(conn: &Connection) {
+    let has_col: bool = conn
+        .prepare("SELECT request_data_json FROM request_executions LIMIT 0")
+        .is_ok();
+    if has_col {
+        return;
+    }
+
+    let _ = conn.execute_batch(
+        "ALTER TABLE request_executions ADD COLUMN request_data_json TEXT NOT NULL DEFAULT '';"
+    );
 }

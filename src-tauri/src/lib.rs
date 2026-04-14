@@ -61,6 +61,7 @@ pub fn run() {
             commands::update_version_data,
             commands::delete_version,
             commands::version_has_executions,
+            commands::save_version,
             // Executions
             commands::insert_execution,
             commands::list_executions,
@@ -102,6 +103,8 @@ pub fn run() {
             commands::prune_old_executions,
             // Search
             commands::search_all,
+            // Fingerprint
+            commands::compute_fingerprint,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

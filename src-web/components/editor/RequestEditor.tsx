@@ -194,7 +194,6 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
               value={data.body}
               onChange={(v) => updateField("body", v)}
               language="json"
-              placeholder={'{\n  "key": "value"\n}'}
             />
           </div>
         )}
@@ -211,7 +210,6 @@ export function RequestEditor({ data, onChange, onSend, onCopyCurl, onImportCurl
             value={data.body}
             onChange={(v) => updateField("body", v)}
             language="text"
-            placeholder="Raw body content..."
           />
         )}
       </div>

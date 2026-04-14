@@ -1,5 +1,5 @@
 use crate::models::*;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
@@ -188,10 +188,11 @@ impl Database {
 
     pub fn insert_version(&self, v: &RequestVersion) -> rusqlite::Result<()> {
         let data_json = serde_json::to_string(&v.data).unwrap_or_default();
+        let fingerprint = if v.fingerprint.is_empty() { v.data.fingerprint() } else { v.fingerprint.clone() };
         self.conn.execute(
-            "INSERT INTO request_versions (id, request_id, data_json, created_at)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![v.id, v.request_id, data_json, v.created_at],
+            "INSERT INTO request_versions (id, request_id, data_json, fingerprint, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![v.id, v.request_id, data_json, fingerprint, v.created_at],
         )?;
         // Update current version pointer
         self.conn.execute(
@@ -203,7 +204,7 @@ impl Database {
 
     pub fn get_version(&self, id: &str) -> rusqlite::Result<RequestVersion> {
         self.conn.query_row(
-            "SELECT id, request_id, data_json, created_at FROM request_versions WHERE id=?1",
+            "SELECT id, request_id, data_json, fingerprint, created_at FROM request_versions WHERE id=?1",
             params![id],
             |row| {
                 let data_json: String = row.get(2)?;
@@ -212,8 +213,9 @@ impl Database {
                 Ok(RequestVersion {
                     id: row.get(0)?,
                     request_id: row.get(1)?,
+                    fingerprint: row.get(3)?,
                     data,
-                    created_at: row.get(3)?,
+                    created_at: row.get(4)?,
                 })
             },
         )
@@ -221,7 +223,7 @@ impl Database {
 
     pub fn list_versions_by_request(&self, request_id: &str) -> rusqlite::Result<Vec<RequestVersion>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, request_id, data_json, created_at
+            "SELECT id, request_id, data_json, fingerprint, created_at
              FROM request_versions WHERE request_id=?1 ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map(params![request_id], |row| {
@@ -231,8 +233,9 @@ impl Database {
             Ok(RequestVersion {
                 id: row.get(0)?,
                 request_id: row.get(1)?,
+                fingerprint: row.get(3)?,
                 data,
-                created_at: row.get(3)?,
+                created_at: row.get(4)?,
             })
         })?;
         rows.collect()
@@ -247,12 +250,13 @@ impl Database {
         ).unwrap_or(false)
     }
 
-    /// Overwrite a version's data and timestamp in place.
+    /// Overwrite a version's data, fingerprint, and timestamp in place.
     pub fn update_version_data(&self, version_id: &str, data: &RequestData, created_at: &str) -> rusqlite::Result<()> {
         let data_json = serde_json::to_string(data).unwrap_or_default();
+        let fingerprint = data.fingerprint();
         self.conn.execute(
-            "UPDATE request_versions SET data_json=?2, created_at=?3 WHERE id=?1",
-            params![version_id, data_json, created_at],
+            "UPDATE request_versions SET data_json=?2, fingerprint=?3, created_at=?4 WHERE id=?1",
+            params![version_id, data_json, fingerprint, created_at],
         )?;
         Ok(())
     }
@@ -264,6 +268,91 @@ impl Database {
             params![version_id],
         )?;
         Ok(())
+    }
+
+    /// All-in-one save: decides whether to update an existing version in
+    /// place, reuse a previous one, or create a new one.
+    /// Returns the resulting version.
+    ///
+    /// Rules:
+    ///  1. No current version → create.
+    ///  2. Data identical to current version → no-op, return current.
+    ///  3. Current version has NO executions → overwrite in place (draft).
+    ///  4. Same fingerprint as current → overwrite in place (value-only).
+    ///  5. Different fingerprint → look for an older version with the same
+    ///     fingerprint and reuse it (update its data, make it current).
+    ///  6. No matching version at all → create new.
+    pub fn save_version(&self, request_id: &str, data: &RequestData) -> rusqlite::Result<RequestVersion> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let new_fp = data.fingerprint();
+
+        // Find current version id
+        let current_vid: Option<String> = self.conn.query_row(
+            "SELECT current_version_id FROM requests WHERE id=?1",
+            params![request_id],
+            |row| row.get(0),
+        )?;
+
+        if let Some(ref vid) = current_vid {
+            let current = self.get_version(vid)?;
+            let current_json = serde_json::to_string(&current.data).unwrap_or_default();
+            let new_json = serde_json::to_string(data).unwrap_or_default();
+
+            // Identical → no-op
+            if current_json == new_json {
+                return Ok(current);
+            }
+
+            let has_exec = self.version_has_executions(vid);
+
+            if !has_exec {
+                // Draft — always overwrite
+                self.update_version_data(vid, data, &now)?;
+                return self.get_version(vid);
+            }
+
+            let cur_fp = if current.fingerprint.is_empty() {
+                current.data.fingerprint()
+            } else {
+                current.fingerprint.clone()
+            };
+
+            if cur_fp == new_fp {
+                // Same structure, value-only change — overwrite
+                self.update_version_data(vid, data, &now)?;
+                return self.get_version(vid);
+            }
+
+            // Different fingerprint — try to reuse an older version
+            let existing: Option<String> = self.conn.query_row(
+                "SELECT id FROM request_versions
+                 WHERE request_id=?1 AND fingerprint=?2 AND id!=?3
+                 ORDER BY created_at DESC LIMIT 1",
+                params![request_id, new_fp, vid],
+                |row| row.get(0),
+            ).optional()?;
+
+            if let Some(reuse_id) = existing {
+                // Update its data to latest values and make it current
+                self.update_version_data(&reuse_id, data, &now)?;
+                self.conn.execute(
+                    "UPDATE requests SET current_version_id=?2 WHERE id=?1",
+                    params![request_id, reuse_id],
+                )?;
+                return self.get_version(&reuse_id);
+            }
+        }
+
+        // Create new version
+        let version = RequestVersion {
+            id: uuid::Uuid::new_v4().to_string(),
+            request_id: request_id.to_string(),
+            data: data.clone(),
+            fingerprint: new_fp,
+            created_at: now,
+        };
+        self.insert_version(&version)?;
+        Ok(version)
     }
 
     // ── Request Executions ───────────────────────────────────────
@@ -288,17 +377,21 @@ impl Database {
         let mut stripped_response = e.response.clone();
         stripped_response.body = String::new();
         let response_json = serde_json::to_string(&stripped_response).unwrap_or_default();
+        let request_data_json = match &e.request_data {
+            Some(rd) => serde_json::to_string(rd).unwrap_or_default(),
+            None => String::new(),
+        };
         self.conn.execute(
-            "INSERT INTO request_executions (id, version_id, request_id, environment_id, response_json, latency_ms, executed_at, body_hash)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![e.id, e.version_id, e.request_id, e.environment_id, response_json, e.latency_ms, e.executed_at, body_hash],
+            "INSERT INTO request_executions (id, version_id, request_id, environment_id, response_json, latency_ms, executed_at, body_hash, request_data_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![e.id, e.version_id, e.request_id, e.environment_id, response_json, e.latency_ms, e.executed_at, body_hash, request_data_json],
         )?;
         Ok(())
     }
 
     pub fn list_executions_by_request(&self, request_id: &str) -> rusqlite::Result<Vec<RequestExecution>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, version_id, request_id, response_json, latency_ms, executed_at, environment_id, body_hash
+            "SELECT id, version_id, request_id, response_json, latency_ms, executed_at, environment_id, body_hash, request_data_json
              FROM request_executions WHERE request_id=?1 ORDER BY executed_at DESC",
         )?;
         let rows = stmt.query_map(params![request_id], |row| {
@@ -312,6 +405,12 @@ impl Database {
                     size_bytes: 0,
                 });
             let body_hash: String = row.get(7)?;
+            let request_data_json: String = row.get(8)?;
+            let request_data: Option<RequestData> = if request_data_json.is_empty() {
+                None
+            } else {
+                serde_json::from_str(&request_data_json).ok()
+            };
             Ok((
                 RequestExecution {
                     id: row.get(0)?,
@@ -321,6 +420,7 @@ impl Database {
                     response,
                     latency_ms: row.get(4)?,
                     executed_at: row.get(5)?,
+                    request_data,
                 },
                 body_hash,
             ))
@@ -872,18 +972,20 @@ impl Database {
             }
         }
 
-        // ── 4. Execution responses ────────────────────────────────
+        // ── 4. Execution responses + request data ──────────────────
         {
             let mut stmt = self.conn.prepare(
                 "SELECT e.id, e.version_id, e.request_id, e.response_json, e.executed_at,
                         COALESCE(rb.body, '') as body,
-                        r.name, r.collection_id, c.name
+                        r.name, r.collection_id, c.name,
+                        e.request_data_json
                  FROM request_executions e
                  JOIN requests r ON e.request_id = r.id
                  JOIN collections c ON r.collection_id = c.id
                  LEFT JOIN response_bodies rb ON e.body_hash = rb.hash
                  WHERE LOWER(e.response_json) LIKE ?1
                     OR LOWER(COALESCE(rb.body, '')) LIKE ?1
+                    OR LOWER(e.request_data_json) LIKE ?1
                  ORDER BY e.executed_at DESC
                  LIMIT 60",
             )?;
@@ -898,15 +1000,15 @@ impl Database {
                     row.get::<_, String>(6)?,
                     row.get::<_, String>(7)?,
                     row.get::<_, String>(8)?,
+                    row.get::<_, String>(9)?,
                 ))
             })?;
 
             let mut req_exec_count: std::collections::HashMap<String, usize> =
                 std::collections::HashMap::new();
 
-            for (exec_id, vid, req_id, response_json, executed_at, body, req_name, col_id, col_name) in
-                rows.filter_map(|r| r.ok())
-            {
+            for row in rows.filter_map(|r| r.ok()) {
+                let (exec_id, vid, req_id, response_json, executed_at, body, req_name, col_id, col_name, request_data_json) = row;
                 let cnt = req_exec_count.entry(req_id.clone()).or_insert(0);
                 if *cnt >= 5 { continue; }
 
@@ -919,12 +1021,37 @@ impl Database {
                         size_bytes: 0,
                     });
 
+                // Check response match
                 let (match_field, match_context) =
                     Self::find_match_in_response(&response, &body, query);
-                if match_context.is_empty() { continue; }
+
+                // If no response match, check execution request data
+                let (match_field, match_context) = if match_context.is_empty() && !request_data_json.is_empty() {
+                    if let Ok(req_data) = serde_json::from_str::<RequestData>(&request_data_json) {
+                        let (mf, mc) = Self::find_match_in_data(&req_data, query);
+                        if mc.is_empty() { continue; }
+                        (format!("Exec {}", mf), mc)
+                    } else {
+                        continue;
+                    }
+                } else if match_context.is_empty() {
+                    continue;
+                } else {
+                    (match_field, match_context)
+                };
 
                 *cnt += 1;
                 let status = response.status;
+                // Try to get method/url from execution request data
+                let (method, url) = if !request_data_json.is_empty() {
+                    if let Ok(rd) = serde_json::from_str::<RequestData>(&request_data_json) {
+                        (Some(rd.method.to_string()), Some(rd.url))
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
                 hits.push(SearchHit {
                     result_type: "execution".to_string(),
                     request_id: req_id,
@@ -935,8 +1062,8 @@ impl Database {
                     execution_id: Some(exec_id),
                     match_field,
                     match_context,
-                    method: None,
-                    url: None,
+                    method,
+                    url,
                     executed_at: Some(executed_at),
                     status: Some(status),
                 });

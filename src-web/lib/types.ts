@@ -90,6 +90,7 @@ export interface RequestVersion {
   id: string;
   request_id: string;
   data: RequestData;
+  fingerprint: string;
   created_at: string;
 }
 
@@ -112,6 +113,8 @@ export interface RequestExecution {
   response: ResponseData;
   latency_ms: number;
   executed_at: string;
+  /** Snapshot of the request data at send time (absent for legacy executions) */
+  request_data?: RequestData;
 }
 
 // ── Collection ───────────────────────────────────────────────
@@ -187,6 +190,22 @@ export function statusColor(code: number): string {
   if (code >= 400 && code < 500) return "#f93e3e";
   if (code >= 500) return "#ff5757";
   return "#8c8c96";
+}
+
+// ── Version fingerprint ──────────────────────────────────────
+// Must match the Rust implementation in models/request.rs RequestData::fingerprint()
+export function computeVersionFingerprint(data: RequestData): string {
+  const qpKeys = data.query_params
+    .filter(p => p.enabled && p.key)
+    .map(p => p.key)
+    .sort()
+    .join(",");
+  const hKeys = data.headers
+    .filter(h => h.enabled && h.key)
+    .map(h => h.key.toLowerCase())
+    .sort()
+    .join(",");
+  return `${data.method}|${data.url}|${qpKeys}|${hKeys}|${data.body_type}`;
 }
 
 // ── Search ────────────────────────────────────────────────────

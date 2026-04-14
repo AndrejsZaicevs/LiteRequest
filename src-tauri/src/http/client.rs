@@ -53,6 +53,13 @@ pub async fn execute_request(
 ) -> Result<(ResponseData, u64), String> {
     let url = super::interpolation::resolve_url(base_path, &data.url, variables);
     let url = super::interpolation::interpolate(&url, variables);
+    // Replace :paramName segments with path_params values
+    let path_param_pairs: Vec<(String, String)> = data.path_params
+        .iter()
+        .filter(|p| p.enabled && !p.key.is_empty())
+        .map(|p| (p.key.clone(), super::interpolation::interpolate(&p.value, variables)))
+        .collect();
+    let url = super::interpolation::resolve_path_params(&url, &path_param_pairs);
 
     // Find matching client cert for this URL's host
     let parsed_host = url::Url::parse(&url)

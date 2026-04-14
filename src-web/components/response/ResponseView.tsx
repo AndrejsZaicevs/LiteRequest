@@ -35,7 +35,6 @@ export function ResponseView({ response, latency, isLoading }: ResponseViewProps
     return (
       <div className="h-full flex items-center justify-center bg-[#161616]">
         <div className="text-xs text-gray-600">
-          Send a request to see the response
         </div>
       </div>
     );

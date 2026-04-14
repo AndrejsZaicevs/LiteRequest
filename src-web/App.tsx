@@ -155,52 +155,22 @@ export default function App() {
   }, [dirty, currentRequest]);
 
   // ── Save version ─────────────────────────────────────────
+  // All version logic (update-in-place vs create-new) lives in the backend.
   const saveCurrentVersion = useCallback(async () => {
     if (!currentRequest) return;
-    const now = new Date().toISOString();
-    const versionId = crypto.randomUUID();
 
-    // Check if latest version has no executions — update in place
-    if (selectedVersionId) {
-      const hasExec = await api.versionHasExecutions(selectedVersionId);
-      if (!hasExec) {
-        await api.updateVersionData(selectedVersionId, editorData, now);
-        setDirty(false);
-        // Update sidebar meta for this request
-        setRequestMeta(prev => new Map(prev).set(currentRequest.id, { method: editorData.method, url: editorData.url }));
-        const vers = await api.listVersions(currentRequest.id);
-        setVersions(vers);
-        return;
-      }
-    }
+    const version = await api.saveVersion(currentRequest.id, editorData);
 
-    // Check for dedup — don't create if identical to current
-    if (selectedVersionId) {
-      try {
-        const current = await api.getVersion(selectedVersionId);
-        if (JSON.stringify(current.data) === JSON.stringify(editorData)) {
-          setDirty(false);
-          return;
-        }
-      } catch { /* ignore */ }
-    }
-
-    const version: RequestVersion = {
-      id: versionId,
-      request_id: currentRequest.id,
-      data: editorData,
-      created_at: now,
-    };
-    await api.insertVersion(version);
-    // Link this version as the request's current version
-    await api.updateRequestVersion(currentRequest.id, versionId);
-    setSelectedVersionId(versionId);
+    // Update local state
+    const changed = version.id !== selectedVersionId;
+    setSelectedVersionId(version.id);
     setDirty(false);
-    // Update sidebar meta
     setRequestMeta(prev => new Map(prev).set(currentRequest.id, { method: editorData.method, url: editorData.url }));
-    // Update local currentRequest so switching away and back works
-    setCurrentRequest(prev => prev ? { ...prev, current_version_id: versionId } : prev);
-    setRequests(prev => prev.map(r => r.id === currentRequest.id ? { ...r, current_version_id: versionId } : r));
+
+    if (changed) {
+      setCurrentRequest(prev => prev ? { ...prev, current_version_id: version.id } : prev);
+      setRequests(prev => prev.map(r => r.id === currentRequest.id ? { ...r, current_version_id: version.id } : r));
+    }
 
     const vers = await api.listVersions(currentRequest.id);
     setVersions(vers);
@@ -245,12 +215,15 @@ export default function App() {
       }
       setDirty(false);
       setSelectedExecutionId(executionId ?? null);
-      // If navigating to a specific execution, load its response
+      // If navigating to a specific execution, load its response and request snapshot
       if (executionId) {
         const exec = execs.find(e => e.id === executionId);
         if (exec) {
           setCurrentResponse(exec.response);
           setCurrentLatency(exec.latency_ms);
+          if (exec.request_data) {
+            setEditorData(exec.request_data);
+          }
         }
       } else {
         setCurrentResponse(null);
@@ -339,7 +312,7 @@ export default function App() {
       setCurrentResponse(response);
       setCurrentLatency(latency);
 
-      // Save execution
+      // Save execution with request data snapshot
       const activeEnv = environments.find(e => e.is_active);
       const execution: RequestExecution = {
         id: crypto.randomUUID(),
@@ -349,6 +322,7 @@ export default function App() {
         response,
         latency_ms: latency,
         executed_at: new Date().toISOString(),
+        request_data: editorData,
       };
       await api.insertExecution(execution);
       const execs = await api.listExecutions(currentRequest.id);
@@ -639,6 +613,11 @@ export default function App() {
                 if (exec) {
                   setCurrentResponse(exec.response);
                   setCurrentLatency(exec.latency_ms);
+                  // Load execution's request data snapshot into editor if available
+                  if (exec.request_data) {
+                    setEditorData(exec.request_data);
+                    setDirty(false);
+                  }
                 }
               }}
               environments={environments}
