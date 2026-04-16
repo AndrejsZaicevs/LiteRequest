@@ -318,3 +318,11 @@ export interface SearchHit {
   executed_at: string | null;
   status: number | null;
 }
+
+export interface TrashedItem {
+  id: string;
+  item_type: "collection" | "folder" | "request";
+  name: string;
+  parent_name: string;
+  deleted_at: string;
+}

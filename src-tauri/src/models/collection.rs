@@ -22,6 +22,18 @@ pub struct Folder {
     pub sort_order: i32,
 }
 
+/// A soft-deleted item returned by list_trash.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrashedItem {
+    pub id: String,
+    /// "collection" | "folder" | "request"
+    pub item_type: String,
+    pub name: String,
+    /// Collection name (for folder/request), empty for collection
+    pub parent_name: String,
+    pub deleted_at: String,
+}
+
 /// Represents a node in the collection tree (for UI rendering)
 #[derive(Debug, Clone)]
 pub enum TreeNode {

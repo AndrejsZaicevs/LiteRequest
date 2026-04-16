@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Settings, Plus, Trash2, Eye, EyeOff, GripVertical, Database, AlertTriangle, FolderOpen } from "lucide-react";
-import type { Environment, EnvVarDef, VarRow, KeyValuePair, ClientCertEntry } from "../../lib/types";
+import { Settings, Plus, Trash2, Eye, EyeOff, GripVertical, Database, AlertTriangle, FolderOpen, RotateCcw, X } from "lucide-react";
+import type { Environment, EnvVarDef, VarRow, KeyValuePair, ClientCertEntry, TrashedItem } from "../../lib/types";
 import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
@@ -14,7 +14,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-type Section = "environments" | "headers" | "variables" | "certificates" | "cleanup";
+type Section = "environments" | "headers" | "variables" | "certificates" | "cleanup" | "trash";
 
 interface SortableEnvRowProps {
   env: Environment;
@@ -110,6 +110,34 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
   const [cleanupRunning, setCleanupRunning] = useState(false);
 
   const loadDbStats = () => api.getDbStats().then(setDbStats).catch(() => {});
+
+  // Trash
+  const [trashItems, setTrashItems] = useState<TrashedItem[]>([]);
+  const [trashLoaded, setTrashLoaded] = useState(false);
+  const [emptyingTrash, setEmptyingTrash] = useState(false);
+
+  const loadTrash = () =>
+    api.listTrash().then(items => { setTrashItems(items); setTrashLoaded(true); }).catch(() => {});
+
+  const handleRestore = async (item: TrashedItem) => {
+    await api.restoreItem(item.item_type, item.id);
+    await loadTrash();
+    onUpdate();
+  };
+
+  const handlePurge = async (item: TrashedItem) => {
+    await api.purgeItem(item.item_type, item.id);
+    await loadTrash();
+    onUpdate();
+  };
+
+  const handleEmptyTrash = async () => {
+    setEmptyingTrash(true);
+    await api.emptyTrash();
+    await loadTrash();
+    setEmptyingTrash(false);
+    onUpdate();
+  };
 
   const runCleanup = async () => {
     setCleanupRunning(true);
@@ -284,7 +312,11 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
   const toggle = (s: Section) => {
     setOpen(prev => {
       const next = new Set(prev);
-      if (next.has(s)) next.delete(s); else { next.add(s); if (s === "cleanup") loadDbStats(); }
+      if (next.has(s)) next.delete(s); else {
+        next.add(s);
+        if (s === "cleanup") loadDbStats();
+        if (s === "trash") loadTrash();
+      }
       return next;
     });
   };
@@ -630,6 +662,72 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
               </span>
             )}
           </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* Trash */}
+      <CollapsibleSection
+        title="Trash"
+        count={trashLoaded ? trashItems.length : undefined}
+        isOpen={open.has("trash")}
+        onToggle={() => toggle("trash")}
+      >
+        <div className="space-y-3 pb-1">
+          {trashItems.length === 0 ? (
+            <div className="py-4 text-center text-xs text-gray-600">
+              {trashLoaded ? "Trash is empty" : "Loading…"}
+            </div>
+          ) : (
+            <>
+              {(["collection", "folder", "request"] as const).map(type => {
+                const group = trashItems.filter(i => i.item_type === type);
+                if (group.length === 0) return null;
+                const label = type === "collection" ? "Collections" : type === "folder" ? "Folders" : "Requests";
+                return (
+                  <div key={type}>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1 px-1">{label}</div>
+                    <div className="space-y-1">
+                      {group.map(item => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-[#1a1a1a] border border-gray-800"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs text-gray-300 truncate font-medium">{item.name}</div>
+                            {item.parent_name && (
+                              <div className="text-[10px] text-gray-600 truncate">{item.parent_name}</div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleRestore(item)}
+                            title="Restore"
+                            className="p-1 rounded text-gray-500 hover:text-green-400 hover:bg-green-500/10 transition-colors shrink-0"
+                          >
+                            <RotateCcw size={12} />
+                          </button>
+                          <button
+                            onClick={() => handlePurge(item)}
+                            title="Delete permanently"
+                            className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              <button
+                onClick={handleEmptyTrash}
+                disabled={emptyingTrash}
+                className={`${btnDangerClass} disabled:opacity-50 w-full justify-center mt-2`}
+              >
+                <Trash2 size={13} />
+                {emptyingTrash ? "Emptying…" : "Empty Trash"}
+              </button>
+            </>
+          )}
         </div>
       </CollapsibleSection>
     </div>

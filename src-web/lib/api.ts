@@ -138,3 +138,9 @@ export const importPostmanCollection = (path: string) =>
   invoke<ImportSummary>("import_postman_collection", { path });
 export const exportCollectionToPostman = (collectionId: string) =>
   invoke<string>("export_collection_to_postman", { collectionId });
+
+// Trash
+export const listTrash = () => invoke<import("./types").TrashedItem[]>("list_trash");
+export const restoreItem = (itemType: string, id: string) => invoke<void>("restore_item", { itemType, id });
+export const purgeItem = (itemType: string, id: string) => invoke<void>("purge_item", { itemType, id });
+export const emptyTrash = () => invoke<void>("empty_trash");

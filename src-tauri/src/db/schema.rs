@@ -156,7 +156,22 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
     // Add sort_order to environments table
     migrate_environment_sort_order(conn);
 
+    // Add soft-delete support (deleted_at column on collections, folders, requests)
+    migrate_add_soft_delete(conn);
+
     Ok(())
+}
+
+/// Add `deleted_at` column to collections, folders, and requests for soft-delete support.
+fn migrate_add_soft_delete(conn: &Connection) {
+    for ddl in &[
+        "ALTER TABLE collections ADD COLUMN deleted_at TEXT",
+        "ALTER TABLE folders ADD COLUMN deleted_at TEXT",
+        "ALTER TABLE requests ADD COLUMN deleted_at TEXT",
+    ] {
+        // Ignore "duplicate column" errors — column already exists
+        let _ = conn.execute_batch(ddl);
+    }
 }
 
 /// Migrate data from the legacy `collection_variables` table into the

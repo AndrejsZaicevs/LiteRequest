@@ -52,9 +52,18 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
 
   // ── Panel sizing ─────────────────────────────────────────
-  const [sidebarWidth, setSidebarWidth] = useState(240);
-  const [inspectorWidth, setInspectorWidth] = useState(280);
-  const [splitRatio, setSplitRatio] = useState(0.5);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const v = localStorage.getItem("lr.sidebarWidth");
+    return v ? Math.max(160, Math.min(500, Number(v))) : 240;
+  });
+  const [inspectorWidth, setInspectorWidth] = useState(() => {
+    const v = localStorage.getItem("lr.inspectorWidth");
+    return v ? Math.max(200, Math.min(600, Number(v))) : 280;
+  });
+  const [splitRatio, setSplitRatio] = useState(() => {
+    const v = localStorage.getItem("lr.splitRatio");
+    return v ? Math.max(0.15, Math.min(0.85, Number(v))) : 0.5;
+  });
   // "auto" = derive from context; "request"/"response" = user-maximized; "split" = force split
   const [splitOverride, setSplitOverride] = useState<"auto" | "request" | "response" | "split">("auto");
 
@@ -204,10 +213,12 @@ export default function App() {
       setExecutions(execs);
 
       // Load current version data
+      let resolvedVersionId: string | null = null;
       if (req.current_version_id) {
         const v = await api.getVersion(req.current_version_id);
         setEditorData(v.data);
         setSelectedVersionId(v.id);
+        resolvedVersionId = v.id;
         // Cache method/url for sidebar display
         setRequestMeta(prev => new Map(prev).set(req.id, { method: v.data.method, url: v.data.url }));
       } else {
@@ -215,12 +226,24 @@ export default function App() {
         setSelectedVersionId(null);
       }
       setDirty(false);
-      setSelectedExecutionId(null);
-      setCurrentResponse(null);
+
+      // Auto-select the most recent execution matching current filters (env: selected, ver: selected)
+      const activeEnvId = environments.find(e => e.is_active)?.id ?? null;
+      const matchingExec = execs.find(e =>
+        (!activeEnvId || e.environment_id === activeEnvId) &&
+        (!resolvedVersionId || e.version_id === resolvedVersionId)
+      ) ?? null;
+      if (matchingExec) {
+        setSelectedExecutionId(matchingExec.id);
+        setCurrentResponse(matchingExec.response);
+      } else {
+        setSelectedExecutionId(null);
+        setCurrentResponse(null);
+      }
     } catch (e) {
       setErrorMessage(String(e));
     }
-  }, [dirty, currentRequest]);
+  }, [dirty, currentRequest, environments]);
 
   // ── Save version ─────────────────────────────────────────
   // All version logic (update-in-place vs create-new) lives in the backend.
@@ -502,6 +525,13 @@ export default function App() {
       }
     };
     const onMouseUp = () => {
+      if (dragging.current === "sidebar") {
+        setSidebarWidth(w => { localStorage.setItem("lr.sidebarWidth", String(w)); return w; });
+      } else if (dragging.current === "inspector") {
+        setInspectorWidth(w => { localStorage.setItem("lr.inspectorWidth", String(w)); return w; });
+      } else if (dragging.current === "split") {
+        setSplitRatio(r => { localStorage.setItem("lr.splitRatio", String(r)); return r; });
+      }
       dragging.current = null;
       document.body.classList.remove("resizing");
     };

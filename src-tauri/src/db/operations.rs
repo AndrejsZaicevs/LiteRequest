@@ -40,13 +40,17 @@ impl Database {
     }
 
     pub fn delete_collection(&self, id: &str) -> rusqlite::Result<()> {
-        self.conn.execute("DELETE FROM collections WHERE id=?1", params![id])?;
+        self.conn.execute(
+            "UPDATE collections SET deleted_at=datetime('now') WHERE id=?1",
+            params![id],
+        )?;
         Ok(())
     }
 
     pub fn list_collections(&self) -> rusqlite::Result<Vec<Collection>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, base_path, auth_config, headers_config, created_at, updated_at FROM collections ORDER BY name",
+            "SELECT id, name, base_path, auth_config, headers_config, created_at, updated_at
+             FROM collections WHERE deleted_at IS NULL ORDER BY name",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(Collection {
@@ -76,7 +80,7 @@ impl Database {
     pub fn list_folders_by_collection(&self, collection_id: &str) -> rusqlite::Result<Vec<Folder>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, collection_id, parent_folder_id, name, path_prefix, auth_override, sort_order
-             FROM folders WHERE collection_id=?1 ORDER BY sort_order",
+             FROM folders WHERE collection_id=?1 AND deleted_at IS NULL ORDER BY sort_order",
         )?;
         let rows = stmt.query_map(params![collection_id], |row| {
             Ok(Folder {
@@ -93,7 +97,10 @@ impl Database {
     }
 
     pub fn delete_folder(&self, id: &str) -> rusqlite::Result<()> {
-        self.conn.execute("DELETE FROM folders WHERE id=?1", params![id])?;
+        self.conn.execute(
+            "UPDATE folders SET deleted_at=datetime('now') WHERE id=?1",
+            params![id],
+        )?;
         Ok(())
     }
 
@@ -125,14 +132,17 @@ impl Database {
     }
 
     pub fn delete_request(&self, id: &str) -> rusqlite::Result<()> {
-        self.conn.execute("DELETE FROM requests WHERE id=?1", params![id])?;
+        self.conn.execute(
+            "UPDATE requests SET deleted_at=datetime('now') WHERE id=?1",
+            params![id],
+        )?;
         Ok(())
     }
 
     pub fn list_requests_by_collection(&self, collection_id: &str) -> rusqlite::Result<Vec<Request>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, collection_id, folder_id, name, current_version_id, sort_order
-             FROM requests WHERE collection_id=?1 ORDER BY sort_order",
+             FROM requests WHERE collection_id=?1 AND deleted_at IS NULL ORDER BY sort_order",
         )?;
         let rows = stmt.query_map(params![collection_id], |row| {
             Ok(Request {
@@ -150,7 +160,7 @@ impl Database {
     pub fn list_requests_by_folder(&self, folder_id: &str) -> rusqlite::Result<Vec<Request>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, collection_id, folder_id, name, current_version_id, sort_order
-             FROM requests WHERE folder_id=?1 ORDER BY sort_order",
+             FROM requests WHERE folder_id=?1 AND deleted_at IS NULL ORDER BY sort_order",
         )?;
         let rows = stmt.query_map(params![folder_id], |row| {
             Ok(Request {
@@ -169,7 +179,7 @@ impl Database {
     pub fn list_orphan_requests(&self, collection_id: &str) -> rusqlite::Result<Vec<Request>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, collection_id, folder_id, name, current_version_id, sort_order
-             FROM requests WHERE collection_id=?1 AND folder_id IS NULL ORDER BY sort_order",
+             FROM requests WHERE collection_id=?1 AND folder_id IS NULL AND deleted_at IS NULL ORDER BY sort_order",
         )?;
         let rows = stmt.query_map(params![collection_id], |row| {
             Ok(Request {
@@ -1228,5 +1238,76 @@ impl Database {
 
         hits.truncate(limit);
         Ok(hits)
+    }
+}
+
+impl Database {
+    // ── Trash (soft-delete) ──────────────────────────────────────
+
+    /// Returns all soft-deleted items across collections, folders, and requests.
+    /// Folders/requests inside an already-deleted collection are excluded (they
+    /// will be restored/purged together with their parent collection).
+    pub fn list_trash(&self) -> rusqlite::Result<Vec<TrashedItem>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, 'collection' AS item_type, name, '' AS parent_name, deleted_at
+               FROM collections
+              WHERE deleted_at IS NOT NULL
+             UNION ALL
+             SELECT f.id, 'folder', f.name, COALESCE(c.name,''), f.deleted_at
+               FROM folders f
+               LEFT JOIN collections c ON c.id = f.collection_id
+              WHERE f.deleted_at IS NOT NULL
+                AND (c.deleted_at IS NULL)
+             UNION ALL
+             SELECT r.id, 'request', r.name, COALESCE(c.name,''), r.deleted_at
+               FROM requests r
+               LEFT JOIN collections c ON c.id = r.collection_id
+               LEFT JOIN folders fo ON fo.id = r.folder_id
+              WHERE r.deleted_at IS NOT NULL
+                AND (c.deleted_at IS NULL)
+                AND (fo.id IS NULL OR fo.deleted_at IS NULL)
+             ORDER BY deleted_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(TrashedItem {
+                id: row.get(0)?,
+                item_type: row.get(1)?,
+                name: row.get(2)?,
+                parent_name: row.get(3)?,
+                deleted_at: row.get(4)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn restore_item(&self, item_type: &str, id: &str) -> rusqlite::Result<()> {
+        let sql = match item_type {
+            "collection" => "UPDATE collections SET deleted_at=NULL WHERE id=?1",
+            "folder"     => "UPDATE folders SET deleted_at=NULL WHERE id=?1",
+            "request"    => "UPDATE requests SET deleted_at=NULL WHERE id=?1",
+            _            => return Ok(()),
+        };
+        self.conn.execute(sql, params![id])?;
+        Ok(())
+    }
+
+    pub fn purge_item(&self, item_type: &str, id: &str) -> rusqlite::Result<()> {
+        let sql = match item_type {
+            "collection" => "DELETE FROM collections WHERE id=?1",
+            "folder"     => "DELETE FROM folders WHERE id=?1",
+            "request"    => "DELETE FROM requests WHERE id=?1",
+            _            => return Ok(()),
+        };
+        self.conn.execute(sql, params![id])?;
+        Ok(())
+    }
+
+    pub fn empty_trash(&self) -> rusqlite::Result<()> {
+        self.conn.execute_batch(
+            "DELETE FROM requests    WHERE deleted_at IS NOT NULL;
+             DELETE FROM folders     WHERE deleted_at IS NOT NULL;
+             DELETE FROM collections WHERE deleted_at IS NOT NULL;",
+        )?;
+        Ok(())
     }
 }

@@ -56,14 +56,26 @@ export function Inspector({
   const [execEnvFilter, setExecEnvFilter] = useState<string>("selected");
   const [execVersionFilter, setExecVersionFilter] = useState<string>("selected");
 
-  // Auto-open executions section + clear filters when navigating to a specific execution from search
+  // Auto-open executions section when a specific execution is selected.
+  // Only widen filters to "all" if the execution isn't visible under current filters
+  // (e.g. when navigating here from global search with a cross-env/version execution).
   useEffect(() => {
-    if (selectedExecutionId) {
-      setOpenSections(prev => new Set([...prev, "executions"]));
+    if (!selectedExecutionId) return;
+    setOpenSections(prev => new Set([...prev, "executions"]));
+
+    const exec = executions.find(e => e.id === selectedExecutionId);
+    if (!exec) return;
+    const activeEnvId = environments.find(e => e.is_active)?.id ?? null;
+    const effectiveEnv = execEnvFilter === "selected" ? activeEnvId : execEnvFilter === "all" ? null : execEnvFilter;
+    const effectiveVer = execVersionFilter === "selected" ? selectedVersionId : execVersionFilter === "all" ? null : execVersionFilter;
+    const visibleUnderFilters =
+      (!effectiveEnv || exec.environment_id === effectiveEnv) &&
+      (!effectiveVer || exec.version_id === effectiveVer);
+    if (!visibleUnderFilters) {
       setExecEnvFilter("all");
       setExecVersionFilter("all");
     }
-  }, [selectedExecutionId]);
+  }, [selectedExecutionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Collapsed date groups — collapse all except "Today" by default
   const [collapsedVersionGroups, setCollapsedVersionGroups] = useState<Set<string>>(

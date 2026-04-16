@@ -1,5 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
-import { Download, Maximize2, Minimize2, Copy, Check } from "lucide-react";
+import { useState, useMemo, useCallback } from "react";import { Download, Maximize2, Minimize2, Copy, Check } from "lucide-react";
 import type { ResponseData } from "../../lib/types";
 import { statusColor } from "../../lib/types";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
@@ -30,6 +29,7 @@ function statusDotColor(code: number): string {
 
 export function ResponseView({ response, latency, isLoading, isMaximized, onMaximize }: ResponseViewProps) {
   const [tab, setTab] = useState<Tab>("body");
+  const [copied, setCopied] = useState(false);
 
   const handleDownload = async () => {
     if (!response) return;
@@ -53,6 +53,24 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
       await api.saveFile(path, response.body, response.is_binary ?? false);
     }
   };
+
+  // Compute copy eligibility: JSON always; plain text under 512 KB
+  const copyText = useMemo(() => {
+    if (!response || response.is_binary || !response.body) return null;
+    try {
+      return JSON.stringify(JSON.parse(response.body), null, 2);
+    } catch {
+      return response.body.length < 512 * 1024 ? response.body : null;
+    }
+  }, [response]);
+
+  const handleCopy = useCallback(() => {
+    if (!copyText) return;
+    navigator.clipboard.writeText(copyText).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [copyText]);
 
   if (isLoading) {
     return (
@@ -106,6 +124,15 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
               {t}{t === "headers" ? ` (${headerCount})` : ""}
             </button>
           ))}
+          {copyText && tab === "body" && (
+            <button
+              onClick={handleCopy}
+              title="Copy response body"
+              className="p-1.5 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/50 transition-colors flex items-center gap-1"
+            >
+              {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+            </button>
+          )}
           <button
             onClick={handleDownload}
             title="Save response to file"
@@ -187,17 +214,6 @@ function ResponseBody({ body, isBinary }: { body: string; isBinary: boolean }) {
     []
   );
 
-  const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(formatted).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  }, [formatted]);
-
-  // Show copy button for JSON always, or plain text under 512 KB
-  const showCopy = !isBinary && !!body && (isJson || body.length < 512 * 1024);
-
   if (!body) {
     return (
       <div className="flex items-center justify-center h-full text-xs text-gray-600">
@@ -217,55 +233,31 @@ function ResponseBody({ body, isBinary }: { body: string; isBinary: boolean }) {
 
   if (isJson) {
     return (
-      <div className="relative h-full">
-        {showCopy && (
-          <button
-            onClick={handleCopy}
-            title="Copy response body"
-            className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors backdrop-blur-sm border border-gray-700/50"
-          >
-            {copied ? <Check size={11} className="text-green-400" /> : <Copy size={11} />}
-            {copied ? "Copied!" : "Copy"}
-          </button>
-        )}
-        <CodeMirror
-          value={formatted}
-          height="100%"
-          theme="none"
-          extensions={jsonExtensions}
-          readOnly
-          basicSetup={{
-            lineNumbers: true,
-            foldGutter: true,
-            bracketMatching: true,
-            closeBrackets: false,
-            autocompletion: false,
-            highlightActiveLine: false,
-            indentOnInput: false,
-            tabSize: 2,
-          }}
-          style={{ height: "100%" }}
-        />
-      </div>
+      <CodeMirror
+        value={formatted}
+        height="100%"
+        theme="none"
+        extensions={jsonExtensions}
+        readOnly
+        basicSetup={{
+          lineNumbers: true,
+          foldGutter: true,
+          bracketMatching: true,
+          closeBrackets: false,
+          autocompletion: false,
+          highlightActiveLine: false,
+          indentOnInput: false,
+          tabSize: 2,
+        }}
+        style={{ height: "100%" }}
+      />
     );
   }
 
   return (
-    <div className="relative h-full overflow-auto">
-      {showCopy && (
-        <button
-          onClick={handleCopy}
-          title="Copy response body"
-          className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors backdrop-blur-sm border border-gray-700/50"
-        >
-          {copied ? <Check size={11} className="text-green-400" /> : <Copy size={11} />}
-          {copied ? "Copied!" : "Copy"}
-        </button>
-      )}
-      <pre className="p-4 font-mono text-sm whitespace-pre-wrap break-all leading-relaxed text-gray-300">
-        {formatted}
-      </pre>
-    </div>
+    <pre className="p-4 font-mono text-sm whitespace-pre-wrap break-all leading-relaxed text-gray-300">
+      {formatted}
+    </pre>
   );
 }
 

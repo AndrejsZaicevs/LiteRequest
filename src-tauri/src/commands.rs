@@ -755,3 +755,25 @@ pub fn export_collection_to_postman(
     let db = state.db.lock().unwrap();
     crate::import::postman::export_collection(&collection_id, &db).map_err(|e| e)
 }
+
+// ── Trash ─────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn list_trash(state: State<AppState>) -> CmdResult<Vec<crate::models::TrashedItem>> {
+    state.db.lock().unwrap().list_trash().map_err(map_err)
+}
+
+#[tauri::command]
+pub fn restore_item(state: State<AppState>, item_type: String, id: String) -> CmdResult<()> {
+    state.db.lock().unwrap().restore_item(&item_type, &id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn purge_item(state: State<AppState>, item_type: String, id: String) -> CmdResult<()> {
+    state.db.lock().unwrap().purge_item(&item_type, &id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
+    state.db.lock().unwrap().empty_trash().map_err(map_err)
+}
