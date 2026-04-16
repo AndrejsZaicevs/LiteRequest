@@ -309,7 +309,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                       updateVarValue(row, e.target.value);
                     } else if (activeEnv) {
                       const newId = crypto.randomUUID();
-                      const newRow: VarRow = { value_id: newId, def_id: def.id, value: e.target.value, is_secret: false };
+                      const newRow: VarRow = { value_id: newId, def_id: def.id, key: def.key, value: e.target.value, is_secret: false };
                       setVarRows(prev => [...prev, newRow]);
                       api.upsertVarValue(newId, def.id, activeEnv.id, e.target.value, false)
                         .then(() => onUpdate())

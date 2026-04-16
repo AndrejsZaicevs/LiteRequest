@@ -382,7 +382,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                       updateEnvVarValue(row, e.target.value);
                     } else if (selectedEnv) {
                       const newId = crypto.randomUUID();
-                      const newRow: VarRow = { value_id: newId, def_id: def.id, value: e.target.value, is_secret: false };
+                      const newRow: VarRow = { value_id: newId, def_id: def.id, key: def.key, value: e.target.value, is_secret: false };
                       setEnvVarRows(prev => [...prev, newRow]);
                       api.upsertEnvVarValue(newId, def.id, selectedEnv, e.target.value, false)
                         .then(() => onUpdate())
