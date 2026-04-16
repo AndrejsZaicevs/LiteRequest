@@ -111,11 +111,13 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
     setVarDefs(await api.listVarDefs(collectionId));
   };
 
-  const updateVarValue = async (row: VarRow, value: string) => {
+  const updateVarValue = (row: VarRow, value: string) => {
     if (!activeEnv) return;
-    await api.upsertVarValue(row.value_id ?? crypto.randomUUID(), row.def_id, activeEnv.id, value, row.is_secret);
-    setVarRows(await api.loadVarRows(collectionId, activeEnv.id));
-    onUpdate();
+    // Optimistic update so cursor isn't reset by async DB round-trip
+    setVarRows(prev => prev.map(r => r.def_id === row.def_id ? { ...r, value } : r));
+    api.upsertVarValue(row.value_id ?? crypto.randomUUID(), row.def_id, activeEnv.id, value, row.is_secret)
+      .then(() => onUpdate())
+      .catch(console.error);
   };
 
   const deleteVarDef = async (defId: string) => {
@@ -303,11 +305,15 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                 <input
                   value={row?.value ?? ""}
                   onChange={(e) => {
-                    if (row) updateVarValue(row, e.target.value);
-                    else if (activeEnv) {
-                      api.upsertVarValue(crypto.randomUUID(), def.id, activeEnv.id, e.target.value, false)
-                        .then(() => api.loadVarRows(collectionId, activeEnv.id))
-                        .then(rows => { setVarRows(rows); onUpdate(); });
+                    if (row) {
+                      updateVarValue(row, e.target.value);
+                    } else if (activeEnv) {
+                      const newId = crypto.randomUUID();
+                      const newRow: VarRow = { value_id: newId, def_id: def.id, value: e.target.value, is_secret: false };
+                      setVarRows(prev => [...prev, newRow]);
+                      api.upsertVarValue(newId, def.id, activeEnv.id, e.target.value, false)
+                        .then(() => onUpdate())
+                        .catch(console.error);
                     }
                   }}
                   placeholder="value"

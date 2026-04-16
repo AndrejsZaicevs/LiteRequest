@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 
 interface Segment {
   type: "text" | "var";
@@ -24,14 +24,11 @@ interface VariableInputProps {
   value: string;
   onChange: (v: string) => void;
   variables: Record<string, string>;
-  /** Applied to the outer wrapper div (use for sizing: flex-1, w-0, min-w, etc.) */
   wrapperClassName?: string;
-  /** Applied to both the input and the overlay (padding, font-size, bg, border, focus styles, etc.) */
   className?: string;
   placeholder?: string;
   readOnly?: boolean;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
-  /** Extra style applied only to the input element */
   inputStyle?: React.CSSProperties;
 }
 
@@ -44,8 +41,43 @@ export function VariableInput({
   const overlayRef = useRef<HTMLDivElement>(null);
   const [showTooltip, setShowTooltip] = useState(false);
 
-  const hasVars = /\{\{[^}]+\}\}/.test(value);
-  const segments = hasVars ? parseSegments(value) : [];
+  // displayValue drives the overlay only. The actual <input> DOM value is
+  // managed imperatively — React never touches input.value after mount.
+  const [displayValue, setDisplayValue] = useState(value);
+  const lastEmittedRef = useRef(value);
+  // Keep onChange in a ref so the native listener never goes stale.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  // Register a native DOM input listener so React's reconciler is completely
+  // out of the picture for value updates — this is the only reliable way to
+  // prevent React 19 from resetting the cursor position on re-renders.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const handler = () => {
+      const v = el.value;
+      lastEmittedRef.current = v;
+      setDisplayValue(v);
+      onChangeRef.current(v);
+    };
+    el.addEventListener("input", handler);
+    return () => el.removeEventListener("input", handler);
+  }, []); // register once on mount
+
+  // Sync prop → DOM only for genuine external changes (e.g. switching requests).
+  useEffect(() => {
+    if (value !== lastEmittedRef.current) {
+      lastEmittedRef.current = value;
+      setDisplayValue(value);
+      if (inputRef.current) {
+        inputRef.current.value = value;
+      }
+    }
+  }, [value]);
+
+  const hasVars = /\{\{[^}]+\}\}/.test(displayValue);
+  const segments = hasVars ? parseSegments(displayValue) : [];
   const varSegments = segments.filter(s => s.type === "var");
 
   const syncScroll = () => {
@@ -56,7 +88,6 @@ export function VariableInput({
 
   return (
     <div className={`relative ${wrapperClassName}`}>
-      {/* Color overlay — only rendered when {{vars}} are present */}
       {hasVars && (
         <div
           ref={overlayRef}
@@ -85,11 +116,12 @@ export function VariableInput({
         </div>
       )}
 
-      {/* Input — text goes transparent when overlay is active */}
+      {/* Fully uncontrolled — no value/onChange props on the element itself.
+          The native "input" listener above handles all user edits without
+          going through React's controlled-input pipeline. */}
       <input
         ref={inputRef}
-        value={value}
-        onChange={e => onChange(e.target.value)}
+        defaultValue={value}
         placeholder={placeholder}
         readOnly={readOnly}
         className={`${className} w-full ${hasVars ? "text-transparent placeholder-transparent" : ""}`}
@@ -102,7 +134,6 @@ export function VariableInput({
         onBlur={() => setShowTooltip(false)}
       />
 
-      {/* Tooltip */}
       {showTooltip && varSegments.length > 0 && (
         <div className="absolute top-full left-0 z-50 mt-1 bg-[#1a1a1a] border border-gray-700 rounded shadow-xl p-2 min-w-[160px] text-xs pointer-events-none">
           {varSegments.map(s => (

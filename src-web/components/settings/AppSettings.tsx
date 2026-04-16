@@ -219,16 +219,19 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
     await reloadVars(selectedEnv);
   };
 
-  const updateEnvVarKey = async (defId: string, key: string) => {
-    await api.updateEnvVarDefKey(defId, key);
-    setEnvVarDefs(await api.listEnvVarDefs());
+  const updateEnvVarKey = (defId: string, key: string) => {
+    // Optimistic update so cursor isn't reset by async re-fetch
+    setEnvVarDefs(prev => prev.map(d => d.id === defId ? { ...d, key } : d));
+    api.updateEnvVarDefKey(defId, key).catch(console.error);
   };
 
-  const updateEnvVarValue = async (row: VarRow, value: string) => {
+  const updateEnvVarValue = (row: VarRow, value: string) => {
     if (!selectedEnv) return;
-    await api.upsertEnvVarValue(row.value_id ?? crypto.randomUUID(), row.def_id, selectedEnv, value, row.is_secret);
-    setEnvVarRows(await api.loadEnvVarRows(selectedEnv));
-    onUpdate();
+    // Optimistic update so cursor isn't reset by async DB round-trip
+    setEnvVarRows(prev => prev.map(r => r.def_id === row.def_id ? { ...r, value } : r));
+    api.upsertEnvVarValue(row.value_id ?? crypto.randomUUID(), row.def_id, selectedEnv, value, row.is_secret)
+      .then(() => onUpdate())
+      .catch(console.error);
   };
 
   const toggleEnvVarSecret = async (row: VarRow) => {
@@ -375,11 +378,15 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                   value={row?.value ?? ""}
                   type={row?.is_secret ? "password" : "text"}
                   onChange={(e) => {
-                    if (row) updateEnvVarValue(row, e.target.value);
-                    else if (selectedEnv) {
-                      api.upsertEnvVarValue(crypto.randomUUID(), def.id, selectedEnv, e.target.value, false)
-                        .then(() => api.loadEnvVarRows(selectedEnv))
-                        .then(rows => { setEnvVarRows(rows); onUpdate(); });
+                    if (row) {
+                      updateEnvVarValue(row, e.target.value);
+                    } else if (selectedEnv) {
+                      const newId = crypto.randomUUID();
+                      const newRow: VarRow = { value_id: newId, def_id: def.id, value: e.target.value, is_secret: false };
+                      setEnvVarRows(prev => [...prev, newRow]);
+                      api.upsertEnvVarValue(newId, def.id, selectedEnv, e.target.value, false)
+                        .then(() => onUpdate())
+                        .catch(console.error);
                     }
                   }}
                   placeholder={selectedEnv ? "value" : "—"}

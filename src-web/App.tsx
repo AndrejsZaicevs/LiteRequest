@@ -78,11 +78,12 @@ export default function App() {
   }, [currentRequest?.collection_id, environments.find(e => e.is_active)?.id, envVariables]);
 
   const displayVariables = useMemo(() => {
-    // Collection vars as base, env vars override (same priority as request execution)
     const vars: Record<string, string> = { ...collectionDisplayVars };
     for (const v of envVariables) vars[v.key] = v.value;
+    const colName = collections.find(c => c.id === currentRequest?.collection_id)?.name;
+    if (colName) vars["collectionName"] = colName;
     return resolveVariableRefs(vars);
-  }, [envVariables, collectionDisplayVars]);
+  }, [envVariables, collectionDisplayVars, collections, currentRequest?.collection_id]);
 
   // ── Refs for drag tracking ───────────────────────────────
   const dragging = useRef<"sidebar" | "inspector" | "split" | null>(null);
@@ -409,6 +410,7 @@ export default function App() {
       for (const v of envVariables) variables[v.key] = v.value;
       const colVars = await api.getActiveCollectionVariables(currentRequest.collection_id);
       for (const [k, v] of colVars) variables[k] = v;
+      if (col) variables["collectionName"] = col.name;
       const resolvedVariables = resolveVariableRefs(variables);
       const basePath = col?.base_path ?? "";
       const effectiveData = buildEffectiveData(editorData);
