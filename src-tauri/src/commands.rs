@@ -196,6 +196,16 @@ pub fn move_request(
 }
 
 #[tauri::command]
+pub fn reorder_environments(state: State<AppState>, ordered_ids: Vec<String>) -> CmdResult<()> {
+    state
+        .db
+        .lock()
+        .unwrap()
+        .reorder_environments(&ordered_ids)
+        .map_err(map_err)
+}
+
+#[tauri::command]
 pub fn reorder_requests(state: State<AppState>, ordered_ids: Vec<String>) -> CmdResult<()> {
     state
         .db

@@ -34,6 +34,7 @@ export const moveRequest = (id: string, collectionId: string, folderId?: string 
   invoke<void>("move_request", { id, collectionId, folderId });
 export const reorderRequests = (orderedIds: string[]) => invoke<void>("reorder_requests", { orderedIds });
 export const reorderFolders = (orderedIds: string[]) => invoke<void>("reorder_folders", { orderedIds });
+export const reorderEnvironments = (orderedIds: string[]) => invoke<void>("reorder_environments", { orderedIds });
 export const updateRequestVersion = (requestId: string, versionId: string) =>
   invoke<void>("update_request_version", { requestId, versionId });
 

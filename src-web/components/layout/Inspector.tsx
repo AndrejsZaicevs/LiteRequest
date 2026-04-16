@@ -152,15 +152,6 @@ export function Inspector({
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#161616]">
       <div className="flex-1 overflow-y-auto">
-        {/* Query Params */}
-        <CollapsibleSection
-          title="Query Params"
-          count={enabledParams}
-          isOpen={openSections.has("params")}
-          onToggle={() => toggleSection("params")}
-        >
-          <KvTable rows={data.query_params} onChange={updateParams} placeholder={{ key: "param", value: "value" }} variables={variables} />
-        </CollapsibleSection>
 
         {/* Path Params */}
         {pathParams.length > 0 && (
@@ -173,6 +164,18 @@ export function Inspector({
             <KvTable rows={pathParams} onChange={updatePathParams} placeholder={{ key: "param", value: "value" }} fixedKeys variables={variables} />
           </CollapsibleSection>
         )}
+
+        {/* Query Params */}
+        <CollapsibleSection
+          title="Query Params"
+          count={enabledParams}
+          isOpen={openSections.has("params")}
+          onToggle={() => toggleSection("params")}
+        >
+          <KvTable rows={data.query_params} onChange={updateParams} placeholder={{ key: "param", value: "value" }} variables={variables} />
+        </CollapsibleSection>
+
+
 
         {/* Headers */}
         <CollapsibleSection
@@ -206,11 +209,10 @@ export function Inspector({
                     <button
                       key={v.id}
                       onClick={() => onSelectVersion(v.id)}
-                      className={`w-full rounded p-2 cursor-pointer mb-1 text-left transition-colors ${
-                        isSelected
+                      className={`w-full rounded p-2 cursor-pointer mb-1 text-left transition-colors ${isSelected
                           ? "bg-[#242424] border border-gray-700/50 border-l-2 border-l-blue-500"
                           : "hover:bg-[#1a1a1a] border border-transparent"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className={`text-xs font-semibold ${isSelected ? "text-blue-400" : "text-gray-400"}`}>
@@ -292,11 +294,10 @@ export function Inspector({
                       <button
                         key={exec.id}
                         onClick={() => onSelectExecution(exec.id)}
-                        className={`w-full rounded p-2 cursor-pointer mb-1 text-left transition-colors ${
-                          isSelected
+                        className={`w-full rounded p-2 cursor-pointer mb-1 text-left transition-colors ${isSelected
                             ? `bg-[#242424] border border-gray-700/50 border-l-2 ${isSuccess ? "border-l-green-500" : "border-l-red-500"}`
                             : "hover:bg-[#1a1a1a] border border-transparent"
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <span

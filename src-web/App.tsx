@@ -85,6 +85,7 @@ export default function App() {
 
   // ── Refs for drag tracking ───────────────────────────────
   const dragging = useRef<"sidebar" | "inspector" | "split" | null>(null);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
 
   // ── Data loading ─────────────────────────────────────────
   const refreshAll = useCallback(async () => {
@@ -458,9 +459,10 @@ export default function App() {
       } else if (dragging.current === "inspector") {
         setInspectorWidth(Math.max(200, Math.min(500, window.innerWidth - e.clientX)));
       } else if (dragging.current === "split") {
-        const mainLeft = sidebarWidth;
-        const mainWidth = window.innerWidth - sidebarWidth - inspectorWidth;
-        const ratio = (e.clientX - mainLeft) / mainWidth;
+        const container = splitContainerRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const ratio = (e.clientY - rect.top) / rect.height;
         setSplitRatio(Math.max(0.2, Math.min(0.8, ratio)));
       }
     };
@@ -506,7 +508,7 @@ export default function App() {
 
         {/* Sidebar resize handle */}
         <div
-          className="w-px cursor-col-resize hover:bg-blue-500/50 transition-colors shrink-0 bg-gray-800"
+          className="w-[3px] cursor-col-resize shrink-0 bg-gray-800 hover:bg-blue-500/60 transition-colors"
           onMouseDown={() => startDrag("sidebar")}
         />
 
@@ -603,7 +605,7 @@ export default function App() {
               )}
 
               {centerView.type === "request" && (
-                <div className="flex-1 flex flex-col overflow-hidden">
+                <div ref={splitContainerRef} className="flex-1 flex flex-col overflow-hidden">
                   {/* Request body editor (top portion) */}
                   <div style={{ height: `${splitRatio * 100}%` }} className="shrink-0 overflow-hidden border-b border-gray-800">
                     <RequestEditor
@@ -618,7 +620,7 @@ export default function App() {
 
                   {/* Split drag handle */}
                   <div
-                    className="h-px cursor-row-resize hover:bg-blue-500/50 transition-colors shrink-0 bg-gray-800"
+                    className="h-[3px] cursor-row-resize shrink-0 bg-gray-800 hover:bg-blue-500/60 transition-colors"
                     onMouseDown={() => startDrag("split")}
                   />
 
@@ -653,7 +655,7 @@ export default function App() {
             {/* Inspector resize handle */}
             {showInspector && (
               <div
-                className="w-px cursor-col-resize hover:bg-blue-500/50 transition-colors shrink-0 bg-gray-800"
+                className="w-[3px] cursor-col-resize shrink-0 bg-gray-800 hover:bg-blue-500/60 transition-colors"
                 onMouseDown={() => startDrag("inspector")}
               />
             )}

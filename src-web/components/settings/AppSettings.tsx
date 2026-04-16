@@ -1,11 +1,94 @@
 import { useState, useEffect } from "react";
-import { Settings, Plus, Trash2, Eye, EyeOff } from "lucide-react";
+import { Settings, Plus, Trash2, Eye, EyeOff, GripVertical } from "lucide-react";
 import type { Environment, EnvVarDef, VarRow, KeyValuePair, ClientCertEntry } from "../../lib/types";
 import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
+import {
+  DndContext, PointerSensor, useSensor, useSensors, closestCenter,
+} from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import {
+  SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 type Section = "environments" | "headers" | "variables" | "certificates";
+
+interface SortableEnvRowProps {
+  env: Environment;
+  selected: boolean;
+  renaming: boolean;
+  renameValue: string;
+  onSelect: () => void;
+  onDoubleClick: () => void;
+  onRenameChange: (v: string) => void;
+  onRenameCommit: () => void;
+  onRenameCancel: () => void;
+  onDelete: () => void;
+}
+
+function SortableEnvRow({
+  env, selected, renaming, renameValue,
+  onSelect, onDoubleClick, onRenameChange, onRenameCommit, onRenameCancel, onDelete,
+}: SortableEnvRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: env.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      className={`flex items-center px-3 py-2.5 cursor-pointer transition-colors border-b border-gray-800/50 last:border-0 ${
+        selected ? "bg-[#242424]" : "hover:bg-[#1a1a1a]"
+      }`}
+      onClick={onSelect}
+      onDoubleClick={onDoubleClick}
+    >
+      {/* Drag handle */}
+      <span
+        {...attributes}
+        {...listeners}
+        className="mr-2 text-gray-700 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <GripVertical size={13} />
+      </span>
+
+      {renaming ? (
+        <input
+          value={renameValue}
+          onChange={(e) => onRenameChange(e.target.value)}
+          onBlur={onRenameCommit}
+          onKeyDown={(e) => { if (e.key === "Enter") onRenameCommit(); if (e.key === "Escape") onRenameCancel(); }}
+          className="flex-1 bg-transparent text-sm text-gray-200 outline-none"
+          style={{ border: "none", borderBottom: "1px solid #3b82f6", borderRadius: 0, padding: "0 2px" }}
+          autoFocus
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <span className="flex-1 text-sm text-gray-300 truncate">{env.name}</span>
+      )}
+
+      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+        {env.is_active && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+            active
+          </span>
+        )}
+        {selected && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="text-gray-600 hover:text-red-400 transition-colors"
+            title="Delete environment"
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 interface AppSettingsProps {
   environments: Environment[];
@@ -17,6 +100,18 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
   const [selectedEnv, setSelectedEnv] = useState<string | null>(environments[0]?.id ?? null);
   const [renamingEnv, setRenamingEnv] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  const handleEnvDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = environments.findIndex(e => e.id === active.id);
+    const newIndex = environments.findIndex(e => e.id === over.id);
+    const reordered = arrayMove(environments, oldIndex, newIndex);
+    await api.reorderEnvironments(reordered.map(e => e.id));
+    onUpdate();
+  };
 
   // Split-model env vars
   const [envVarDefs, setEnvVarDefs] = useState<EnvVarDef[]>([]);
@@ -60,6 +155,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
       id: crypto.randomUUID(),
       name: "New Environment",
       is_active: false,
+      sort_order: environments.length,
       created_at: new Date().toISOString(),
     };
     await api.insertEnvironment(env);
@@ -182,47 +278,25 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
         }
       >
         <div className="border border-gray-800 rounded-md overflow-hidden" style={{ maxWidth: 320 }}>
-          {environments.map(env => (
-            <div
-              key={env.id}
-              className={`flex items-center px-3 py-2.5 cursor-pointer transition-colors border-b border-gray-800/50 last:border-0 ${
-                selectedEnv === env.id ? "bg-[#242424]" : "hover:bg-[#1a1a1a]"
-              }`}
-              onClick={() => setSelectedEnv(env.id)}
-              onDoubleClick={() => { setRenamingEnv(env.id); setRenameValue(env.name); }}
-            >
-              {renamingEnv === env.id ? (
-                <input
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onBlur={handleRenameEnv}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleRenameEnv(); if (e.key === "Escape") setRenamingEnv(null); }}
-                  className="flex-1 bg-transparent text-sm text-gray-200 outline-none"
-                  style={{ border: "none", borderBottom: "1px solid #3b82f6", borderRadius: 0, padding: "0 2px" }}
-                  autoFocus
-                  onClick={(e) => e.stopPropagation()}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleEnvDragEnd}>
+            <SortableContext items={environments.map(e => e.id)} strategy={verticalListSortingStrategy}>
+              {environments.map(env => (
+                <SortableEnvRow
+                  key={env.id}
+                  env={env}
+                  selected={selectedEnv === env.id}
+                  renaming={renamingEnv === env.id}
+                  renameValue={renameValue}
+                  onSelect={() => setSelectedEnv(env.id)}
+                  onDoubleClick={() => { setRenamingEnv(env.id); setRenameValue(env.name); }}
+                  onRenameChange={setRenameValue}
+                  onRenameCommit={handleRenameEnv}
+                  onRenameCancel={() => setRenamingEnv(null)}
+                  onDelete={() => deleteEnvironment(env.id)}
                 />
-              ) : (
-                <span className="flex-1 text-sm text-gray-300 truncate">{env.name}</span>
-              )}
-              <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                {env.is_active && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                    active
-                  </span>
-                )}
-                {selectedEnv === env.id && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteEnvironment(env.id); }}
-                    className="text-gray-600 hover:text-red-400 transition-colors"
-                    title="Delete environment"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+              ))}
+            </SortableContext>
+          </DndContext>
           {environments.length === 0 && (
             <div className="px-4 py-4 text-xs text-center text-gray-600">No environments</div>
           )}

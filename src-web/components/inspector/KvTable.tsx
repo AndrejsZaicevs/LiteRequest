@@ -34,7 +34,7 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys, variables = {}
       {displayRows.map((row, i) => (
         <div
           key={i}
-          className="group flex items-center gap-1.5 py-0.5 border-b border-transparent hover:border-gray-800"
+          className="group flex items-center gap-1.5 h-7 border-b border-transparent hover:border-gray-800"
           style={{ opacity: row.enabled ? 1 : 0.45 }}
         >
           {/* Checkbox */}
@@ -61,7 +61,7 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys, variables = {}
             value={row.key}
             onChange={(e) => update(i, "key", e.target.value)}
             placeholder={placeholder?.key ?? "key"}
-            className={`w-0 flex-1 bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent rounded px-1.5 py-1 transition-all text-gray-200 ${
+            className={`w-0 flex-1 bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent rounded px-1.5 py-0.5 transition-all text-gray-200 ${
               !fixedKeys ? "focus:border-gray-700 focus:bg-[#1a1a1a]" : "text-gray-500 font-mono cursor-default"
             } ${!row.enabled ? "opacity-40 line-through" : ""}`}
             readOnly={fixedKeys}
@@ -73,7 +73,7 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys, variables = {}
             onChange={(v) => update(i, "value", v)}
             variables={variables}
             wrapperClassName="w-0 flex-1"
-            className={`bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent focus:border-gray-700 focus:bg-[#1a1a1a] rounded px-1.5 py-1 transition-all text-gray-200 ${
+            className={`bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent focus:border-gray-700 focus:bg-[#1a1a1a] rounded px-1.5 py-0.5 transition-all text-gray-200 ${
               !row.enabled ? "opacity-40 line-through" : ""
             }`}
             placeholder={placeholder?.value ?? "value"}
@@ -91,7 +91,7 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys, variables = {}
       ))}
 
       {needsEmptyRow && (
-        <div className="group flex items-center gap-1.5 py-0.5 opacity-40 cursor-text" onClick={addRow}>
+        <div className="group flex items-center gap-1.5 h-7 opacity-40 cursor-text" onClick={addRow}>
           <div className="w-4 shrink-0" />
           <span className="w-0 flex-1 text-xs px-1.5 py-1 text-gray-600">
             {placeholder?.key ?? "key"}

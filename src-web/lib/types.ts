@@ -157,6 +157,7 @@ export interface Environment {
   id: string;
   name: string;
   is_active: boolean;
+  sort_order: number;
   created_at: string;
 }
 

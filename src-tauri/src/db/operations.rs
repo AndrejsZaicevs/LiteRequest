@@ -445,7 +445,8 @@ impl Database {
 
     pub fn insert_environment(&self, e: &Environment) -> rusqlite::Result<()> {
         self.conn.execute(
-            "INSERT INTO environments (id, name, is_active, created_at) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO environments (id, name, is_active, created_at, sort_order)
+             VALUES (?1, ?2, ?3, ?4, COALESCE((SELECT MAX(sort_order)+1 FROM environments), 0))",
             params![e.id, e.name, e.is_active, e.created_at],
         )?;
         Ok(())
@@ -453,7 +454,7 @@ impl Database {
 
     pub fn list_environments(&self) -> rusqlite::Result<Vec<Environment>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, is_active, created_at FROM environments ORDER BY name",
+            "SELECT id, name, is_active, created_at, sort_order FROM environments ORDER BY sort_order, name",
         )?;
         let rows = stmt.query_map([], |row| {
             let is_active: i32 = row.get(2)?;
@@ -462,9 +463,20 @@ impl Database {
                 name: row.get(1)?,
                 is_active: is_active != 0,
                 created_at: row.get(3)?,
+                sort_order: row.get(4)?,
             })
         })?;
         rows.collect()
+    }
+
+    pub fn reorder_environments(&self, ordered_ids: &[String]) -> rusqlite::Result<()> {
+        for (i, id) in ordered_ids.iter().enumerate() {
+            self.conn.execute(
+                "UPDATE environments SET sort_order=?2 WHERE id=?1",
+                params![id, i as i32],
+            )?;
+        }
+        Ok(())
     }
 
     pub fn set_active_environment(&self, id: &str) -> rusqlite::Result<()> {

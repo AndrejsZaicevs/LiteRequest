@@ -5,6 +5,7 @@ pub struct Environment {
     pub id: String,
     pub name: String,
     pub is_active: bool,
+    pub sort_order: i32,
     pub created_at: String,
 }
 

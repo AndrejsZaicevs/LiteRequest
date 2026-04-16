@@ -153,6 +153,9 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
     // Migrate old env_variables → new env_var_defs + env_var_values
     migrate_env_variables(conn);
 
+    // Add sort_order to environments table
+    migrate_environment_sort_order(conn);
+
     Ok(())
 }
 
@@ -333,4 +336,23 @@ fn migrate_env_variables(conn: &Connection) {
             );
         }
     }
+}
+
+/// Add sort_order column to environments table (idempotent).
+fn migrate_environment_sort_order(conn: &Connection) {
+    let has_col: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('environments') WHERE name='sort_order'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
+    if has_col {
+        return;
+    }
+    let _ = conn.execute_batch(
+        "ALTER TABLE environments ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
+         UPDATE environments SET sort_order = rowid;",
+    );
 }
