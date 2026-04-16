@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings, Plus, Trash2, Eye, EyeOff, GripVertical } from "lucide-react";
+import { Settings, Plus, Trash2, Eye, EyeOff, GripVertical, Database, AlertTriangle } from "lucide-react";
 import type { Environment, EnvVarDef, VarRow, KeyValuePair, ClientCertEntry } from "../../lib/types";
 import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-type Section = "environments" | "headers" | "variables" | "certificates";
+type Section = "environments" | "headers" | "variables" | "certificates" | "cleanup";
 
 interface SortableEnvRowProps {
   env: Environment;
@@ -100,6 +100,36 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
   const [selectedEnv, setSelectedEnv] = useState<string | null>(environments[0]?.id ?? null);
   const [renamingEnv, setRenamingEnv] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  // Cleanup / storage
+  type DbStats = { db_size_bytes: number; version_count: number; execution_count: number; oldest_execution: string | null; oldest_version: string | null };
+  const [dbStats, setDbStats] = useState<DbStats | null>(null);
+  const [cleanupDays, setCleanupDays] = useState(30);
+  const [cleanupResult, setCleanupResult] = useState<{ versions_deleted: number; executions_deleted: number } | null>(null);
+  const [cleanupRunning, setCleanupRunning] = useState(false);
+
+  const loadDbStats = () => api.getDbStats().then(setDbStats).catch(() => {});
+
+  const runCleanup = async () => {
+    setCleanupRunning(true);
+    setCleanupResult(null);
+    const cutoff = new Date(Date.now() - cleanupDays * 86400_000).toISOString();
+    const result = await api.cleanupOldData(cutoff);
+    setCleanupResult(result);
+    setCleanupRunning(false);
+    loadDbStats();
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const formatDate = (iso: string | null) => {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  };
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -245,11 +275,13 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
     api.setAppSetting("client_certs", JSON.stringify(next)).catch(console.error);
   };
 
-  const toggle = (s: Section) => setOpen(prev => {
-    const next = new Set(prev);
-    if (next.has(s)) next.delete(s); else next.add(s);
-    return next;
-  });
+  const toggle = (s: Section) => {
+    setOpen(prev => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s); else { next.add(s); if (s === "cleanup") loadDbStats(); }
+      return next;
+    });
+  };
 
   const inputClass = "w-full bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-gray-700 focus:bg-[#1a1a1a] transition-colors";
   const selectClass = "bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 pr-8 text-sm text-gray-200 focus:outline-none focus:border-gray-700 transition-colors cursor-pointer";
@@ -467,6 +499,85 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
               </div>
             </div>
           ))}
+        </div>
+      </CollapsibleSection>
+
+      {/* Storage & Cleanup */}
+      <CollapsibleSection
+        title="Storage & Cleanup"
+        isOpen={open.has("cleanup")}
+        onToggle={() => toggle("cleanup")}
+      >
+        <div className="space-y-4">
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: "DB size", value: dbStats ? formatBytes(dbStats.db_size_bytes) : "—" },
+              { label: "Versions", value: dbStats ? dbStats.version_count.toLocaleString() : "—" },
+              { label: "Executions", value: dbStats ? dbStats.execution_count.toLocaleString() : "—" },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-[#1a1a1a] border border-gray-800 rounded-md px-3 py-2.5 text-center">
+                <div className="text-xs text-gray-500 mb-1">{label}</div>
+                <div className="text-sm font-semibold text-gray-200">{value}</div>
+              </div>
+            ))}
+          </div>
+
+          {dbStats && (dbStats.oldest_execution || dbStats.oldest_version) && (
+            <div className="text-xs text-gray-600 flex gap-4">
+              {dbStats.oldest_execution && <span>Oldest execution: <span className="text-gray-500">{formatDate(dbStats.oldest_execution)}</span></span>}
+              {dbStats.oldest_version && <span>Oldest version: <span className="text-gray-500">{formatDate(dbStats.oldest_version)}</span></span>}
+            </div>
+          )}
+
+          {!dbStats && (
+            <button onClick={loadDbStats} className={btnClass}>
+              <Database size={13} /> Load stats
+            </button>
+          )}
+
+          {/* Cleanup controls */}
+          <div>
+            <div className={labelClass}>Delete history older than</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {[7, 30, 90, 180, 365].map(d => (
+                <button
+                  key={d}
+                  onClick={() => setCleanupDays(d)}
+                  className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                    cleanupDays === d
+                      ? "bg-blue-600 text-white border-blue-500"
+                      : "bg-transparent text-gray-500 border-gray-700 hover:border-gray-500 hover:text-gray-300"
+                  }`}
+                >
+                  {d === 365 ? "1 year" : `${d}d`}
+                </button>
+              ))}
+            </div>
+            <div className="mt-1 text-[11px] text-gray-600">
+              Will delete executions and non-current versions created before{" "}
+              <span className="text-gray-500">{formatDate(new Date(Date.now() - cleanupDays * 86400_000).toISOString())}</span>.
+              Current active versions are always kept.
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={runCleanup}
+              disabled={cleanupRunning}
+              className={`${btnDangerClass} disabled:opacity-50`}
+            >
+              <AlertTriangle size={13} />
+              {cleanupRunning ? "Cleaning…" : "Run cleanup"}
+            </button>
+
+            {cleanupResult && (
+              <span className="text-xs text-green-400">
+                Done — {cleanupResult.executions_deleted} execution{cleanupResult.executions_deleted !== 1 ? "s" : ""} and{" "}
+                {cleanupResult.versions_deleted} version{cleanupResult.versions_deleted !== 1 ? "s" : ""} removed.
+              </span>
+            )}
+          </div>
         </div>
       </CollapsibleSection>
     </div>

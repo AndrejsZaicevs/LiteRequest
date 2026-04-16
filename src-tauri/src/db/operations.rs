@@ -824,6 +824,44 @@ impl Database {
         )
     }
 
+    pub fn get_db_stats(&self) -> rusqlite::Result<DbStats> {
+        let page_count: i64 = self.conn.query_row("PRAGMA page_count", [], |r| r.get(0))?;
+        let page_size: i64 = self.conn.query_row("PRAGMA page_size", [], |r| r.get(0))?;
+        let version_count: i64 = self.conn.query_row("SELECT COUNT(*) FROM request_versions", [], |r| r.get(0))?;
+        let execution_count: i64 = self.conn.query_row("SELECT COUNT(*) FROM request_executions", [], |r| r.get(0))?;
+        let oldest_execution: Option<String> = self.conn
+            .query_row("SELECT MIN(executed_at) FROM request_executions", [], |r| r.get(0))
+            .optional()?.flatten();
+        let oldest_version: Option<String> = self.conn
+            .query_row("SELECT MIN(created_at) FROM request_versions", [], |r| r.get(0))
+            .optional()?.flatten();
+        Ok(DbStats {
+            db_size_bytes: page_count * page_size,
+            version_count,
+            execution_count,
+            oldest_execution,
+            oldest_version,
+        })
+    }
+
+    /// Delete executions before cutoff_date (ISO 8601) and orphaned non-current versions
+    /// before cutoff_date, then VACUUM. Returns deleted counts.
+    pub fn cleanup_old_data(&self, cutoff_date: &str) -> rusqlite::Result<CleanupResult> {
+        let executions_deleted = self.conn.execute(
+            "DELETE FROM request_executions WHERE executed_at < ?1",
+            params![cutoff_date],
+        )?;
+        // Delete versions older than cutoff that are NOT the current_version_id of any request
+        let versions_deleted = self.conn.execute(
+            "DELETE FROM request_versions
+             WHERE created_at < ?1
+               AND id NOT IN (SELECT current_version_id FROM requests WHERE current_version_id IS NOT NULL)",
+            params![cutoff_date],
+        )?;
+        self.conn.execute_batch("VACUUM")?;
+        Ok(CleanupResult { versions_deleted, executions_deleted })
+    }
+
     // ── App Settings (key-value store) ───────────────────────────
 
     pub fn get_app_setting(&self, key: &str) -> rusqlite::Result<Option<String>> {

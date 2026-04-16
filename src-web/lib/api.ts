@@ -116,6 +116,8 @@ export const extractPathParams = (url: string) => invoke<string[]>("extract_path
 
 // ── Maintenance ──────────────────────────────────────────────
 export const pruneOldExecutions = (days: number) => invoke<number>("prune_old_executions", { days });
+export const getDbStats = () => invoke<{ db_size_bytes: number; version_count: number; execution_count: number; oldest_execution: string | null; oldest_version: string | null }>("get_db_stats");
+export const cleanupOldData = (cutoffDate: string) => invoke<{ versions_deleted: number; executions_deleted: number }>("cleanup_old_data", { cutoffDate });
 
 // ── Search ────────────────────────────────────────────────────
 export const searchAll = (query: string) => invoke<import("./types").SearchHit[]>("search_all", { query });

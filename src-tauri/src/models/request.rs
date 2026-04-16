@@ -312,3 +312,18 @@ pub struct SearchHit {
     pub executed_at: Option<String>,
     pub status: Option<u16>,
 }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DbStats {
+    pub db_size_bytes: i64,
+    pub version_count: i64,
+    pub execution_count: i64,
+    pub oldest_execution: Option<String>,
+    pub oldest_version: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CleanupResult {
+    pub versions_deleted: usize,
+    pub executions_deleted: usize,
+}

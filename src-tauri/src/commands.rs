@@ -664,6 +664,26 @@ pub fn prune_old_executions(state: State<AppState>, days: i64) -> CmdResult<usiz
         .map_err(map_err)
 }
 
+#[tauri::command]
+pub fn get_db_stats(state: State<AppState>) -> CmdResult<DbStats> {
+    let stats = state.db.lock().unwrap().get_db_stats().map_err(map_err)?;
+    // Supplement with actual file size if available (more accurate than page_count * page_size)
+    let file_size = std::fs::metadata(&state.db_path)
+        .map(|m| m.len() as i64)
+        .unwrap_or(stats.db_size_bytes);
+    Ok(DbStats { db_size_bytes: file_size, ..stats })
+}
+
+#[tauri::command]
+pub fn cleanup_old_data(state: State<AppState>, cutoff_date: String) -> CmdResult<CleanupResult> {
+    state
+        .db
+        .lock()
+        .unwrap()
+        .cleanup_old_data(&cutoff_date)
+        .map_err(map_err)
+}
+
 // ── Search ───────────────────────────────────────────────────
 
 #[tauri::command]

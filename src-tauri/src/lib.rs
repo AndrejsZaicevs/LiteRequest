@@ -11,6 +11,7 @@ use std::sync::Mutex;
 
 pub struct AppState {
     pub db: Mutex<Database>,
+    pub db_path: PathBuf,
 }
 
 fn dirs_data_path() -> PathBuf {
@@ -30,6 +31,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             db: Mutex::new(db),
+            db_path,
         })
         .invoke_handler(tauri::generate_handler![
             // Collections
@@ -109,6 +111,8 @@ pub fn run() {
             commands::resolve_url,
             commands::extract_path_params,
             // Maintenance
+            commands::get_db_stats,
+            commands::cleanup_old_data,
             commands::prune_old_executions,
             // Search
             commands::search_all,
