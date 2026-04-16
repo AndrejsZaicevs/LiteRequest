@@ -228,12 +228,14 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
     if (!selectedEnv) return;
     await api.upsertEnvVarValue(row.value_id ?? crypto.randomUUID(), row.def_id, selectedEnv, value, row.is_secret);
     setEnvVarRows(await api.loadEnvVarRows(selectedEnv));
+    onUpdate();
   };
 
   const toggleEnvVarSecret = async (row: VarRow) => {
     if (!selectedEnv) return;
     await api.upsertEnvVarValue(row.value_id ?? crypto.randomUUID(), row.def_id, selectedEnv, row.value, !row.is_secret);
     setEnvVarRows(await api.loadEnvVarRows(selectedEnv));
+    onUpdate();
   };
 
   const deleteEnvVarDef = async (defId: string) => {
@@ -377,7 +379,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                     else if (selectedEnv) {
                       api.upsertEnvVarValue(crypto.randomUUID(), def.id, selectedEnv, e.target.value, false)
                         .then(() => api.loadEnvVarRows(selectedEnv))
-                        .then(setEnvVarRows);
+                        .then(rows => { setEnvVarRows(rows); onUpdate(); });
                     }
                   }}
                   placeholder={selectedEnv ? "value" : "—"}

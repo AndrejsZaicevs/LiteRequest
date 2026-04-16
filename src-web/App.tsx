@@ -74,7 +74,8 @@ export default function App() {
         setCollectionDisplayVars(obj);
       })
       .catch(() => setCollectionDisplayVars({}));
-  }, [currentRequest?.collection_id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRequest?.collection_id, environments.find(e => e.is_active)?.id, envVariables]);
 
   const displayVariables = useMemo(() => {
     // Collection vars as base, env vars override (same priority as request execution)

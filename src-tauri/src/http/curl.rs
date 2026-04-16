@@ -12,6 +12,15 @@ pub fn to_curl(
     let url = super::interpolation::resolve_url(base_path, &data.url, variables);
     let url = super::interpolation::interpolate(&url, variables);
 
+    // Resolve :param segments from path_params
+    let path_param_pairs: Vec<(String, String)> = data
+        .path_params
+        .iter()
+        .filter(|p| p.enabled && !p.key.is_empty())
+        .map(|p| (p.key.clone(), super::interpolation::interpolate(&p.value, variables)))
+        .collect();
+    let url = super::interpolation::resolve_path_params(&url, &path_param_pairs);
+
     let mut parts: Vec<String> = vec!["curl".to_string()];
 
     // Method (omit for GET, it's the default)

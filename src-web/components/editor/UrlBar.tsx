@@ -31,6 +31,7 @@ export function UrlBar({ data, onChange, onSend, onCancel, onCopyCurl, onImportC
   };
 
   const showBasePath = basePath && !(data.url.startsWith("http://") || data.url.startsWith("https://"));
+  const resolvedBasePath = basePath.replace(/\{\{(\w+)\}\}/g, (_, k) => variables[k] ?? `{{${k}}}`).replace(/\/+$/, "");
 
   return (
     <>
@@ -53,7 +54,7 @@ export function UrlBar({ data, onChange, onSend, onCancel, onCopyCurl, onImportC
             <div className="flex-1 flex items-center px-3 py-2 font-mono text-sm relative overflow-visible">
               {showBasePath && (
                 <span className="text-gray-500 shrink-0 select-none mr-px" title={basePath}>
-                  {basePath.replace(/\/+$/, "")}
+                  {resolvedBasePath}
                 </span>
               )}
               <VariableInput

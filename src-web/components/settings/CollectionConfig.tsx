@@ -115,6 +115,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
     if (!activeEnv) return;
     await api.upsertVarValue(row.value_id ?? crypto.randomUUID(), row.def_id, activeEnv.id, value, row.is_secret);
     setVarRows(await api.loadVarRows(collectionId, activeEnv.id));
+    onUpdate();
   };
 
   const deleteVarDef = async (defId: string) => {
@@ -306,7 +307,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                     else if (activeEnv) {
                       api.upsertVarValue(crypto.randomUUID(), def.id, activeEnv.id, e.target.value, false)
                         .then(() => api.loadVarRows(collectionId, activeEnv.id))
-                        .then(setVarRows);
+                        .then(rows => { setVarRows(rows); onUpdate(); });
                     }
                   }}
                   placeholder="value"
