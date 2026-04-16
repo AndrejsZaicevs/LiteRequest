@@ -299,7 +299,7 @@ export function findUnresolvedVars(
   if (data.body) scan(data.body);
   data.multipart_fields?.forEach(f => { scan(f.key); if (!f.is_file) scan(f.value); });
 
-  return [...refs].filter(name => !(name in resolvedVars));
+  return [...refs].filter(name => !(name in resolvedVars) && !name.startsWith("$"));
 }
 
 // ── Search ────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Paperclip } from "lucide-react";
+import { Paperclip, Maximize2, Minimize2 } from "lucide-react";
 import type { RequestData, KeyValuePair, MultipartField } from "../../lib/types";
 import { CodeEditor } from "./CodeEditor";
 import { VariableInput } from "../shared/VariableInput";
@@ -12,6 +12,8 @@ interface RequestEditorProps {
   basePath: string;
   requestName: string;
   variables?: Record<string, string>;
+  isMaximized?: boolean;
+  onMaximize?: () => void;
 }
 
 type BodyTab = "none" | "json" | "form" | "raw" | "multipart";
@@ -24,7 +26,7 @@ function bodyTypeToTab(bt: string): BodyTab {
   return "none";
 }
 
-export function RequestEditor({ data, onChange, isLoading, basePath, requestName, variables = {} }: RequestEditorProps) {
+export function RequestEditor({ data, onChange, isLoading, basePath, requestName, variables = {}, isMaximized, onMaximize }: RequestEditorProps) {
   const [bodyTab, setBodyTab] = useState<BodyTab>(() => bodyTypeToTab(data.body_type));
 
   // Sync tab when switching to a different request
@@ -64,20 +66,31 @@ export function RequestEditor({ data, onChange, isLoading, basePath, requestName
             </button>
           )}
         </div>
-        <div className="flex bg-[#1a1a1a] rounded p-0.5 border border-gray-800">
-          {(["none", "json", "form", "raw", "multipart"] as const).map(tab => (
+        <div className="flex items-center gap-2">
+          <div className="flex bg-[#1a1a1a] rounded p-0.5 border border-gray-800">
+            {(["none", "json", "form", "raw", "multipart"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => handleBodyTabChange(tab)}
+                className={`text-xs px-3 py-1 rounded-sm transition-colors ${
+                  bodyTab === tab
+                    ? "bg-gray-700 text-gray-200 shadow-sm"
+                    : "text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                {tab === "none" ? "None" : tab === "form" ? "Form" : tab === "multipart" ? "Multipart" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
+          {onMaximize && (
             <button
-              key={tab}
-              onClick={() => handleBodyTabChange(tab)}
-              className={`text-xs px-3 py-1 rounded-sm transition-colors ${
-                bodyTab === tab
-                  ? "bg-gray-700 text-gray-200 shadow-sm"
-                  : "text-gray-500 hover:text-gray-300"
-              }`}
+              onClick={onMaximize}
+              title={isMaximized ? "Restore split" : "Maximize request"}
+              className="p-1 rounded text-gray-600 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
             >
-              {tab === "none" ? "None" : tab === "form" ? "Form" : tab === "multipart" ? "Multipart" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {isMaximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
             </button>
-          ))}
+          )}
         </div>
       </div>
 

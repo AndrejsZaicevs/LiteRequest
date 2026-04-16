@@ -5,8 +5,9 @@ import type {
   KeyValuePair, AuthConfig,
 } from "./lib/types";
 import { defaultRequestData, resolveVariableRefs, findUnresolvedVars } from "./lib/types";
+import { resolveDynamicVars, getDynamicVarPreviews } from "./lib/dynamicVars";
 import * as api from "./lib/api";
-import { Search, Settings } from "lucide-react";
+import { Search, Settings, Maximize2, Minimize2 } from "lucide-react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Inspector } from "./components/layout/Inspector";
 import { UrlBar } from "./components/editor/UrlBar";
@@ -54,6 +55,8 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [inspectorWidth, setInspectorWidth] = useState(280);
   const [splitRatio, setSplitRatio] = useState(0.5);
+  // "auto" = derive from context; "request"/"response" = user-maximized; "split" = force split
+  const [splitOverride, setSplitOverride] = useState<"auto" | "request" | "response" | "split">("auto");
 
   // ── Search ───────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
@@ -82,12 +85,30 @@ export default function App() {
     for (const v of envVariables) vars[v.key] = v.value;
     const colName = collections.find(c => c.id === currentRequest?.collection_id)?.name;
     if (colName) vars["collectionName"] = colName;
+    // Add stable preview values for dynamic variables (tooltip display only)
+    const previews = getDynamicVarPreviews();
+    for (const [k, v] of Object.entries(previews)) {
+      if (!(k in vars)) vars[k] = v;
+    }
     return resolveVariableRefs(vars);
   }, [envVariables, collectionDisplayVars, collections, currentRequest?.collection_id]);
 
   // ── Refs for drag tracking ───────────────────────────────
   const dragging = useRef<"sidebar" | "inspector" | "split" | null>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
+
+  // ── Effective split pane mode ────────────────────────────
+  const noBody = editorData.body_type === "None";
+  const noResponse = !currentResponse && !isLoading;
+  const effectivePane: "request" | "response" | "split" = (() => {
+    if (splitOverride === "request") return "request";
+    if (splitOverride === "response") return "response";
+    if (splitOverride === "split") return "split";
+    // auto
+    if (noResponse) return "request";
+    if (noBody) return "response";
+    return "split";
+  })();
 
   // ── Data loading ─────────────────────────────────────────
   const refreshAll = useCallback(async () => {
@@ -171,6 +192,7 @@ export default function App() {
 
     setCurrentRequest(req);
     setCenterView({ type: "request", requestId: req.id });
+    setSplitOverride("auto"); // reset pane layout for each new request
     try { localStorage.setItem("lr.selectedRequestId", req.id); } catch { /* ignore */ }
 
     try {
@@ -329,6 +351,7 @@ export default function App() {
 
     setIsLoading(true);
     setErrorMessage(null);
+    setSplitOverride("auto"); // reset so response auto-shows after send
     try {
       // Build variables
       const variables: Record<string, string> = {};
@@ -342,7 +365,8 @@ export default function App() {
       const col = collections.find(c => c.id === currentRequest.collection_id);
       if (col) variables["collectionName"] = col.name;
 
-      const resolvedVariables = resolveVariableRefs(variables);
+      // Inject fresh dynamic variable values ($randomInt, $randomEmail, etc.)
+      const resolvedVariables = resolveVariableRefs(resolveDynamicVars(variables));
 
       const basePath = col?.base_path ?? "";
 
@@ -411,7 +435,7 @@ export default function App() {
       const colVars = await api.getActiveCollectionVariables(currentRequest.collection_id);
       for (const [k, v] of colVars) variables[k] = v;
       if (col) variables["collectionName"] = col.name;
-      const resolvedVariables = resolveVariableRefs(variables);
+      const resolvedVariables = resolveVariableRefs(resolveDynamicVars(variables));
       const basePath = col?.base_path ?? "";
       const effectiveData = buildEffectiveData(editorData);
       const curlStr = await api.toCurl(effectiveData, resolvedVariables, basePath);
@@ -618,32 +642,57 @@ export default function App() {
 
               {centerView.type === "request" && (
                 <div ref={splitContainerRef} className="flex-1 flex flex-col overflow-hidden">
-                  {/* Request body editor (top portion) */}
-                  <div style={{ height: `${splitRatio * 100}%` }} className="shrink-0 overflow-hidden border-b border-gray-800">
-                    <RequestEditor
-                      data={editorData}
-                      onChange={onEditorChange}
-                      isLoading={isLoading}
-                      basePath={collections.find(c => c.id === currentRequest?.collection_id)?.base_path ?? ""}
-                      requestName={currentRequest?.name ?? ""}
-                      variables={displayVariables}
-                    />
-                  </div>
+                  {/* Request body editor */}
+                  {effectivePane !== "response" && (
+                    <div
+                      style={effectivePane === "split" ? { height: `${splitRatio * 100}%` } : undefined}
+                      className={`${effectivePane === "split" ? "shrink-0" : "flex-1"} overflow-hidden border-b border-gray-800`}
+                    >
+                      <RequestEditor
+                        data={editorData}
+                        onChange={onEditorChange}
+                        isLoading={isLoading}
+                        basePath={collections.find(c => c.id === currentRequest?.collection_id)?.base_path ?? ""}
+                        requestName={currentRequest?.name ?? ""}
+                        variables={displayVariables}
+                        isMaximized={effectivePane === "request"}
+                        // Only show maximize when there's a response to switch to
+                        onMaximize={noResponse ? undefined : () => setSplitOverride(
+                          splitOverride === "request" ? "auto" : "request"
+                        )}
+                      />
+                    </div>
+                  )}
 
-                  {/* Split drag handle */}
-                  <div
-                    className="h-[3px] cursor-row-resize shrink-0 bg-gray-800 hover:bg-blue-500/60 transition-colors"
-                    onMouseDown={() => startDrag("split")}
-                  />
-
-                  {/* Response view (bottom portion) */}
-                  <div className="flex-1 overflow-hidden">
-                    <ResponseView
-                      response={currentResponse}
-                      latency={currentLatency}
-                      isLoading={isLoading}
+                  {/* Split drag handle (only in split mode) */}
+                  {effectivePane === "split" && (
+                    <div
+                      className="h-[3px] cursor-row-resize shrink-0 bg-gray-800 hover:bg-blue-500/60 transition-colors"
+                      onMouseDown={() => startDrag("split")}
                     />
-                  </div>
+                  )}
+
+                  {/* Response view */}
+                  {effectivePane !== "request" && (
+                    <div className="flex-1 overflow-hidden">
+                      <ResponseView
+                        response={currentResponse}
+                        latency={currentLatency}
+                        isLoading={isLoading}
+                        isMaximized={effectivePane === "response"}
+                        onMaximize={() => {
+                          if (splitOverride === "response") {
+                            setSplitOverride("auto");
+                          } else if (effectivePane === "response") {
+                            // Auto-collapsed because body=none — force split so user can access request editor
+                            setSplitOverride("split");
+                          } else {
+                            setSplitOverride("response");
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 

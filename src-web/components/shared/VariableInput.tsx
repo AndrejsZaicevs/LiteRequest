@@ -103,9 +103,11 @@ export function VariableInput({
                   <span
                     key={i}
                     className={`rounded-sm ${
-                      variables[seg.name] !== undefined
-                        ? "text-emerald-400 bg-emerald-400/10"
-                        : "text-orange-400 bg-orange-400/10"
+                      seg.name.startsWith("$")
+                        ? "text-purple-400 bg-purple-400/10"
+                        : variables[seg.name] !== undefined
+                          ? "text-emerald-400 bg-emerald-400/10"
+                          : "text-orange-400 bg-orange-400/10"
                     }`}
                   >
                     {seg.content}
@@ -138,13 +140,19 @@ export function VariableInput({
         <div className="absolute top-full left-0 z-50 mt-1 bg-[#1a1a1a] border border-gray-700 rounded shadow-xl p-2 min-w-[160px] text-xs pointer-events-none">
           {varSegments.map(s => (
             <div key={s.name} className="flex items-center gap-1.5 py-0.5">
-              <span className={`font-mono ${variables[s.name] !== undefined ? "text-emerald-400" : "text-orange-400"}`}>
+              <span className={`font-mono ${
+                s.name.startsWith("$") ? "text-purple-400"
+                : variables[s.name] !== undefined ? "text-emerald-400"
+                : "text-orange-400"
+              }`}>
                 {`{{${s.name}}}`}
               </span>
               <span className="text-gray-600">→</span>
-              {variables[s.name] !== undefined
-                ? <span className="text-gray-200 font-mono max-w-[150px] truncate">{variables[s.name]}</span>
-                : <span className="text-orange-400/70 italic">not set</span>
+              {s.name.startsWith("$")
+                ? <span className="text-purple-300/70 italic">dynamic</span>
+                : variables[s.name] !== undefined
+                  ? <span className="text-gray-200 font-mono max-w-[150px] truncate">{variables[s.name]}</span>
+                  : <span className="text-orange-400/70 italic">not set</span>
               }
             </div>
           ))}
