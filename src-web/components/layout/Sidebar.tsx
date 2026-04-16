@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useCallback } from "react";
-import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Plus } from "lucide-react";
+import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Plus, Upload, Download } from "lucide-react";
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable,
@@ -8,6 +8,7 @@ import type { DragMoveEvent, DragEndEvent, DragStartEvent } from "@dnd-kit/core"
 import type { Collection, Folder as FolderType, Request, HttpMethod } from "../../lib/types";
 import { METHOD_STYLES } from "../../lib/types";
 import * as api from "../../lib/api";
+import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -120,7 +121,12 @@ export function Sidebar({
   selectedRequestId, selectedCollectionId, requestMeta,
   onSelectRequest, onSelectCollection, onDataChange,
 }: SidebarProps) {
-  const [collapsed,   setCollapsed]   = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem("lr.collapsed");
+      return saved ? new Set(JSON.parse(saved) as string[]) : new Set();
+    } catch { return new Set(); }
+  });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: string; id: string } | null>(null);
   const [renaming,    setRenaming]    = useState<{ type: string; id: string; value: string } | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -156,6 +162,7 @@ export function Sidebar({
   const toggle = (id: string) => setCollapsed(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
+    try { localStorage.setItem("lr.collapsed", JSON.stringify([...next])); } catch { /* ignore */ }
     return next;
   });
 
@@ -189,6 +196,38 @@ export function Sidebar({
   const handleNewCollection = async () => {
     const col: Collection = { id: crypto.randomUUID(), name: "New Collection", base_path: "", auth_config: null, headers_config: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
     try { await api.insertCollection(col); onDataChange(); setRenaming({ type: "collection", id: col.id, value: col.name }); } catch (e) { console.error(e); }
+  };
+
+  const handleImportPostman = async () => {
+    try {
+      const selected = await dialogOpen({ multiple: false, directory: false, filters: [{ name: "JSON", extensions: ["json"] }] });
+      if (!selected) return;
+      const path = typeof selected === "string" ? selected : selected[0];
+      const summary = await api.importPostmanCollection(path);
+      onDataChange();
+      alert(`Imported "${summary.collection_name}": ${summary.requests} requests, ${summary.folders} folders.`);
+    } catch (e: unknown) {
+      console.error(e);
+      alert(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const handleExportCollection = async (collectionId: string) => {
+    closeCtx();
+    try {
+      const col = collections.find(c => c.id === collectionId);
+      const defaultName = (col?.name ?? "collection").replace(/[^a-z0-9_-]/gi, "_");
+      const savePath = await dialogSave({
+        defaultPath: `${defaultName}.json`,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!savePath) return;
+      const json = await api.exportCollectionToPostman(collectionId);
+      await api.saveFile(savePath, json, false);
+    } catch (e: unknown) {
+      console.error(e);
+      alert(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   };
 
   const handleNewFolder = async (collectionId: string, parentFolderId?: string) => {
@@ -477,12 +516,22 @@ export function Sidebar({
       {/* Header */}
       <div className="h-12 border-b border-gray-800 flex items-center px-4 justify-between shrink-0">
         <span className="font-semibold text-sm text-gray-200">Collections</span>
-        <button
-          onClick={handleNewCollection}
-          className="text-gray-400 hover:text-gray-200 transition-colors"
-        >
-          <Plus size={16} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleImportPostman}
+            title="Import Postman collection"
+            className="text-gray-400 hover:text-gray-200 transition-colors"
+          >
+            <Upload size={15} />
+          </button>
+          <button
+            onClick={handleNewCollection}
+            title="New collection"
+            className="text-gray-400 hover:text-gray-200 transition-colors"
+          >
+            <Plus size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Tree */}
@@ -577,6 +626,10 @@ export function Sidebar({
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => handleNewRequest(contextMenu.id)}>New Request</button>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => handleNewFolder(contextMenu.id)}>New Folder</button>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { onSelectCollection(contextMenu.id); closeCtx(); }}>Settings</button>
+            <div className="my-1 border-t border-gray-800" />
+            <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100 flex items-center gap-2" onClick={() => handleExportCollection(contextMenu.id)}>
+              <Download size={13} className="opacity-60" /> Export as Postman
+            </button>
             <div className="my-1 border-t border-gray-800" />
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { setRenaming({ type: "collection", id: contextMenu.id, value: collections.find(c => c.id === contextMenu.id)?.name ?? "" }); closeCtx(); }}>Rename</button>
             <button className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-[#242424] hover:text-red-300" onClick={() => handleDelete("collection", contextMenu.id)}>Delete</button>

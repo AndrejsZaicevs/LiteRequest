@@ -122,3 +122,14 @@ export const searchAll = (query: string) => invoke<import("./types").SearchHit[]
 // ── File I/O ─────────────────────────────────────────────────
 export const saveFile = (path: string, data: string, isBase64: boolean) =>
   invoke<void>("save_file", { path, data, isBase64 });
+
+// ── Import ────────────────────────────────────────────────────
+export interface ImportSummary {
+  collection_name: string;
+  folders: number;
+  requests: number;
+}
+export const importPostmanCollection = (path: string) =>
+  invoke<ImportSummary>("import_postman_collection", { path });
+export const exportCollectionToPostman = (collectionId: string) =>
+  invoke<string>("export_collection_to_postman", { collectionId });

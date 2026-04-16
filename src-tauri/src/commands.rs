@@ -685,3 +685,23 @@ pub fn save_file(path: String, data: String, is_base64: bool) -> CmdResult<()> {
         std::fs::write(&path, data.as_bytes()).map_err(|e| format!("Failed to write file: {e}"))
     }
 }
+
+// ── Import ────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn import_postman_collection(
+    state: State<AppState>,
+    path: String,
+) -> CmdResult<crate::import::postman::ImportSummary> {
+    let db = state.db.lock().unwrap();
+    crate::import::postman::import_from_path(&path, &db).map_err(|e| e)
+}
+
+#[tauri::command]
+pub fn export_collection_to_postman(
+    state: State<AppState>,
+    collection_id: String,
+) -> CmdResult<String> {
+    let db = state.db.lock().unwrap();
+    crate::import::postman::export_collection(&collection_id, &db).map_err(|e| e)
+}

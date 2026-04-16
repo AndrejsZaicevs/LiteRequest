@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod db;
 pub mod http;
+pub mod import;
 pub mod models;
 pub mod utils;
 
@@ -114,6 +115,10 @@ pub fn run() {
             commands::compute_fingerprint,
             // File I/O
             commands::save_file,
+            // Import
+            commands::import_postman_collection,
+            // Export
+            commands::export_collection_to_postman,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -145,6 +145,19 @@ export default function App() {
 
   useEffect(() => { refreshAll(); }, [refreshAll]);
 
+  // ── Restore last-open request after first data load ──────
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || requests.length === 0) return;
+    restoredRef.current = true;
+    const savedId = localStorage.getItem("lr.selectedRequestId");
+    if (savedId) {
+      const req = requests.find(r => r.id === savedId);
+      if (req) selectRequest(req);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requests]);
+
   // ── Request selection ────────────────────────────────────
   const selectRequest = useCallback(async (req: Request) => {
     // Auto-save current if dirty
@@ -154,6 +167,7 @@ export default function App() {
 
     setCurrentRequest(req);
     setCenterView({ type: "request", requestId: req.id });
+    try { localStorage.setItem("lr.selectedRequestId", req.id); } catch { /* ignore */ }
 
     try {
       const [vers, execs] = await Promise.all([
@@ -222,6 +236,7 @@ export default function App() {
 
     setCurrentRequest(req);
     setCenterView({ type: "request", requestId: req.id });
+    try { localStorage.setItem("lr.selectedRequestId", req.id); } catch { /* ignore */ }
 
     try {
       const [vers, execs] = await Promise.all([

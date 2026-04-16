@@ -1,0 +1,117 @@
+{
+  "info": {
+    "_postman_id": "abb1f045-d1f0-452c-a42d-596a011b836b",
+    "name": "request catcher",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Test",
+      "item": [
+        {
+          "name": "New Request",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://32423423423.requestcatcher.com/:storeId"
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/home/andrejs/Desktop/rust/liteRequest/src-tauri/Cargo.toml"
+                },
+                {
+                  "key": "key",
+                  "type": "text",
+                  "value": "value1234"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "get",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://32423423423.requestcatcher.com"
+        }
+      }
+    },
+    {
+      "name": "test",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://32423423423.requestcatcher.com/test"
+        },
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "{\n  \"key\": \"value\"\n}",
+              "value": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "test23",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "test",
+            "value": "12345"
+          }
+        ],
+        "url": {
+          "raw": "https://32423423423.requestcatcher.com/:storeID?key=value1",
+          "query": [
+            {
+              "key": "key",
+              "value": "value1"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Test",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://32423423423.requestcatcher.com/other"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

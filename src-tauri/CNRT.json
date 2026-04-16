@@ -1,0 +1,268 @@
+{
+  "info": {
+    "_postman_id": "39717fe4-9cf3-4ea9-b071-94daaa321256",
+    "name": "CNRT",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "AUTH",
+      "item": [
+        {
+          "name": "Public",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "localhost:8080/api/auth/token"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"client_id\":\"clientId\",\r\n    \"client_secret\":\"clientSecret\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Auth",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{basePath}}/api/auth/authenticate"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\":\"jecastro@cnrt.gob.ar\",\n    \"password\":\"0x9y9\",\n    \"registerDeviceRequest\":{\n        \"UUID\":\"{{$randomUUID}}\",\n        \"serial\":\"serial\",\n        \"model\":\"model\",\n        \"platform\":\"platform\",\n        \"version\":\"version\",\n        \"apkVersion\":\"apkVersion\",\n        \"longitud\":\"{{$randomLongitude}}\",\n        \"latitud\":\"{{$randomLatitude}}\"\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Maestros",
+      "item": [
+        {
+          "name": "Faltas Servicios",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqZWNhc3Ryb0BjbnJ0LmdvYi5hciIsImV4cCI6MTcxNjY0MzExNiwiaWF0IjoxNzE2NTU2NzE2fQ.PfvcnYMGIPRyVN_KE1EnumsCaKWxULFp6F-zjQfPMlk"
+              }
+            ],
+            "url": {
+              "raw": "localhost:8080/api/maestros/faltas-servicios?lastDateDb=2000-10-10&sizePage=50&numberPage=0",
+              "query": [
+                {
+                  "key": "lastDateDb",
+                  "value": "2000-10-10"
+                },
+                {
+                  "key": "sizePage",
+                  "value": "50"
+                },
+                {
+                  "key": "numberPage",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Acta Estado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZWxlZ2FjaW9uanVqdXlAY25ydC5nb2IuYXIiLCJleHAiOjE3MTM4MTk1MTksImlhdCI6MTcxMzczMzExOX0.sz-OI5xCRQRukMuS-Xn9ZgXmUPJa57-7POMOZ5SkaOk"
+              }
+            ],
+            "url": {
+              "raw": "localhost:8080/api/maestros/acta-estado?lastDateDb=2020-10-10",
+              "query": [
+                {
+                  "key": "lastDateDb",
+                  "value": "2020-10-10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ambito",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZWxlZ2FjaW9uanVqdXlAY25ydC5nb2IuYXIiLCJleHAiOjE3MTM4MTk1MTksImlhdCI6MTcxMzczMzExOX0.sz-OI5xCRQRukMuS-Xn9ZgXmUPJa57-7POMOZ5SkaOk"
+              }
+            ],
+            "url": {
+              "raw": "localhost:8080/api/maestros/ambito?lastDateDb=2020-10-10",
+              "query": [
+                {
+                  "key": "lastDateDb",
+                  "value": "2020-10-10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "lugares",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqZWNhc3Ryb0BjbnJ0LmdvYi5hciIsImV4cCI6MTczMjQwMzU5MiwiaWF0IjoxNzMyMzE3MTkyfQ.ehaODrFW606qLQ3Qz5zK4CxVCuWiVAjIgwf0Mywkbuk"
+              }
+            ],
+            "url": {
+              "raw": "{{basePath}}/api/maestros/validaciones-falta?lastDateDb=2020-10-10",
+              "query": [
+                {
+                  "key": "lastDateDb",
+                  "value": "2020-10-10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "ambito-clase-modalidad",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZWxlZ2FjaW9uanVqdXlAY25ydC5nb2IuYXIiLCJleHAiOjE3MTM4MTk1MTksImlhdCI6MTcxMzczMzExOX0.sz-OI5xCRQRukMuS-Xn9ZgXmUPJa57-7POMOZ5SkaOk"
+              }
+            ],
+            "url": {
+              "raw": "localhost:8080/api/maestros/ambito?lastDateDb=2020-10-10",
+              "query": [
+                {
+                  "key": "lastDateDb",
+                  "value": "2020-10-10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "fisca Cargas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqZWNhc3Ryb0BjbnJ0LmdvYi5hciIsImV4cCI6MTcxMzk2MzMzMiwiaWF0IjoxNzEzODc2OTMyfQ.mSfXYdVe2yvcTT86YU-uAOMMp4En65esisiIpl9gaoY"
+              }
+            ],
+            "url": {
+              "raw": "{/api/maestros/clase-modalidad?lastDateDb=2020-10-10",
+              "query": [
+                {
+                  "key": "lastDateDb",
+                  "value": "2020-10-10"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "fisca",
+      "item": [
+        {
+          "name": "fisca carga",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqZWNhc3Ryb0BjbnJ0LmdvYi5hciIsImV4cCI6MTczMjQwNDAwNiwiaWF0IjoxNzMyMzE3NjA2fQ.wNO0FAW8V9R2hIVUlD3VWIEaC1EyVyN4B7mIdf1yWKw"
+              }
+            ],
+            "url": {
+              "raw": "{{basePath}}/api/fiscalizacion/grabar-fiscalizacion"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n        \"idLogin\": 1140,\n        \"idDelegacion\": 1,\n        \"numeroOperativo\": \"778877\",\n        \"idVehiculoCNRT\": 2,\n        \"idResultado\": 1,\n        \"fechaAlta\": \"2024-06-14\",\n        \"fechaCierre\": \"2024-06-18\",\n        \"fechaSaneamiento\": null,\n        \"fechaRetencion\": null,\n        \"idServicio\": 1,\n        \"listaPasajeros\": null,\n        \"listaPasajerosInterno\": \"Something of the sort\",\n        \"idLoginColaborador\": 0,\n        \"observacion\": null,\n        \"latitud\": \"-37.1086099\",\n        \"longitud\": \"-56.8678185\",\n        \"osi\": \"811280000000000030\",\n        \"acta\": null,\n        \"idNoRetener\": null,\n        \"observacionNoRetener\": null,\n        \"fechaCreacion\": \"2024-06-14\",\n        \"idLocalidadOrigen\": 21,\n        \"idLocalidadDestino\": 22940,\n        \"idEstadoViaje\": 0,\n        \"idClaseModalidad\": 0,\n        \"idOperativoApi\": 14,\n        \"type\": 1,\n        \"idJurisdiccion\": 3,\n        \"fiscalizacionDominiosList\": [\n            {\n                \"id\": 11248,\n                \"dominio\": \"GGG123\",\n                \"orden\": 1,\n                \"numeroRto\": null,\n                \"numeroRtoNuevo\": 1,\n                \"aseguradoraOriginal\": null,\n                \"aseguradoraNuevo\": \"teste\",\n                \"categoriaOriginal\": null,\n                \"categoriaNuevo\": \"1\",\n                \"cuitOriginal\": null,\n                \"cuitNuevo\": \"534354\",\n                \"fechaUltimoRodillo\": null,\n                \"idLocalidad\": 23213,\n                \"idPais\": 4,\n                \"idProvincia\": 103,\n                \"internoOriginal\": null,\n                \"internoNuevo\": null,\n                \"lineaOriginal\": null,\n                \"lineaNuevo\": null,\n                \"nacionalidad\": \"AR\",\n                \"nroPolizaOriginal\": null,\n                \"nroPolizaNuevo\": \"2345\",\n                \"permisosOriginal\": null,\n                \"permisosNuevo\": \"PNR:PERMISO NO REGISTRADO\",\n                \"razonSocialOriginal\": null,\n                \"razonSocialNuevo\": \"test\",\n                \"retenido\": 0,\n                \"rutaOriginal\": null,\n                \"rutaNuevo\": \"rutaHardcode\",\n                \"serviciosOriginal\": null,\n                \"serviciosNuevo\": \"1\",\n                \"tacografoNroOriginal\": null,\n                \"tacografoNroNuevo\": \"tacografoHardcode\",\n                \"tecnicaNroOriginal\": null,\n                \"tecnicaNroNuevo\": null,\n                \"tipo\": 2,\n                \"ubicacion\": 1,\n                \"ultimaFiscaFecha\": null,\n                \"ultimaFiscaResultado\": null,\n                \"vigenciaHastaInspeccionTecnicaOriginal\": null,\n                \"vigenciaHastaInspeccionTecnicaNuevo\": \"2024-06-18\",\n                \"vigenciaHastaPolizaOriginal\": null,\n                \"vigenciaHastaPolizaNuevo\": \"2024-06-18\",\n                \"acarreado\": 0,\n                \"dominioAcarreo\": \"AAA111\",\n                \"idPredioRetencion\": 1\n            }\n        ],\n        \"fiscalizacionChoferesList\": [\n            {\n                \"dni\": \"92610564\",\n                \"orden\": 1,\n                \"osi\": \"811280000000000030\",\n                \"alcoholemiaInsitu\": 0,\n                \"conductorOriginal\": \"RODRIGUEZ IRRAZABAL José Luis\",\n                \"conductorNuevo\": \"José Luis RODRIGUEZ IRRAZABAL\",\n                \"estadoOriginal\": null,\n                \"estadoNuevo\": false,\n                \"fechaAlcoholemiaAnterior\": null,\n                \"fechaFiscaAnterior\": \"2024-06-12\",\n                \"fechaPsicofisico\": null,\n                \"fechaSustanciasAnterior\": null,\n                \"resultadoAlcoholemia\": 0,\n                \"resultadoAlcoholemiaInsitu\": \"Sin\",\n                \"resultadoFisca\": 1,\n                \"resultadoPsicofisico\": \"Apto\",\n                \"resultadoSustancias\": 0,\n                \"resultadoSustanciasInsitu\": \"Sin\",\n                \"sustanciasInsitu\": 0,\n                \"vtoCOriginal\": null,\n                \"vtoCNuevo\": \"2024-06-18\",\n                \"vtoCAOriginal\": null,\n                \"vtoCANuevo\": \"2024-06-18\",\n                \"vtoGOriginal\": null,\n                \"vtoGNuevo\": \"2024-06-18\",\n                \"vtoPOriginal\": null,\n                \"vtoPNuevo\": \"2024-06-18\",\n                \"nombre\": \"nombre\",\n                \"apellido\": \"apellido\"\n            }\n        ],\n        \"fiscalizacionInfraccionesList\": [\n            {\n                \"idItemInfraccion\": 48,\n                \"osi\": \"811280000000000030\",\n                \"observacion\": \"\",\n                \"cantidad\": null,\n                \"idEstadoFiscaInfraccion\": 1,\n                \"idFaltaServicio\": 22295,\n                \"dominio\": \"GGG123\",\n                \"dni\": null\n            }\n        ],\n        \"fiscalizacionEmpresa\": {\n            \"empresaNro\": \"100\",\n            \"osi\": \"811280000000000030\",\n            \"nombreEmpresa\": \"test\",\n            \"cuit\": \"534354\",\n            \"domicilio\": \"test 435345\",\n            \"nombreDenunciante\": null,\n            \"dniDenunciante\": null,\n            \"nombreRepresentante\": null,\n            \"dniRepresentante\": null,\n            \"numeroReserva\": null,\n            \"categoriaServicio\": null,\n            \"fechaReserva\": null\n        },\n        \"registerDeviceRequest\": {\n            \"serial\": \"unknown\",\n            \"model\": \"Redmi Note 7\",\n            \"platform\": \"Android\",\n            \"version\": \"10\",\n            \"UUID\": \"c177c23bf2d03f1c\",\n            \"apkVersion\": \"1.0\",\n            \"longitud\": \"-56.8677655\",\n            \"latitud\": \"-37.1086113\"\n        }\n    }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "fisca calidad",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqZWNhc3Ryb0BjbnJ0LmdvYi5hciIsImV4cCI6MTczMjQwNDAwNiwiaWF0IjoxNzMyMzE3NjA2fQ.wNO0FAW8V9R2hIVUlD3VWIEaC1EyVyN4B7mIdf1yWKw"
+              }
+            ],
+            "url": {
+              "raw": "{{basePath}}/api/calidad/grabar"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"id\": 1,\n    \"osi\": \"811180000000000007\",\n    \"idLogin\": 1140,\n    \"nombreEmpresa\": \"EMPRESA PUERTO TIROL S.R.L.\",\n    \"codigoOperador\": \"2\",\n    \"cuit\": \"30545789228\",\n    \"domicilio\": \"Gg\",\n    \"damnificadoNombre\": \"J\",\n    \"damnificadoDni\": \"6\",\n    \"representanteLegalNombre\": \"Hh\",\n    \"representanteLegalDni\": \"7\",\n    \"idLocalidadOrigen\": 23646,\n    \"idLocalidadDestino\": 3283,\n    \"horarioPartida\": \"2024-11-15 16:08:08\",\n    \"idCategoriaServicio\": 6,\n    \"observacion\": \"\",\n    \"export\": 0,\n    \"creado\": 1,\n    \"idOperativo\": 14,\n    \"idOperativoApi\": 95,\n    \"type\": \"CalidadCabecera\",\n    \"fechaAlta\": \"2024-11-15 16:08:08\",\n    \"fechaCierre\": \"2024-11-15 16:09:09\",\n    \"latitud\": \"-34.6767012\",\n    \"longitud\": \"-58.726721\",\n    \"infracciones\": [],\n    \"registerDeviceRequest\": {\n        \"serial\": \"unknown\",\n        \"model\": \"TC26\",\n        \"platform\": \"Android\",\n        \"version\": \"10\",\n        \"UUID\": \"ec6bd79ad78f0976\",\n        \"apkVersion\": \"1.0\",\n        \"longitud\": \"-58.726721\",\n        \"latitud\": \"-34.6767012\"\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "grabar operativo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqZWNhc3Ryb0BjbnJ0LmdvYi5hciIsImV4cCI6MTczMjQwNDAwNiwiaWF0IjoxNzMyMzE3NjA2fQ.wNO0FAW8V9R2hIVUlD3VWIEaC1EyVyN4B7mIdf1yWKw"
+              }
+            ],
+            "url": {
+              "raw": "{{basePath}}/api/operativo/grabar-operativo"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"idOperativo\": 2,\n    \"nroOperativo\": \"NumOp123\",\n    \"idFiscalizador\": 1140,\n    \"idDelegacion\": 1,\n    \"idVehiculo\": 2,\n    \"idProvincia\": 3,\n    \"idLocalidad\": 23799,\n    \"lugarDescripcion\": \"321\",\n    \"latitud\": \"-37.1044305\",\n    \"longitud\": \"-56.8682488\",\n    \"status\": 1,\n    \"fechaAlta\": \"2024-05-13\",\n    \"fechaCierre\": \"2024-05-13\",\n    \"devicePrefijo\": 81128,\n    \"idLugar\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
