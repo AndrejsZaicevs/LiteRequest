@@ -383,7 +383,11 @@ export default function App() {
       setExecutions(execs);
       setSelectedExecutionId(execution.id);
     } catch (e) {
-      setErrorMessage(String(e));
+      if (String(e).includes("Request cancelled")) {
+        setErrorMessage(null);
+      } else {
+        setErrorMessage(String(e));
+      }
     } finally {
       setIsLoading(false);
     }
@@ -444,10 +448,14 @@ export default function App() {
         e.preventDefault();
         setSearchOpen(prev => !prev);
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        if (centerView.type === "request" && !isLoading) sendRequest();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [centerView, isLoading, sendRequest]);
 
   // ── Panel drag handlers ──────────────────────────────────
   useEffect(() => {
@@ -577,6 +585,7 @@ export default function App() {
               data={editorData}
               onChange={onEditorChange}
               onSend={sendRequest}
+              onCancel={() => api.cancelRequest()}
               onCopyCurl={copyCurl}
               onImportCurl={importCurl}
               isLoading={isLoading}

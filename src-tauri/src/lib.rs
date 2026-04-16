@@ -8,10 +8,12 @@ pub mod utils;
 use db::Database;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 pub struct AppState {
     pub db: Mutex<Database>,
     pub db_path: PathBuf,
+    pub cancel_token: Mutex<CancellationToken>,
 }
 
 fn dirs_data_path() -> PathBuf {
@@ -32,6 +34,7 @@ pub fn run() {
         .manage(AppState {
             db: Mutex::new(db),
             db_path,
+            cancel_token: Mutex::new(CancellationToken::new()),
         })
         .invoke_handler(tauri::generate_handler![
             // Collections
@@ -101,6 +104,7 @@ pub fn run() {
             commands::set_app_setting,
             // HTTP
             commands::execute_request,
+            commands::cancel_request,
             // Clipboard
             commands::copy_to_clipboard,
             // cURL

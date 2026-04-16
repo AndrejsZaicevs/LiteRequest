@@ -24,6 +24,7 @@ base64 = "0.22"
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 
 # Database
 rusqlite = { version = "0.31", features = ["bundled"] }

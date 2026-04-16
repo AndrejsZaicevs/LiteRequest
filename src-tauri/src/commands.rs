@@ -596,14 +596,34 @@ pub fn set_app_setting(state: State<AppState>, key: String, value: String) -> Cm
 
 #[tauri::command]
 pub async fn execute_request(
+    state: tauri::State<'_, crate::AppState>,
     data: RequestData,
     variables: HashMap<String, String>,
     base_path: String,
     client_certs: Vec<ClientCertEntry>,
 ) -> CmdResult<(ResponseData, u64)> {
-    crate::http::client::execute_request(&data, &variables, &base_path, &client_certs)
-        .await
-        .map_err(map_err)
+    // Mint a fresh token for this request
+    let token = {
+        let mut guard = state.cancel_token.lock().unwrap();
+        *guard = tokio_util::sync::CancellationToken::new();
+        guard.clone()
+    };
+
+    tokio::select! {
+        result = crate::http::client::execute_request(&data, &variables, &base_path, &client_certs) => {
+            result.map_err(map_err)
+        }
+        _ = token.cancelled() => {
+            Err("Request cancelled".into())
+        }
+    }
+}
+
+#[tauri::command]
+pub fn cancel_request(
+    state: tauri::State<'_, crate::AppState>,
+) {
+    state.cancel_token.lock().unwrap().cancel();
 }
 
 // ── Clipboard ────────────────────────────────────────────────

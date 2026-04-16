@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Play, Terminal, Upload, Check } from "lucide-react";
+import { Play, Terminal, Upload, Check, X } from "lucide-react";
 import type { RequestData, HttpMethod } from "../../lib/types";
 import { methodColor, HTTP_METHODS } from "../../lib/types";
 import { VariableInput } from "../shared/VariableInput";
@@ -8,6 +8,7 @@ interface UrlBarProps {
   data: RequestData;
   onChange: (data: RequestData) => void;
   onSend: () => void;
+  onCancel: () => void;
   onCopyCurl: () => void;
   onImportCurl: (curlStr: string) => void;
   isLoading: boolean;
@@ -15,7 +16,7 @@ interface UrlBarProps {
   variables?: Record<string, string>;
 }
 
-export function UrlBar({ data, onChange, onSend, onCopyCurl, onImportCurl, isLoading, basePath, variables = {} }: UrlBarProps) {
+export function UrlBar({ data, onChange, onSend, onCancel, onCopyCurl, onImportCurl, isLoading, basePath, variables = {} }: UrlBarProps) {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [curlCopied, setCurlCopied] = useState(false);
@@ -68,14 +69,24 @@ export function UrlBar({ data, onChange, onSend, onCopyCurl, onImportCurl, isLoa
             </div>
           </div>
 
-          {/* Send button */}
-          <button
-            onClick={onSend}
-            disabled={isLoading}
-            className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-wait"
-          >
-            {isLoading ? "Sending…" : <><span>Send</span> <Play size={14} className="fill-white" /></>}
-          </button>
+          {/* Send / Cancel button */}
+          {isLoading ? (
+            <button
+              onClick={onCancel}
+              title="Cancel request"
+              className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <X size={14} /> Cancel
+            </button>
+          ) : (
+            <button
+              onClick={onSend}
+              title="Send (Ctrl+Enter)"
+              className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
+            >
+              Send <Play size={14} className="fill-white" />
+            </button>
+          )}
 
           {/* cURL actions */}
           <button

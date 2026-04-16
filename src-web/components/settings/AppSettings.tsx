@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Settings, Plus, Trash2, Eye, EyeOff, GripVertical, Database, AlertTriangle } from "lucide-react";
+import { Settings, Plus, Trash2, Eye, EyeOff, GripVertical, Database, AlertTriangle, FolderOpen } from "lucide-react";
 import type { Environment, EnvVarDef, VarRow, KeyValuePair, ClientCertEntry } from "../../lib/types";
 import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
+import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
 } from "@dnd-kit/core";
@@ -482,15 +483,57 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                 </div>
                 <div>
                   <label className={labelClass}>Certificate Path</label>
-                  <input value={cert.cert_path} onChange={(e) => updateCert(i, { cert_path: e.target.value })} placeholder="/path/to/cert.pem" className={inputClass} />
+                  <div className="flex gap-2">
+                    <span className="flex-1 text-xs text-gray-400 bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 font-mono truncate" title={cert.cert_path}>
+                      {cert.cert_path || <span className="text-gray-600">Not selected</span>}
+                    </span>
+                    <button
+                      onClick={async () => {
+                        const file = await dialogOpen({ multiple: false, filters: [{ name: "Certificate", extensions: ["pem","crt","cer","p12","pfx","der"] }] });
+                        if (typeof file === "string") updateCert(i, { cert_path: file });
+                      }}
+                      className={btnClass}
+                      title="Browse"
+                    >
+                      <FolderOpen size={13} />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className={labelClass}>Key Path</label>
-                  <input value={cert.key_path} onChange={(e) => updateCert(i, { key_path: e.target.value })} placeholder="/path/to/key.pem" className={inputClass} />
+                  <div className="flex gap-2">
+                    <span className="flex-1 text-xs text-gray-400 bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 font-mono truncate" title={cert.key_path}>
+                      {cert.key_path || <span className="text-gray-600">Not selected</span>}
+                    </span>
+                    <button
+                      onClick={async () => {
+                        const file = await dialogOpen({ multiple: false, filters: [{ name: "Key", extensions: ["pem","key","der"] }] });
+                        if (typeof file === "string") updateCert(i, { key_path: file });
+                      }}
+                      className={btnClass}
+                      title="Browse"
+                    >
+                      <FolderOpen size={13} />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className={labelClass}>CA Path (optional)</label>
-                  <input value={cert.ca_path} onChange={(e) => updateCert(i, { ca_path: e.target.value })} placeholder="/path/to/ca.pem" className={inputClass} />
+                  <div className="flex gap-2">
+                    <span className="flex-1 text-xs text-gray-400 bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 font-mono truncate" title={cert.ca_path}>
+                      {cert.ca_path || <span className="text-gray-600">Not selected</span>}
+                    </span>
+                    <button
+                      onClick={async () => {
+                        const file = await dialogOpen({ multiple: false, filters: [{ name: "CA Certificate", extensions: ["pem","crt","cer","der"] }] });
+                        if (typeof file === "string") updateCert(i, { ca_path: file });
+                      }}
+                      className={btnClass}
+                      title="Browse"
+                    >
+                      <FolderOpen size={13} />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className={labelClass}>Passphrase (optional)</label>

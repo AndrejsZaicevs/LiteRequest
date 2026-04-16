@@ -101,6 +101,8 @@ export const executeRequest = (
   clientCerts: ClientCertEntry[],
 ) => invoke<[ResponseData, number]>("execute_request", { data, variables, basePath, clientCerts });
 
+export const cancelRequest = () => invoke<void>("cancel_request");
+
 // ── cURL ─────────────────────────────────────────────────────
 export const toCurl = (data: RequestData, variables: Record<string, string>, basePath: string) =>
   invoke<string>("to_curl", { data, variables, basePath });
