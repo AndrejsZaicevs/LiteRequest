@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { ChevronDown, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { RequestData, RequestVersion, RequestExecution, Environment, KeyValuePair } from "../../lib/types";
 import { statusColor } from "../../lib/types";
 import { KvTable } from "../inspector/KvTable";
@@ -151,12 +151,6 @@ export function Inspector({
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#161616]">
-      {/* Header */}
-      <div className="h-12 border-b border-gray-800 flex items-center px-4 gap-2 flex-shrink-0">
-        <SlidersHorizontal size={14} className="text-gray-400" />
-        <span className="font-semibold text-sm text-gray-200">Inspector</span>
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         {/* Query Params */}
         <CollapsibleSection
@@ -248,29 +242,37 @@ export function Inspector({
             {/* Filters */}
             <div className="flex items-center gap-2 mb-3 mt-1">
               {environments.length > 0 && (
+                <div className="flex-1 relative">
+                  <select
+                    value={execEnvFilter}
+                    onChange={(e) => setExecEnvFilter(e.target.value)}
+                    className="w-full bg-[#1a1a1a] border border-gray-700/60 text-gray-300 rounded text-[11px] pl-2 pr-6 py-1.5 cursor-pointer focus:border-gray-600 focus:outline-none"
+                    style={{ appearance: "none" }}
+                  >
+                    <option value="selected">Env: selected</option>
+                    <option value="all">All envs</option>
+                    {environments.map(env => (
+                      <option key={env.id} value={env.id}>{env.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                </div>
+              )}
+              <div className="flex-1 relative">
                 <select
-                  value={execEnvFilter}
-                  onChange={(e) => setExecEnvFilter(e.target.value)}
-                  className="flex-1 bg-[#1a1a1a] border border-gray-700 text-gray-300 rounded text-[11px] px-2 py-1.5 outline-none"
+                  value={execVersionFilter}
+                  onChange={(e) => setExecVersionFilter(e.target.value)}
+                  className="w-full bg-[#1a1a1a] border border-gray-700/60 text-gray-300 rounded text-[11px] pl-2 pr-6 py-1.5 cursor-pointer focus:border-gray-600 focus:outline-none"
+                  style={{ appearance: "none" }}
                 >
-                  <option value="selected">Env: selected</option>
-                  <option value="all">All envs</option>
-                  {environments.map(env => (
-                    <option key={env.id} value={env.id}>{env.name}</option>
+                  <option value="selected">Ver: selected</option>
+                  <option value="all">All versions</option>
+                  {versions.map((v, i) => (
+                    <option key={v.id} value={v.id}>v{versions.length - i}</option>
                   ))}
                 </select>
-              )}
-              <select
-                value={execVersionFilter}
-                onChange={(e) => setExecVersionFilter(e.target.value)}
-                className="flex-1 bg-[#1a1a1a] border border-gray-700 text-gray-300 rounded text-[11px] px-2 py-1.5 outline-none"
-              >
-                <option value="selected">Ver: selected</option>
-                <option value="all">All versions</option>
-                {versions.map((v, i) => (
-                  <option key={v.id} value={v.id}>v{versions.length - i}</option>
-                ))}
-              </select>
+                <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              </div>
             </div>
 
             <div className="flex flex-col">

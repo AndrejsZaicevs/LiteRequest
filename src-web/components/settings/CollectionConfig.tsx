@@ -128,7 +128,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
   }
 
   const inputClass = "w-full bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-gray-700 focus:bg-[#1a1a1a] transition-colors";
-  const selectClass = "bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-gray-700 transition-colors";
+  const selectClass = "bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 pr-8 text-sm text-gray-200 focus:outline-none focus:border-gray-700 transition-colors cursor-pointer";
   const labelClass = "block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5";
 
   return (
@@ -179,7 +179,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                 saveAuth(cfg);
               }}
               className={selectClass}
-              style={{ minWidth: 160 }}
+              style={{ minWidth: 160, appearance: "none" }}
             >
               <option value="none">None</option>
               <option value="bearer">Bearer Token</option>

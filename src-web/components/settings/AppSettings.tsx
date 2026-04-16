@@ -156,7 +156,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
   });
 
   const inputClass = "w-full bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-gray-700 focus:bg-[#1a1a1a] transition-colors";
-  const selectClass = "bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-gray-700 transition-colors";
+  const selectClass = "bg-[#0d0d0d] border border-gray-800 rounded-md px-3 py-2 pr-8 text-sm text-gray-200 focus:outline-none focus:border-gray-700 transition-colors cursor-pointer";
   const labelClass = "block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5";
   const btnClass = "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-[#1a1a1a] border border-gray-700 rounded-md hover:bg-[#242424] hover:text-gray-100 transition-colors";
   const btnDangerClass = "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 bg-[#1a1a1a] border border-red-500/30 rounded-md hover:bg-red-500/10 transition-colors";
@@ -369,7 +369,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                 </div>
                 <div>
                   <label className={labelClass}>Type</label>
-                  <select value={cert.cert_type} onChange={(e) => updateCert(i, { cert_type: e.target.value as "Pem" | "Pkcs12" })} className={selectClass}>
+                  <select value={cert.cert_type} onChange={(e) => updateCert(i, { cert_type: e.target.value as "Pem" | "Pkcs12" })} className={selectClass} style={{ appearance: "none" }}>
                     <option value="Pem">PEM</option>
                     <option value="Pkcs12">PKCS#12</option>
                   </select>

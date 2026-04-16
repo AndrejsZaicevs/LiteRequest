@@ -9,6 +9,7 @@ import * as api from "./lib/api";
 import { Search, Settings } from "lucide-react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Inspector } from "./components/layout/Inspector";
+import { UrlBar } from "./components/editor/UrlBar";
 import { RequestEditor } from "./components/editor/RequestEditor";
 import { ResponseView } from "./components/response/ResponseView";
 import { CollectionConfig } from "./components/settings/CollectionConfig";
@@ -509,12 +510,11 @@ export default function App() {
           onMouseDown={() => startDrag("sidebar")}
         />
 
-        {/* MAIN CENTER COLUMN */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-[#121212]" style={{ minWidth: 0 }}>
+        {/* RIGHT AREA: top bar + url bar + content/inspector */}
+        <div className="flex-1 flex flex-col overflow-hidden" style={{ minWidth: 0 }}>
 
-          {/* Center column header — search + env */}
+          {/* Full-width top bar */}
           <div className="h-12 border-b border-gray-800 flex items-center px-4 gap-4 bg-[#161616] shrink-0">
-
             {/* Search trigger */}
             <button
               onClick={() => setSearchOpen(true)}
@@ -538,7 +538,7 @@ export default function App() {
               <div className="text-xs truncate max-w-xs shrink-0 text-red-400" title={errorMessage}>{errorMessage}</div>
             )}
 
-            {/* Env chips */}
+            {/* Env chips + settings */}
             <div className="flex items-center gap-2 ml-auto">
               {environments.length > 0 && (
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -546,11 +546,7 @@ export default function App() {
                     <button
                       key={env.id}
                       onClick={async () => {
-                        if (env.is_active) {
-                          // deactivate — handled by refreshAll
-                        } else {
-                          await api.setActiveEnvironment(env.id);
-                        }
+                        if (!env.is_active) await api.setActiveEnvironment(env.id);
                         await refreshAll();
                       }}
                       className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all shrink-0 border ${
@@ -573,112 +569,130 @@ export default function App() {
             </div>
           </div>
 
-          {centerView.type === "welcome" && (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-gray-200 mb-3">Welcome</div>
-                <div className="text-sm text-gray-500">Select a request or create a new collection to get started</div>
-                <div className="mt-6 flex items-center justify-center gap-2 text-xs text-gray-600">
-                  <span className="bg-gray-800 px-2 py-1 rounded border border-gray-700">⌘K</span>
-                  <span>to search</span>
-                </div>
-              </div>
-            </div>
+          {/* Full-width URL bar (request view only) */}
+          {showInspector && (
+            <UrlBar
+              data={editorData}
+              onChange={onEditorChange}
+              onSend={sendRequest}
+              onCopyCurl={copyCurl}
+              onImportCurl={importCurl}
+              isLoading={isLoading}
+              basePath={collections.find(c => c.id === currentRequest?.collection_id)?.base_path ?? ""}
+              variables={displayVariables}
+            />
           )}
 
-          {centerView.type === "request" && (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Request editor (top portion) */}
-              <div style={{ height: `${splitRatio * 100}%` }} className="shrink-0 overflow-hidden border-b border-gray-800">
-                <RequestEditor
+          {/* Body row: center content + inspector side by side */}
+          <div className="flex-1 flex overflow-hidden">
+
+            {/* CENTER CONTENT */}
+            <div className="flex-1 flex flex-col overflow-hidden bg-[#121212]" style={{ minWidth: 0 }}>
+
+              {centerView.type === "welcome" && (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-gray-200 mb-3">Welcome</div>
+                    <div className="text-sm text-gray-500">Select a request or create a new collection to get started</div>
+                    <div className="mt-6 flex items-center justify-center gap-2 text-xs text-gray-600">
+                      <span className="bg-gray-800 px-2 py-1 rounded border border-gray-700">⌘K</span>
+                      <span>to search</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {centerView.type === "request" && (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* Request body editor (top portion) */}
+                  <div style={{ height: `${splitRatio * 100}%` }} className="shrink-0 overflow-hidden border-b border-gray-800">
+                    <RequestEditor
+                      data={editorData}
+                      onChange={onEditorChange}
+                      isLoading={isLoading}
+                      basePath={collections.find(c => c.id === currentRequest?.collection_id)?.base_path ?? ""}
+                      requestName={currentRequest?.name ?? ""}
+                      variables={displayVariables}
+                    />
+                  </div>
+
+                  {/* Split drag handle */}
+                  <div
+                    className="h-px cursor-row-resize hover:bg-blue-500/50 transition-colors shrink-0 bg-gray-800"
+                    onMouseDown={() => startDrag("split")}
+                  />
+
+                  {/* Response view (bottom portion) */}
+                  <div className="flex-1 overflow-hidden">
+                    <ResponseView
+                      response={currentResponse}
+                      latency={currentLatency}
+                      isLoading={isLoading}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {centerView.type === "collection" && (
+                <CollectionConfig
+                  collectionId={centerView.collectionId}
+                  collections={collections}
+                  environments={environments}
+                  onUpdate={refreshAll}
+                />
+              )}
+
+              {centerView.type === "settings" && (
+                <AppSettings
+                  environments={environments}
+                  onUpdate={refreshAll}
+                />
+              )}
+            </div>
+
+            {/* Inspector resize handle */}
+            {showInspector && (
+              <div
+                className="w-px cursor-col-resize hover:bg-blue-500/50 transition-colors shrink-0 bg-gray-800"
+                onMouseDown={() => startDrag("inspector")}
+              />
+            )}
+
+            {/* Inspector panel */}
+            {showInspector && (
+              <div style={{ width: inspectorWidth, minWidth: inspectorWidth }} className="flex-shrink-0 overflow-hidden">
+                <Inspector
                   data={editorData}
                   onChange={onEditorChange}
-                  onSend={sendRequest}
-                  onCopyCurl={copyCurl}
-                  onImportCurl={importCurl}
-                  isLoading={isLoading}
-                  basePath={collections.find(c => c.id === currentRequest?.collection_id)?.base_path ?? ""}
-                  requestName={currentRequest?.name ?? ""}
+                  versions={versions}
+                  executions={executions}
+                  selectedVersionId={selectedVersionId}
+                  selectedExecutionId={selectedExecutionId}
+                  onSelectVersion={async (vid) => {
+                    setSelectedVersionId(vid);
+                    const v = await api.getVersion(vid);
+                    setEditorData(v.data);
+                    setDirty(false);
+                  }}
+                  onSelectExecution={(eid) => {
+                    setSelectedExecutionId(eid);
+                    const exec = executions.find(e => e.id === eid);
+                    if (exec) {
+                      setCurrentResponse(exec.response);
+                      setCurrentLatency(exec.latency_ms);
+                      if (exec.request_data) {
+                        setEditorData(exec.request_data);
+                        setDirty(false);
+                      }
+                    }
+                  }}
+                  environments={environments}
                   variables={displayVariables}
                 />
               </div>
-
-              {/* Split drag handle */}
-              <div
-                className="h-px cursor-row-resize hover:bg-blue-500/50 transition-colors shrink-0 bg-gray-800"
-                onMouseDown={() => startDrag("split")}
-              />
-
-              {/* Response view (bottom portion) */}
-              <div className="flex-1 overflow-hidden">
-                <ResponseView
-                  response={currentResponse}
-                  latency={currentLatency}
-                  isLoading={isLoading}
-                />
-              </div>
-            </div>
-          )}
-
-          {centerView.type === "collection" && (
-            <CollectionConfig
-              collectionId={centerView.collectionId}
-              collections={collections}
-              environments={environments}
-              onUpdate={refreshAll}
-            />
-          )}
-
-          {centerView.type === "settings" && (
-            <AppSettings
-              environments={environments}
-              onUpdate={refreshAll}
-            />
-          )}
-        </div>
-
-        {/* Inspector resize handle */}
-        {showInspector && (
-          <div
-            className="w-px cursor-col-resize hover:bg-blue-500/50 transition-colors shrink-0 bg-gray-800"
-            onMouseDown={() => startDrag("inspector")}
-          />
-        )}
-
-        {/* Inspector panel */}
-        {showInspector && (
-          <div style={{ width: inspectorWidth, minWidth: inspectorWidth }} className="flex-shrink-0 overflow-hidden">
-            <Inspector
-              data={editorData}
-              onChange={onEditorChange}
-              versions={versions}
-              executions={executions}
-              selectedVersionId={selectedVersionId}
-              selectedExecutionId={selectedExecutionId}
-              onSelectVersion={async (vid) => {
-                setSelectedVersionId(vid);
-                const v = await api.getVersion(vid);
-                setEditorData(v.data);
-                setDirty(false);
-              }}
-              onSelectExecution={(eid) => {
-                setSelectedExecutionId(eid);
-                const exec = executions.find(e => e.id === eid);
-                if (exec) {
-                  setCurrentResponse(exec.response);
-                  setCurrentLatency(exec.latency_ms);
-                  // Load execution's request data snapshot into editor if available
-                  if (exec.request_data) {
-                    setEditorData(exec.request_data);
-                    setDirty(false);
-                  }
-                }
-              }}
-              environments={environments}
-              variables={displayVariables}
-            />
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Global search modal */}
