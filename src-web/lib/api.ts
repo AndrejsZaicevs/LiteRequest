@@ -144,3 +144,7 @@ export const listTrash = () => invoke<import("./types").TrashedItem[]>("list_tra
 export const restoreItem = (itemType: string, id: string) => invoke<void>("restore_item", { itemType, id });
 export const purgeItem = (itemType: string, id: string) => invoke<void>("purge_item", { itemType, id });
 export const emptyTrash = () => invoke<void>("empty_trash");
+
+// Clone
+export const cloneRequest = (id: string) => invoke<string>("clone_request", { id });
+export const cloneFolder = (id: string) => invoke<string>("clone_folder", { id });

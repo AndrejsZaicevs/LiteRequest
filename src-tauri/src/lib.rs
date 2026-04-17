@@ -134,6 +134,9 @@ pub fn run() {
             commands::restore_item,
             commands::purge_item,
             commands::empty_trash,
+            // Clone
+            commands::clone_request,
+            commands::clone_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

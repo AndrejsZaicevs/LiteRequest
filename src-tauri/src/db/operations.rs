@@ -3,6 +3,29 @@ use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+fn uuid() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    // Generate a UUID v4 using random bytes from the OS
+    let mut bytes = [0u8; 16];
+    // Mix entropy from time + thread id to avoid pulling in a uuid crate
+    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let ns = t.as_nanos();
+    let tid = std::thread::current().id();
+    let seed = format!("{:?}{}", tid, ns);
+    // Extend with sha256 to spread the bits
+    let hash = sha2::Sha256::digest(seed.as_bytes());
+    bytes.copy_from_slice(&hash[..16]);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5], bytes[6], bytes[7],
+        bytes[8], bytes[9],
+        bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
+    )
+}
+
 pub struct Database {
     conn: Connection,
 }
@@ -1309,5 +1332,131 @@ impl Database {
              DELETE FROM collections WHERE deleted_at IS NOT NULL;",
         )?;
         Ok(())
+    }
+
+    // ── Clone ─────────────────────────────────────────────────────
+
+    /// Clone a request and its current version into the same collection/folder.
+    /// Returns the new request id.
+    pub fn clone_request(&self, source_id: &str) -> rusqlite::Result<String> {
+        // Load source request
+        let source = self.conn.query_row(
+            "SELECT id, collection_id, folder_id, name, current_version_id, sort_order
+             FROM requests WHERE id=?1 AND deleted_at IS NULL",
+            params![source_id],
+            |row| Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, i32>(5)?,
+            )),
+        )?;
+
+        let new_req_id = uuid();
+        let new_name = format!("{} Copy", source.3);
+
+        self.conn.execute(
+            "INSERT INTO requests (id, collection_id, folder_id, name, current_version_id, sort_order)
+             VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
+            params![new_req_id, source.1, source.2, new_name, source.5 + 1],
+        )?;
+
+        // Clone current version if present
+        if let Some(ver_id) = &source.4 {
+            let ver = self.get_version(ver_id)?;
+            let new_ver_id = uuid();
+            let data_json = serde_json::to_string(&ver.data).unwrap_or_default();
+            let fingerprint = ver.data.fingerprint();
+            self.conn.execute(
+                "INSERT INTO request_versions (id, request_id, data_json, fingerprint, created_at)
+                 VALUES (?1, ?2, ?3, ?4, datetime('now'))",
+                params![new_ver_id, new_req_id, data_json, fingerprint],
+            )?;
+            self.conn.execute(
+                "UPDATE requests SET current_version_id=?2 WHERE id=?1",
+                params![new_req_id, new_ver_id],
+            )?;
+        }
+
+        Ok(new_req_id)
+    }
+
+    /// Clone a folder (and all its sub-folders and requests) into the same parent.
+    /// Returns the new folder id.
+    pub fn clone_folder(&self, source_id: &str) -> rusqlite::Result<String> {
+        self.clone_folder_into(source_id, None, None)
+    }
+
+    fn clone_folder_into(
+        &self,
+        source_id: &str,
+        new_collection_id: Option<&str>,
+        new_parent_id: Option<&str>,
+    ) -> rusqlite::Result<String> {
+        let source = self.conn.query_row(
+            "SELECT id, collection_id, parent_folder_id, name, path_prefix, auth_override, sort_order
+             FROM folders WHERE id=?1 AND deleted_at IS NULL",
+            params![source_id],
+            |row| Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, i32>(6)?,
+            )),
+        )?;
+
+        let col_id = new_collection_id.unwrap_or(&source.1).to_string();
+        let parent_id: Option<String> = match new_parent_id {
+            Some(p) => Some(p.to_string()),
+            None => source.2.clone(),
+        };
+        let new_folder_id = uuid();
+        let new_name = if new_parent_id.is_none() && new_collection_id.is_none() {
+            format!("{} Copy", source.3)
+        } else {
+            source.3.clone()
+        };
+
+        self.conn.execute(
+            "INSERT INTO folders (id, collection_id, parent_folder_id, name, path_prefix, auth_override, sort_order)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![new_folder_id, col_id, parent_id, new_name, source.4, source.5, source.6 + 1],
+        )?;
+
+        // Clone sub-folders
+        let sub_folders: Vec<String> = {
+            let mut stmt = self.conn.prepare(
+                "SELECT id FROM folders WHERE parent_folder_id=?1 AND deleted_at IS NULL ORDER BY sort_order",
+            )?;
+            let rows = stmt.query_map(params![source_id], |r| r.get::<_, String>(0))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        for sf_id in sub_folders {
+            self.clone_folder_into(&sf_id, Some(&col_id), Some(&new_folder_id))?;
+        }
+
+        // Clone requests in this folder
+        let req_ids: Vec<String> = {
+            let mut stmt = self.conn.prepare(
+                "SELECT id FROM requests WHERE folder_id=?1 AND deleted_at IS NULL ORDER BY sort_order",
+            )?;
+            let rows = stmt.query_map(params![source_id], |r| r.get::<_, String>(0))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        for req_id in req_ids {
+            let new_req_id = self.clone_request(&req_id)?;
+            // Re-parent to new folder and collection
+            self.conn.execute(
+                "UPDATE requests SET folder_id=?2, collection_id=?3 WHERE id=?1",
+                params![new_req_id, new_folder_id, col_id],
+            )?;
+        }
+
+        Ok(new_folder_id)
     }
 }

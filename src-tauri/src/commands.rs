@@ -777,3 +777,15 @@ pub fn purge_item(state: State<AppState>, item_type: String, id: String) -> CmdR
 pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
     state.db.lock().unwrap().empty_trash().map_err(map_err)
 }
+
+// ── Clone ─────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn clone_request(state: State<AppState>, id: String) -> CmdResult<String> {
+    state.db.lock().unwrap().clone_request(&id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn clone_folder(state: State<AppState>, id: String) -> CmdResult<String> {
+    state.db.lock().unwrap().clone_folder(&id).map_err(map_err)
+}

@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useCallback } from "react";
+import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Plus, Upload, Download } from "lucide-react";
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -132,6 +132,19 @@ export function Sidebar({
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [dropState,   setDropState]   = useState<DropState | null>(null);
   const renameRef = useRef<HTMLInputElement>(null);
+  const ctxMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close context menu on any mousedown outside it
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (ctxMenuRef.current && !ctxMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handler, { capture: true });
+    return () => document.removeEventListener("mousedown", handler, { capture: true });
+  }, [contextMenu]);
   // Keep a always-current ref to folders so stable callbacks can read them
   const foldersRef = useRef(folders);
   foldersRef.current = folders;
@@ -240,6 +253,24 @@ export function Sidebar({
     const r: Request = { id: crypto.randomUUID(), collection_id: collectionId, folder_id: folderId ?? null, name: "New Request", current_version_id: null, sort_order: 0 };
     try { await api.insertRequest(r); onDataChange(); setRenaming({ type: "request", id: r.id, value: r.name }); } catch (e) { console.error(e); }
     closeCtx();
+  };
+
+  const handleCloneRequest = async (requestId: string) => {
+    closeCtx();
+    try {
+      const newId = await api.cloneRequest(requestId);
+      onDataChange();
+      setRenaming({ type: "request", id: newId, value: (requests.find(r => r.id === requestId)?.name ?? "Request") + " Copy" });
+    } catch (e) { console.error(e); }
+  };
+
+  const handleCloneFolder = async (folderId: string) => {
+    closeCtx();
+    try {
+      const newId = await api.cloneFolder(folderId);
+      onDataChange();
+      setRenaming({ type: "folder", id: newId, value: (folders.find(f => f.id === folderId)?.name ?? "Folder") + " Copy" });
+    } catch (e) { console.error(e); }
   };
 
   // ── DnD handlers ────────────────────────────────────────────
@@ -413,6 +444,7 @@ export function Sidebar({
       className="flex-1 bg-transparent outline-none text-sm text-gray-200"
       style={{ border: "none", borderBottom: "1px solid #3b82f6", borderRadius: 0, padding: "1px 3px" }}
       autoFocus
+      onFocus={e => e.target.select()}
       onClick={e => e.stopPropagation()}
       onPointerDown={e => e.stopPropagation()}
     />
@@ -621,7 +653,7 @@ export function Sidebar({
 
       {/* Context menu */}
       {contextMenu && (
-        <div className="fixed z-50 rounded-lg shadow-2xl overflow-hidden bg-[#1a1a1a] border border-gray-700 py-1" style={{ left: contextMenu.x, top: contextMenu.y, minWidth: 180 }}>
+        <div ref={ctxMenuRef} className="fixed z-50 rounded-lg shadow-2xl overflow-hidden bg-[#1a1a1a] border border-gray-700 py-1" style={{ left: contextMenu.x, top: contextMenu.y, minWidth: 180 }}>
           {contextMenu.type === "collection" && (<>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => handleNewRequest(contextMenu.id)}>New Request</button>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => handleNewFolder(contextMenu.id)}>New Folder</button>
@@ -638,10 +670,12 @@ export function Sidebar({
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { const f = folders.find(ff => ff.id === contextMenu.id); if (f) handleNewRequest(f.collection_id, f.id); }}>New Request</button>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { const f = folders.find(ff => ff.id === contextMenu.id); if (f) handleNewFolder(f.collection_id, f.id); }}>New Subfolder</button>
             <div className="my-1 border-t border-gray-800" />
+            <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => handleCloneFolder(contextMenu.id)}>Clone</button>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { setRenaming({ type: "folder", id: contextMenu.id, value: folders.find(f => f.id === contextMenu.id)?.name ?? "" }); closeCtx(); }}>Rename</button>
             <button className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-[#242424] hover:text-red-300" onClick={() => handleDelete("folder", contextMenu.id)}>Delete</button>
           </>)}
           {contextMenu.type === "request" && (<>
+            <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => handleCloneRequest(contextMenu.id)}>Clone</button>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { setRenaming({ type: "request", id: contextMenu.id, value: requests.find(r => r.id === contextMenu.id)?.name ?? "" }); closeCtx(); }}>Rename</button>
             <button className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-[#242424] hover:text-red-300" onClick={() => handleDelete("request", contextMenu.id)}>Delete</button>
           </>)}

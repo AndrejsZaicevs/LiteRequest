@@ -94,13 +94,14 @@ export default function App() {
     for (const v of envVariables) vars[v.key] = v.value;
     const colName = collections.find(c => c.id === currentRequest?.collection_id)?.name;
     if (colName) vars["collectionName"] = colName;
+    if (currentRequest?.name) vars["requestName"] = currentRequest.name;
     // Add stable preview values for dynamic variables (tooltip display only)
     const previews = getDynamicVarPreviews();
     for (const [k, v] of Object.entries(previews)) {
       if (!(k in vars)) vars[k] = v;
     }
     return resolveVariableRefs(vars);
-  }, [envVariables, collectionDisplayVars, collections, currentRequest?.collection_id]);
+  }, [envVariables, collectionDisplayVars, collections, currentRequest?.collection_id, currentRequest?.name]);
 
   // ── Refs for drag tracking ───────────────────────────────
   const dragging = useRef<"sidebar" | "inspector" | "split" | null>(null);
@@ -387,6 +388,7 @@ export default function App() {
       }
       const col = collections.find(c => c.id === currentRequest.collection_id);
       if (col) variables["collectionName"] = col.name;
+      variables["requestName"] = currentRequest.name;
 
       // Inject fresh dynamic variable values ($randomInt, $randomEmail, etc.)
       const resolvedVariables = resolveVariableRefs(resolveDynamicVars(variables));
@@ -458,6 +460,7 @@ export default function App() {
       const colVars = await api.getActiveCollectionVariables(currentRequest.collection_id);
       for (const [k, v] of colVars) variables[k] = v;
       if (col) variables["collectionName"] = col.name;
+      variables["requestName"] = currentRequest.name;
       const resolvedVariables = resolveVariableRefs(resolveDynamicVars(variables));
       const basePath = col?.base_path ?? "";
       const effectiveData = buildEffectiveData(editorData);
