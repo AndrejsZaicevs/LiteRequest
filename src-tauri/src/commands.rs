@@ -544,6 +544,30 @@ pub fn upsert_var_value(
 }
 
 #[tauri::command]
+pub fn update_var_def_type(state: State<AppState>, def_id: String, var_type: String) -> CmdResult<()> {
+    state
+        .db
+        .lock()
+        .unwrap()
+        .update_var_def_type(&def_id, &var_type)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn load_operative_var_rows(
+    state: State<AppState>,
+    collection_id: String,
+    environment_id: String,
+) -> CmdResult<Vec<VarRow>> {
+    state
+        .db
+        .lock()
+        .unwrap()
+        .load_operative_var_rows(&collection_id, &environment_id)
+        .map_err(map_err)
+}
+
+#[tauri::command]
 pub fn load_var_rows(
     state: State<AppState>,
     collection_id: String,

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import type { RequestData, RequestVersion, RequestExecution, Environment, KeyValuePair } from "../../lib/types";
+import { ChevronDown, ChevronRight, Zap } from "lucide-react";
+import type { RequestData, RequestVersion, RequestExecution, Environment, KeyValuePair, VarRow } from "../../lib/types";
 import { statusColor } from "../../lib/types";
 import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
@@ -22,9 +22,11 @@ interface InspectorProps {
   onSelectExecution: (id: string) => void;
   environments: Environment[];
   variables?: Record<string, string>;
+  operativeVarRows?: VarRow[];
+  onOperativeVarChange?: (row: VarRow, value: string) => void;
 }
 
-type Section = "params" | "headers" | "pathParams" | "versions" | "executions";
+type Section = "params" | "headers" | "pathParams" | "versions" | "executions" | "variables";
 
 function DateGroup({ label, isOpen, onToggle, children }: {
   label: string; isOpen: boolean; onToggle: () => void; children: React.ReactNode;
@@ -49,9 +51,10 @@ export function Inspector({
   selectedVersionId, selectedExecutionId,
   onSelectVersion, onSelectExecution,
   environments, variables = {},
+  operativeVarRows = [], onOperativeVarChange,
 }: InspectorProps) {
   const [openSections, setOpenSections] = useState<Set<Section>>(
-    new Set(["params", "headers", "pathParams"])
+    new Set(["params", "headers", "pathParams", "variables"])
   );
   const [execEnvFilter, setExecEnvFilter] = useState<string>("selected");
   const [execVersionFilter, setExecVersionFilter] = useState<string>("selected");
@@ -161,9 +164,66 @@ export function Inspector({
   const groupedVersions = useMemo(() => groupByDate(versions, v => v.created_at), [versions]);
   const groupedExecutions = useMemo(() => groupByDate(filteredExecutions, e => e.executed_at), [filteredExecutions]);
 
+  // Only show operative vars that are actually referenced in the current request
+  const usedVarNames = useMemo(() => {
+    const VAR_RE = /\{\{([^}]+)\}\}/g;
+    const names = new Set<string>();
+    const scan = (s: string) => { let m; while ((m = VAR_RE.exec(s)) !== null) names.add(m[1].trim()); };
+    scan(data.url ?? "");
+    scan(data.body ?? "");
+    for (const p of data.query_params ?? []) { scan(p.key); scan(p.value); }
+    for (const h of data.headers ?? []) { scan(h.key); scan(h.value); }
+    for (const p of data.path_params ?? []) { scan(p.key); scan(p.value); }
+    return names;
+  }, [data]);
+
+  const visibleOperativeVars = useMemo(
+    () => operativeVarRows.filter(r => usedVarNames.has(r.key)),
+    [operativeVarRows, usedVarNames]
+  );
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#161616]">
       <div className="flex-1 overflow-y-auto">
+
+        {/* Operative Variables — only those used in this request */}
+        {visibleOperativeVars.length > 0 && (
+          <CollapsibleSection
+            title="Variables"
+            count={visibleOperativeVars.length}
+            isOpen={openSections.has("variables")}
+            onToggle={() => toggleSection("variables")}
+            icon={<Zap size={11} className="text-amber-400" />}
+          >
+            <div className="flex flex-col gap-0.5">
+              {visibleOperativeVars.map(row => (
+                <div key={row.def_id} className="group flex items-center gap-1.5 h-7 border-b border-transparent hover:border-gray-800">
+                  <span className="min-w-[80px] max-w-[160px] w-[40%] shrink text-xs px-1.5 py-0.5 text-amber-400/80 font-mono truncate">
+                    {row.key}
+                  </span>
+                  <div className="w-px h-3.5 bg-gray-800 shrink-0" />
+                  {row.is_secret ? (
+                    <input
+                      type="password"
+                      value={row.value}
+                      onChange={e => onOperativeVarChange?.(row, e.target.value)}
+                      className="flex-1 min-w-0 bg-transparent text-xs outline-none text-gray-200 placeholder-gray-700 border border-transparent focus:border-gray-700 focus:bg-[#1a1a1a] rounded px-1.5 py-0.5"
+                      placeholder="—"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={row.value}
+                      onChange={e => onOperativeVarChange?.(row, e.target.value)}
+                      className="flex-1 min-w-0 bg-transparent text-xs outline-none text-gray-200 placeholder-gray-700 border border-transparent focus:border-gray-700 focus:bg-[#1a1a1a] rounded px-1.5 py-0.5"
+                      placeholder="—"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </CollapsibleSection>
+        )}
 
         {/* Path Params */}
         {pathParams.length > 0 && (

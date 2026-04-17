@@ -184,6 +184,8 @@ export interface VarDef {
   collection_id: string;
   key: string;
   sort_order: number;
+  /** "regular" (default) or "operative" (shown in request inspector for quick editing) */
+  var_type?: "regular" | "operative";
 }
 
 // ── Collection Variable Row (def + value for an env) ─────────
@@ -193,6 +195,8 @@ export interface VarRow {
   value: string;
   is_secret: boolean;
   value_id: string | null;
+  /** Inherited from VarDef — "regular" or "operative" */
+  var_type?: "regular" | "operative";
 }
 
 // ── Auth Config ──────────────────────────────────────────────

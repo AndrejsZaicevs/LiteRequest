@@ -1,8 +1,14 @@
-import { Eye, EyeOff, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Trash2, Zap } from "lucide-react";
 import type { VarRow } from "../../lib/types";
 
+interface Def {
+  id: string;
+  key: string;
+  var_type?: "regular" | "operative";
+}
+
 interface VarDefTableProps {
-  defs: Array<{ id: string; key: string }>;
+  defs: Def[];
   rows: VarRow[];
   /** Whether an environment is selected, enabling value editing */
   hasEnv: boolean;
@@ -11,6 +17,7 @@ interface VarDefTableProps {
   /** Called when the user types a value but no row exists for the def yet */
   onValueCreate: (defId: string, defKey: string, value: string) => void;
   onToggleSecret: (row: VarRow) => void;
+  onToggleOperative?: (def: Def) => void;
   onDelete: (defId: string) => void;
   emptyMessage?: string;
   valuePlaceholder?: string;
@@ -24,6 +31,7 @@ export function VarDefTable({
   onValueChange,
   onValueCreate,
   onToggleSecret,
+  onToggleOperative,
   onDelete,
   emptyMessage = "No variables — click + Add",
   valuePlaceholder = "value",
@@ -32,8 +40,9 @@ export function VarDefTable({
     <div className="border border-gray-800 rounded-md overflow-hidden">
       {defs.map(def => {
         const row = rows.find(r => r.def_id === def.id);
+        const isOperative = def.var_type === "operative";
         return (
-          <div key={def.id} className="kv-row">
+          <div key={def.id} className={`kv-row ${isOperative ? "border-l-2 border-l-amber-500/60" : ""}`}>
             <input
               value={def.key}
               onChange={e => onKeyChange(def.id, e.target.value)}
@@ -56,6 +65,15 @@ export function VarDefTable({
               style={{ border: "none", borderRadius: 0 }}
               disabled={!hasEnv}
             />
+            {onToggleOperative && (
+              <button
+                onClick={() => onToggleOperative(def)}
+                className={`kv-action transition-colors ${isOperative ? "text-amber-400" : "text-gray-700 hover:text-gray-400"}`}
+                title={isOperative ? "Operative variable — click to make regular" : "Make operative (shown in inspector for quick editing)"}
+              >
+                <Zap size={12} />
+              </button>
+            )}
             {row && (
               <button
                 onClick={() => onToggleSecret(row)}
@@ -81,3 +99,4 @@ export function VarDefTable({
     </div>
   );
 }
+

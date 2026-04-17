@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { FolderOpen, Plus } from "lucide-react";
 import type { Collection, Environment, VarDef, VarRow, AuthConfig, KeyValuePair } from "../../lib/types";
-import * as api from "../../lib/api";
-import { KvTable } from "../inspector/KvTable";
+import * as api from "../../lib/api";import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
 import { VarDefTable } from "../shared/VarDefTable";
 
@@ -95,6 +94,13 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
       auth_config: JSON.stringify(authConfig),
       headers_config: headers.some(h => h.key) ? JSON.stringify(headers) : null,
     });
+    onUpdate();
+  };
+
+  const toggleVarType = async (def: { id: string; var_type?: "regular" | "operative" }) => {
+    const newType = def.var_type === "operative" ? "regular" : "operative";
+    await api.updateVarDefType(def.id, newType);
+    setVarDefs(await api.listVarDefs(collectionId));
     onUpdate();
   };
 
@@ -324,6 +330,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
           onValueChange={updateVarValue}
           onValueCreate={createVarRow}
           onToggleSecret={toggleVarSecret}
+          onToggleOperative={toggleVarType}
           onDelete={deleteVarDef}
           emptyMessage="No variables yet"
         />

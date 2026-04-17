@@ -597,9 +597,9 @@ impl Database {
 
     pub fn insert_var_def(&self, d: &VarDef) -> rusqlite::Result<()> {
         self.conn.execute(
-            "INSERT INTO collection_var_defs (id, collection_id, key, sort_order)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![d.id, d.collection_id, d.key, d.sort_order],
+            "INSERT INTO collection_var_defs (id, collection_id, key, sort_order, var_type)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![d.id, d.collection_id, d.key, d.sort_order, d.var_type],
         )?;
         Ok(())
     }
@@ -608,6 +608,14 @@ impl Database {
         self.conn.execute(
             "UPDATE collection_var_defs SET key=?2 WHERE id=?1",
             params![def_id, key],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_var_def_type(&self, def_id: &str, var_type: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE collection_var_defs SET var_type=?2 WHERE id=?1",
+            params![def_id, var_type],
         )?;
         Ok(())
     }
@@ -624,7 +632,7 @@ impl Database {
     /// List variable definitions for a collection (ordered by sort_order).
     pub fn list_var_defs(&self, collection_id: &str) -> rusqlite::Result<Vec<VarDef>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, collection_id, key, sort_order
+            "SELECT id, collection_id, key, sort_order, COALESCE(var_type, 'regular')
              FROM collection_var_defs
              WHERE collection_id=?1
              ORDER BY sort_order, key",
@@ -635,6 +643,7 @@ impl Database {
                 collection_id: row.get(1)?,
                 key: row.get(2)?,
                 sort_order: row.get(3)?,
+                var_type: row.get(4)?,
             })
         })?;
         rows.collect()
@@ -672,7 +681,7 @@ impl Database {
         environment_id: &str,
     ) -> rusqlite::Result<Vec<VarRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT d.id, d.key, v.value, v.is_secret, v.id
+            "SELECT d.id, d.key, v.value, v.is_secret, v.id, COALESCE(d.var_type, 'regular')
              FROM collection_var_defs d
              LEFT JOIN collection_var_values v
                ON v.def_id = d.id AND v.environment_id = ?2
@@ -687,6 +696,35 @@ impl Database {
                 value: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
                 is_secret: is_secret.unwrap_or(0) != 0,
                 value_id: row.get(4)?,
+                var_type: row.get(5)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// Load only operative VarRows for a collection + environment (for the request inspector).
+    pub fn load_operative_var_rows(
+        &self,
+        collection_id: &str,
+        environment_id: &str,
+    ) -> rusqlite::Result<Vec<VarRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT d.id, d.key, v.value, v.is_secret, v.id, COALESCE(d.var_type, 'regular')
+             FROM collection_var_defs d
+             LEFT JOIN collection_var_values v
+               ON v.def_id = d.id AND v.environment_id = ?2
+             WHERE d.collection_id = ?1 AND COALESCE(d.var_type, 'regular') = 'operative'
+             ORDER BY d.sort_order, d.key",
+        )?;
+        let rows = stmt.query_map(params![collection_id, environment_id], |row| {
+            let is_secret: Option<i32> = row.get(3)?;
+            Ok(VarRow {
+                def_id: row.get(0)?,
+                key: row.get(1)?,
+                value: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                is_secret: is_secret.unwrap_or(0) != 0,
+                value_id: row.get(4)?,
+                var_type: row.get(5)?,
             })
         })?;
         rows.collect()
@@ -787,6 +825,7 @@ impl Database {
                 value: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
                 is_secret: is_secret.unwrap_or(0) != 0,
                 value_id: row.get(4)?,
+                var_type: "regular".to_string(),
             })
         })?;
         rows.collect()

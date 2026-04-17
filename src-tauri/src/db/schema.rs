@@ -159,6 +159,9 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
     // Add soft-delete support (deleted_at column on collections, folders, requests)
     migrate_add_soft_delete(conn);
 
+    // Add var_type to collection_var_defs (regular vs operative)
+    migrate_var_type(conn);
+
     Ok(())
 }
 
@@ -351,6 +354,24 @@ fn migrate_env_variables(conn: &Connection) {
             );
         }
     }
+}
+
+/// Add `var_type` column to `collection_var_defs` (idempotent).
+fn migrate_var_type(conn: &Connection) {
+    let has_col: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('collection_var_defs') WHERE name='var_type'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
+    if has_col {
+        return;
+    }
+    let _ = conn.execute_batch(
+        "ALTER TABLE collection_var_defs ADD COLUMN var_type TEXT NOT NULL DEFAULT 'regular';",
+    );
 }
 
 /// Add sort_order column to environments table (idempotent).

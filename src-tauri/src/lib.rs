@@ -95,10 +95,12 @@ pub fn run() {
             // Collection Variables
             commands::insert_var_def,
             commands::update_var_def_key,
+            commands::update_var_def_type,
             commands::delete_var_def,
             commands::list_var_defs,
             commands::upsert_var_value,
             commands::load_var_rows,
+            commands::load_operative_var_rows,
             commands::get_active_collection_variables,
             // Settings
             commands::get_app_setting,

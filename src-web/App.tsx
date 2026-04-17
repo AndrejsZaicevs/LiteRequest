@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type {
   Collection, Folder, Request, RequestVersion, RequestExecution,
   Environment, EnvVariable, RequestData, ResponseData, HttpMethod,
-  KeyValuePair, AuthConfig,
+  KeyValuePair, AuthConfig, VarRow,
 } from "./lib/types";
 import { defaultRequestData, resolveVariableRefs, findUnresolvedVars } from "./lib/types";
 import { resolveDynamicVars, getDynamicVarPreviews } from "./lib/dynamicVars";
@@ -76,9 +76,12 @@ export default function App() {
 
   // ── Variable map for display/highlighting ────────────────
   const [collectionDisplayVars, setCollectionDisplayVars] = useState<Record<string, string>>({});
+  const [operativeVarRows, setOperativeVarRows] = useState<VarRow[]>([]);
 
-  useEffect(() => {
-    if (!currentRequest) { setCollectionDisplayVars({}); return; }
+  const activeEnvId = environments.find(e => e.is_active)?.id;
+
+  const loadCollectionVars = () => {
+    if (!currentRequest) { setCollectionDisplayVars({}); setOperativeVarRows([]); return; }
     api.getActiveCollectionVariables(currentRequest.collection_id)
       .then(vars => {
         const obj: Record<string, string> = {};
@@ -86,8 +89,19 @@ export default function App() {
         setCollectionDisplayVars(obj);
       })
       .catch(() => setCollectionDisplayVars({}));
+    if (activeEnvId) {
+      api.loadOperativeVarRows(currentRequest.collection_id, activeEnvId)
+        .then(setOperativeVarRows)
+        .catch(() => setOperativeVarRows([]));
+    } else {
+      setOperativeVarRows([]);
+    }
+  };
+
+  useEffect(() => {
+    loadCollectionVars();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRequest?.collection_id, environments.find(e => e.is_active)?.id, envVariables]);
+  }, [currentRequest?.collection_id, activeEnvId, envVariables]);
 
   const displayVariables = useMemo(() => {
     const vars: Record<string, string> = { ...collectionDisplayVars };
@@ -784,6 +798,15 @@ export default function App() {
                   }}
                   environments={environments}
                   variables={displayVariables}
+                  operativeVarRows={operativeVarRows}
+                  onOperativeVarChange={(row, value) => {
+                    if (!activeEnvId) return;
+                    const newId = row.value_id ?? crypto.randomUUID();
+                    setOperativeVarRows(prev => prev.map(r => r.def_id === row.def_id ? { ...r, value } : r));
+                    api.upsertVarValue(newId, row.def_id, activeEnvId, value, row.is_secret)
+                      .then(loadCollectionVars)
+                      .catch(console.error);
+                  }}
                 />
               </div>
             )}

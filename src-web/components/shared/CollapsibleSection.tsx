@@ -8,9 +8,11 @@ interface CollapsibleSectionProps {
   children: React.ReactNode;
   /** Optional node rendered on the right side of the header (e.g. an Add button) */
   action?: React.ReactNode;
+  /** Optional icon rendered next to the title */
+  icon?: React.ReactNode;
 }
 
-export function CollapsibleSection({ title, count, isOpen, onToggle, children, action }: CollapsibleSectionProps) {
+export function CollapsibleSection({ title, count, isOpen, onToggle, children, action, icon }: CollapsibleSectionProps) {
   return (
     <div className="border-b border-gray-700/50 last:border-0">
       <button
@@ -22,6 +24,7 @@ export function CollapsibleSection({ title, count, isOpen, onToggle, children, a
             ? <ChevronDown size={13} className="text-gray-400" />
             : <ChevronRight size={13} className="text-gray-400" />}
           <span className="text-xs font-semibold tracking-wide text-gray-200 uppercase">{title}</span>
+          {icon}
         </div>
         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
           {count !== undefined && count > 0 && (

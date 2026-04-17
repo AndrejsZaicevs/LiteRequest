@@ -80,12 +80,15 @@ export const loadEnvVarRows = (environmentId: string) => invoke<VarRow[]>("load_
 // ── Collection Variables ─────────────────────────────────────
 export const insertVarDef = (def: VarDef) => invoke<void>("insert_var_def", { def });
 export const updateVarDefKey = (defId: string, key: string) => invoke<void>("update_var_def_key", { defId, key });
+export const updateVarDefType = (defId: string, varType: string) => invoke<void>("update_var_def_type", { defId, varType });
 export const deleteVarDef = (defId: string) => invoke<void>("delete_var_def", { defId });
 export const listVarDefs = (collectionId: string) => invoke<VarDef[]>("list_var_defs", { collectionId });
 export const upsertVarValue = (valId: string, defId: string, environmentId: string, value: string, isSecret: boolean) =>
   invoke<void>("upsert_var_value", { valId, defId, environmentId, value, isSecret });
 export const loadVarRows = (collectionId: string, environmentId: string) =>
   invoke<VarRow[]>("load_var_rows", { collectionId, environmentId });
+export const loadOperativeVarRows = (collectionId: string, environmentId: string) =>
+  invoke<VarRow[]>("load_operative_var_rows", { collectionId, environmentId });
 export const getActiveCollectionVariables = (collectionId: string) =>
   invoke<[string, string][]>("get_active_collection_variables", { collectionId });
 

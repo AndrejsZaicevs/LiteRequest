@@ -33,6 +33,13 @@ pub struct VarDef {
     pub collection_id: String,
     pub key: String,
     pub sort_order: i32,
+    /// "regular" (default) or "operative" (shown in request inspector for quick editing)
+    #[serde(default = "VarDef::default_var_type")]
+    pub var_type: String,
+}
+
+impl VarDef {
+    pub fn default_var_type() -> String { "regular".to_string() }
 }
 
 /// Per-environment value for a variable definition.
@@ -54,6 +61,9 @@ pub struct VarRow {
     pub is_secret: bool,
     /// ID of the VarValue row, if one exists for this env
     pub value_id: Option<String>,
+    /// Inherited from VarDef — "regular" or "operative"
+    #[serde(default = "VarDef::default_var_type")]
+    pub var_type: String,
 }
 
 /// Legacy model kept for migration only.
