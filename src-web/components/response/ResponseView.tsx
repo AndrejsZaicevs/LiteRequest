@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from "react";import { Download, Maximize2, Minimize2, Copy, Check } from "lucide-react";
+import { useState, useMemo, useCallback, useRef } from "react";
+import { Download, Maximize2, Minimize2, Copy, Check, Search, X } from "lucide-react";
 import type { ResponseData } from "../../lib/types";
 import { statusColor } from "../../lib/types";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
@@ -8,6 +9,7 @@ import { json } from "@codemirror/lang-json";
 import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
+import { search as cmSearch } from "@codemirror/search";
 
 interface ResponseViewProps {
   response: ResponseData | null;
@@ -30,6 +32,19 @@ function statusDotColor(code: number): string {
 export function ResponseView({ response, latency, isLoading, isMaximized, onMaximize }: ResponseViewProps) {
   const [tab, setTab] = useState<Tab>("body");
   const [copied, setCopied] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const openSearch = useCallback(() => {
+    setShowSearch(true);
+    setTimeout(() => searchInputRef.current?.focus(), 30);
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setShowSearch(false);
+    setSearchText("");
+  }, []);
 
   const handleDownload = async () => {
     if (!response) return;
@@ -53,6 +68,12 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
       await api.saveFile(path, response.body, response.is_binary ?? false);
     }
   };
+
+  // Detect JSON body so we can delegate Ctrl+F to CM's native search panel
+  const isJsonBody = useMemo(() => {
+    if (!response || response.is_binary || !response.body) return false;
+    try { JSON.parse(response.body); return true; } catch { return false; }
+  }, [response]);
 
   // Compute copy eligibility: JSON always; plain text under 512 KB
   const copyText = useMemo(() => {
@@ -96,7 +117,20 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
   const formattedSize = bodySize > 1024 ? `${(bodySize / 1024).toFixed(1)} KB` : `${bodySize} B`;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-[#161616]">
+    <div
+      className="h-full flex flex-col overflow-hidden bg-[#161616]"
+      onKeyDown={e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+          // JSON body: CM's native Ctrl+F handles it; don't open our bar too
+          if (tab === "body" && isJsonBody) return;
+          e.preventDefault();
+          openSearch();
+        }
+      }}
+      // Make the div focusable so keydown fires when clicking inside
+      tabIndex={-1}
+      style={{ outline: "none" }}
+    >
       {/* Status bar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 text-sm flex-shrink-0">
         <div className="flex items-center gap-4">
@@ -134,6 +168,13 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
             </button>
           )}
           <button
+            onClick={openSearch}
+            title="Search (Ctrl+F)"
+            className={`p-1.5 rounded transition-colors ${showSearch ? "text-blue-400 bg-blue-500/10" : "text-gray-500 hover:text-gray-200 hover:bg-gray-700/50"}`}
+          >
+            <Search size={13} />
+          </button>
+          <button
             onClick={handleDownload}
             title="Save response to file"
             className="p-1.5 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/50 transition-colors"
@@ -152,9 +193,25 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto bg-[#0d0d0d]">
-        {tab === "body" && <ResponseBody body={response.body} isBinary={response.is_binary ?? false} />}
-        {tab === "headers" && <ResponseHeaders headers={response.headers} />}
+      <div className="flex-1 overflow-auto bg-[#0d0d0d] flex flex-col">
+        {showSearch && (
+          <div className="flex items-center gap-1 px-2 py-1 border-b border-gray-800 bg-[#161616] flex-shrink-0">
+            <Search size={12} className="text-gray-500 shrink-0" />
+            <input
+              ref={searchInputRef}
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              onKeyDown={e => { if (e.key === "Escape") closeSearch(); }}
+              placeholder="Search…"
+              className="flex-1 bg-transparent text-xs text-gray-200 outline-none placeholder-gray-600"
+            />
+            <button onClick={closeSearch} className="p-0.5 text-gray-500 hover:text-gray-300"><X size={13} /></button>
+          </div>
+        )}
+        <div className="flex-1 overflow-auto">
+          {tab === "body" && <ResponseBody body={response.body} isBinary={response.is_binary ?? false} searchText={showSearch ? searchText : ""} />}
+          {tab === "headers" && <ResponseHeaders headers={response.headers} searchText={showSearch ? searchText : ""} />}
+        </div>
       </div>
     </div>
   );
@@ -183,6 +240,41 @@ const responseViewerTheme = EditorView.theme(
     ".cm-focused .cm-selectionBackground": { backgroundColor: "#3b82f655 !important" },
     ".cm-cursor": { display: "none" },
     ".cm-lineNumbers .cm-gutterElement": { color: "#374151" },
+    // Native CM search panel — styled to match the app
+    ".cm-search": {
+      backgroundColor: "#1a1a1a",
+      borderTop: "1px solid #374151",
+      padding: "6px 8px",
+      display: "flex",
+      gap: "6px",
+      flexWrap: "wrap",
+      alignItems: "center",
+    },
+    ".cm-search input": {
+      backgroundColor: "#0d0d0d",
+      border: "1px solid #374151",
+      borderRadius: "4px",
+      color: "#d1d5db",
+      fontSize: "12px",
+      padding: "2px 6px",
+      outline: "none",
+    },
+    ".cm-search input:focus": { borderColor: "#3b82f6" },
+    ".cm-search button": {
+      backgroundColor: "transparent",
+      border: "1px solid #374151",
+      borderRadius: "4px",
+      color: "#9ca3af",
+      fontSize: "11px",
+      padding: "2px 6px",
+      cursor: "pointer",
+    },
+    ".cm-search button:hover": { color: "#e5e7eb", borderColor: "#6b7280" },
+    ".cm-search label": { color: "#6b7280", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" },
+    ".cm-search .cm-button": { display: "none" }, // hide "Replace" / "Replace all" buttons
+    // Search match highlighting
+    ".cm-searchMatch": { backgroundColor: "#f59e0b33", outline: "1px solid #f59e0b66" },
+    ".cm-searchMatch-selected": { backgroundColor: "#f59e0b77" },
   },
   { dark: true }
 );
@@ -198,7 +290,19 @@ const responseSyntax = HighlightStyle.define([
   { tag: tags.bracket,      color: "#9ca3af" },
 ]);
 
-function ResponseBody({ body, isBinary }: { body: string; isBinary: boolean }) {
+const cmJsonExtensions = [
+  responseViewerTheme,
+  syntaxHighlighting(responseSyntax),
+  json(),
+  EditorView.lineWrapping,
+  cmSearch({ top: true }),
+];
+
+function ResponseBody({ body, isBinary, searchText }: {
+  body: string;
+  isBinary: boolean;
+  searchText: string;
+}) {
   const { isJson, formatted } = useMemo(() => {
     if (isBinary || !body) return { isJson: false, formatted: body };
     try {
@@ -208,11 +312,6 @@ function ResponseBody({ body, isBinary }: { body: string; isBinary: boolean }) {
       return { isJson: false, formatted: body };
     }
   }, [body, isBinary]);
-
-  const jsonExtensions = useMemo(
-    () => [responseViewerTheme, syntaxHighlighting(responseSyntax), json(), EditorView.lineWrapping, EditorView.editable.of(false)],
-    []
-  );
 
   if (!body) {
     return (
@@ -237,7 +336,7 @@ function ResponseBody({ body, isBinary }: { body: string; isBinary: boolean }) {
         value={formatted}
         height="100%"
         theme="none"
-        extensions={jsonExtensions}
+        extensions={cmJsonExtensions}
         readOnly
         basicSetup={{
           lineNumbers: true,
@@ -254,6 +353,20 @@ function ResponseBody({ body, isBinary }: { body: string; isBinary: boolean }) {
     );
   }
 
+  // Plain text — highlight matches inline
+  if (searchText) {
+    const segments = highlightText(formatted, searchText);
+    return (
+      <pre className="p-4 font-mono text-sm whitespace-pre-wrap break-all leading-relaxed text-gray-300">
+        {segments.map((seg, i) =>
+          seg.match
+            ? <mark key={i} className="bg-yellow-400/30 text-yellow-200 rounded-sm">{seg.text}</mark>
+            : <span key={i}>{seg.text}</span>
+        )}
+      </pre>
+    );
+  }
+
   return (
     <pre className="p-4 font-mono text-sm whitespace-pre-wrap break-all leading-relaxed text-gray-300">
       {formatted}
@@ -261,17 +374,45 @@ function ResponseBody({ body, isBinary }: { body: string; isBinary: boolean }) {
   );
 }
 
-function ResponseHeaders({ headers }: { headers: Record<string, string> }) {
-  const entries = Object.entries(headers);
+/** Split text into alternating match/non-match segments for inline highlighting. */
+function highlightText(text: string, query: string): { text: string; match: boolean }[] {
+  if (!query) return [{ text, match: false }];
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(escaped, "gi");
+  const segments: { text: string; match: boolean }[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) segments.push({ text: text.slice(last, m.index), match: false });
+    segments.push({ text: m[0], match: true });
+    last = re.lastIndex;
+  }
+  if (last < text.length) segments.push({ text: text.slice(last), match: false });
+  return segments;
+}
+
+function ResponseHeaders({ headers, searchText }: { headers: Record<string, string>; searchText: string }) {
+  const entries = Object.entries(headers).filter(([key, value]) => {
+    if (!searchText) return true;
+    const q = searchText.toLowerCase();
+    return key.toLowerCase().includes(q) || value.toLowerCase().includes(q);
+  });
   return (
     <div className="p-2">
+      {entries.length === 0 && searchText && (
+        <div className="text-xs text-gray-600 px-2 py-4 text-center">No headers matching "{searchText}"</div>
+      )}
       {entries.map(([key, value], i) => (
         <div key={i} className="flex items-center gap-2 py-1 px-2 text-xs font-mono hover:bg-[#1a1a1a] rounded">
           <span className="text-blue-400 font-medium shrink-0" style={{ minWidth: "35%" }}>
-            {key}
+            {searchText ? highlightText(key, searchText).map((s, j) =>
+              s.match ? <mark key={j} className="bg-yellow-400/30 text-yellow-200 rounded-sm">{s.text}</mark> : <span key={j}>{s.text}</span>
+            ) : key}
           </span>
           <span className="text-gray-400 break-all">
-            {value}
+            {searchText ? highlightText(value, searchText).map((s, j) =>
+              s.match ? <mark key={j} className="bg-yellow-400/30 text-yellow-200 rounded-sm">{s.text}</mark> : <span key={j}>{s.text}</span>
+            ) : value}
           </span>
         </div>
       ))}
