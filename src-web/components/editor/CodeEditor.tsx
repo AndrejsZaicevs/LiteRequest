@@ -5,7 +5,10 @@ import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
+import { autocompletion } from "@codemirror/autocomplete";
+import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
 import { useMemo } from "react";
+import { DYNAMIC_VARS } from "../../lib/dynamicVars";
 
 const varHighlightTheme = EditorView.theme({
   ".cm-var-resolved":   { color: "#34d399 !important", backgroundColor: "rgba(52,211,153,0.12)", borderRadius: "3px" },
@@ -63,8 +66,8 @@ const liteTheme = EditorView.theme(
     },
     ".cm-activeLineGutter": { backgroundColor: "#1a1a1a" },
     ".cm-activeLine": { backgroundColor: "#1a1a1a80" },
-    ".cm-selectionBackground": { backgroundColor: "#3b82f625 !important" },
-    ".cm-focused .cm-selectionBackground": { backgroundColor: "#3b82f625 !important" },
+    ".cm-selectionBackground": { backgroundColor: "#3b82f655 !important" },
+    ".cm-focused .cm-selectionBackground": { backgroundColor: "#3b82f655 !important" },
     ".cm-matchingBracket": {
       backgroundColor: "#3b82f640",
       outline: "1px solid #3b82f660",
@@ -87,6 +90,76 @@ const liteSyntax = HighlightStyle.define([
   { tag: tags.bracket,            color: "#9ca3af" },
 ]);
 
+// Groups for dynamic variable display
+const DYNAMIC_VAR_SECTION: Record<string, string> = {};
+for (const name of Object.keys(DYNAMIC_VARS)) {
+  if (name === "$timestamp" || name === "$isoTimestamp" || name.includes("Date") || name.includes("Month") || name.includes("Weekday"))
+    DYNAMIC_VAR_SECTION[name] = "Date / Time";
+  else if (name.includes("First") || name.includes("Last") || name.includes("Full") || name.includes("User") || name.includes("Job") || name.includes("Name") || name.includes("Prefix") || name.includes("Suffix"))
+    DYNAMIC_VAR_SECTION[name] = "Person";
+  else if (name.includes("Email") || name.includes("Domain") || name.includes("Url") || name.includes("IP") || name.includes("MAC") || name.includes("Password") || name.includes("UserAgent"))
+    DYNAMIC_VAR_SECTION[name] = "Internet";
+  else if (name.includes("City") || name.includes("Country") || name.includes("Latitude") || name.includes("Longitude") || name.includes("Street") || name.includes("Zip"))
+    DYNAMIC_VAR_SECTION[name] = "Location";
+  else if (name.includes("Phone"))
+    DYNAMIC_VAR_SECTION[name] = "Phone";
+  else if (name.includes("Lorem") || name.includes("Word") || name.includes("Noun") || name.includes("Verb") || name.includes("Adjective"))
+    DYNAMIC_VAR_SECTION[name] = "Lorem";
+  else if (name.includes("Bank") || name.includes("Credit") || name.includes("Currency") || name.includes("Bitcoin") || name.includes("Price"))
+    DYNAMIC_VAR_SECTION[name] = "Finance";
+  else if (name.includes("File") || name.includes("Mime") || name.includes("SemVer") || name.includes("Abbreviation"))
+    DYNAMIC_VAR_SECTION[name] = "Misc";
+  else if (name.includes("Int") || name.includes("Float") || name.includes("Boolean") || name.includes("ArrayIndex"))
+    DYNAMIC_VAR_SECTION[name] = "Numbers";
+  else if (name.includes("UUID") || name === "$guid" || name.includes("AlphaNumeric") || name.includes("Hex") || name.includes("RGB"))
+    DYNAMIC_VAR_SECTION[name] = "Identity / Color";
+  else
+    DYNAMIC_VAR_SECTION[name] = "Dynamic";
+}
+
+function makeVarCompletionSource(variables: Record<string, string>) {
+  return (context: CompletionContext): CompletionResult | null => {
+    // Match {{ followed by optional partial variable name
+    const match = context.matchBefore(/\{\{[\w$.,-]*/);
+    if (!match) return null;
+    if (match.from === match.to && !context.explicit) return null;
+
+    const from = match.from + 2; // replace only what comes after {{
+
+    const options: Completion[] = [];
+
+    // Env variables (highest boost)
+    for (const [name, value] of Object.entries(variables)) {
+      const preview = value.length > 40 ? value.slice(0, 40) + "…" : value;
+      options.push({
+        label: name,
+        detail: preview,
+        section: { name: "Variables", rank: 0 },
+        boost: 99,
+        apply: (view, _c, from, to) => {
+          const after = view.state.sliceDoc(to, to + 2);
+          view.dispatch({ changes: { from, to, insert: after === "}}" ? name : name + "}}" } });
+        },
+      });
+    }
+
+    // Dynamic variables grouped by category
+    for (const [name] of Object.entries(DYNAMIC_VARS)) {
+      const section = DYNAMIC_VAR_SECTION[name] ?? "Dynamic";
+      options.push({
+        label: name,
+        section: { name: section, rank: 1 },
+        apply: (view, _c, from, to) => {
+          const after = view.state.sliceDoc(to, to + 2);
+          view.dispatch({ changes: { from, to, insert: after === "}}" ? name : name + "}}" } });
+        },
+      });
+    }
+
+    return { from, options };
+  };
+}
+
 interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
@@ -97,7 +170,11 @@ interface CodeEditorProps {
 
 export function CodeEditor({ value, onChange, language = "json", placeholder, variables = {} }: CodeEditorProps) {
   const extensions = useMemo(() => {
-    const exts = [liteTheme, syntaxHighlighting(liteSyntax), EditorView.lineWrapping, varHighlightTheme, makeVarPlugin(variables)];
+    const exts = [
+      liteTheme, syntaxHighlighting(liteSyntax), EditorView.lineWrapping,
+      varHighlightTheme, makeVarPlugin(variables),
+      autocompletion({ override: [makeVarCompletionSource(variables)], activateOnTyping: true }),
+    ];
     if (language === "json") exts.push(json());
     return exts;
   }, [language, variables]);
@@ -115,7 +192,7 @@ export function CodeEditor({ value, onChange, language = "json", placeholder, va
         foldGutter: true,
         bracketMatching: true,
         closeBrackets: true,
-        autocompletion: true,
+        autocompletion: false,
         highlightActiveLine: true,
         indentOnInput: true,
         tabSize: 2,

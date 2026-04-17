@@ -95,3 +95,153 @@ input::placeholder, textarea::placeholder {
   user-select: none !important;
   cursor: col-resize !important;
 }
+
+/* ─── CodeMirror search panel ─── */
+.cm-panel {
+  background: #0d0d0d !important;
+  border-top: 1px solid #1f2937 !important;
+  padding: 6px 8px !important;
+}
+.cm-search {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+.cm-search input[type="text"] {
+  background: #1a1a1a !important;
+  border: 1px solid #374151 !important;
+  border-radius: 4px !important;
+  color: #e5e7eb !important;
+  font-size: 12px !important;
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace !important;
+  padding: 3px 8px !important;
+  outline: none !important;
+  transition: border-color 0.15s !important;
+  min-width: 140px !important;
+}
+.cm-search input[type="text"]:focus {
+  border-color: #4b91f0 !important;
+  background: #1f2937 !important;
+}
+.cm-search input[type="text"]::placeholder {
+  color: #4b5563 !important;
+}
+.cm-search button {
+  background: #1a1a1a !important;
+  border: 1px solid #374151 !important;
+  border-radius: 4px !important;
+  color: #9ca3af !important;
+  font-size: 11px !important;
+  padding: 3px 8px !important;
+  cursor: pointer !important;
+  transition: background 0.15s, color 0.15s !important;
+  white-space: nowrap !important;
+}
+.cm-search button:hover {
+  background: #242424 !important;
+  color: #e5e7eb !important;
+  border-color: #4b5563 !important;
+}
+.cm-search button[name="close"] {
+  background: transparent !important;
+  border-color: transparent !important;
+  padding: 3px 4px !important;
+  font-size: 14px !important;
+  color: #6b7280 !important;
+  margin-left: auto !important;
+}
+.cm-search button[name="close"]:hover {
+  color: #e5e7eb !important;
+  background: transparent !important;
+}
+.cm-replace-row {
+  padding-top: 4px;
+  border-top: 1px solid #1f2937;
+  margin-top: 2px;
+}
+.cm-replace-toggle {
+  order: -1;
+}
+
+/* ─── CodeMirror autocomplete popup ─── */
+.cm-tooltip.cm-tooltip-autocomplete {
+  background: #161616 !important;
+  border: 1px solid #2d2d2d !important;
+  border-radius: 6px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+  padding: 2px 0 !important;
+  min-width: 240px !important;
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace !important;
+  font-size: 12px !important;
+  overflow: hidden !important;
+}
+.cm-tooltip-autocomplete > ul {
+  max-height: 240px !important;
+  font-family: inherit !important;
+}
+.cm-tooltip-autocomplete > ul > li {
+  padding: 4px 10px !important;
+  color: #d1d5db !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+}
+.cm-tooltip-autocomplete > ul > li[aria-selected="true"],
+.cm-tooltip-autocomplete > ul > li:hover {
+  background: #1f2937 !important;
+  color: #f9fafb !important;
+}
+.cm-completionLabel {
+  flex: 1 !important;
+  color: #e5e7eb !important;
+  font-size: 12px !important;
+}
+.cm-completionMatchedText {
+  color: #60a5fa !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+}
+.cm-completionDetail {
+  color: #6b7280 !important;
+  font-size: 11px !important;
+  font-style: normal !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 160px !important;
+}
+.cm-completionSectionHeader {
+  padding: 5px 10px 2px !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  color: #4b5563 !important;
+  background: #111 !important;
+  border-top: 1px solid #1f2937 !important;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+}
+.cm-completionIcon {
+  display: none !important;
+}
+.cm-search label {
+  display: flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  font-size: 11px !important;
+  color: #6b7280 !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  white-space: nowrap !important;
+}
+.cm-search label:hover {
+  color: #9ca3af !important;
+}
+.cm-search input[type="checkbox"] {
+  accent-color: #4b91f0 !important;
+  width: 11px !important;
+  height: 11px !important;
+  cursor: pointer !important;
+}
