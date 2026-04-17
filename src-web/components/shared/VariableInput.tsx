@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from "react";
+import { useTooltip } from "./TooltipPortal";
 
 interface Segment {
   type: "text" | "var";
@@ -39,19 +40,14 @@ export function VariableInput({
 }: VariableInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const [showTooltip, setShowTooltip] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const { show, hide } = useTooltip();
 
-  // displayValue drives the overlay only. The actual <input> DOM value is
-  // managed imperatively — React never touches input.value after mount.
   const [displayValue, setDisplayValue] = useState(value);
   const lastEmittedRef = useRef(value);
-  // Keep onChange in a ref so the native listener never goes stale.
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
-  // Register a native DOM input listener so React's reconciler is completely
-  // out of the picture for value updates — this is the only reliable way to
-  // prevent React 19 from resetting the cursor position on re-renders.
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
@@ -63,16 +59,13 @@ export function VariableInput({
     };
     el.addEventListener("input", handler);
     return () => el.removeEventListener("input", handler);
-  }, []); // register once on mount
+  }, []);
 
-  // Sync prop → DOM only for genuine external changes (e.g. switching requests).
   useEffect(() => {
     if (value !== lastEmittedRef.current) {
       lastEmittedRef.current = value;
       setDisplayValue(value);
-      if (inputRef.current) {
-        inputRef.current.value = value;
-      }
+      if (inputRef.current) inputRef.current.value = value;
     }
   }, [value]);
 
@@ -86,8 +79,35 @@ export function VariableInput({
     }
   };
 
+  const showVarTooltip = () => {
+    if (varSegments.length === 0 || !wrapperRef.current) return;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    show(rect, (
+      <>
+        {varSegments.map(s => (
+          <div key={s.name} className="flex items-center gap-1.5 py-0.5">
+            <span className={`font-mono ${
+              s.name.startsWith("$") ? "text-purple-400"
+              : variables[s.name] !== undefined ? "text-emerald-400"
+              : "text-orange-400"
+            }`}>
+              {`{{${s.name}}}`}
+            </span>
+            <span className="text-gray-600">→</span>
+            {s.name.startsWith("$")
+              ? <span className="text-purple-300/70 italic">dynamic</span>
+              : variables[s.name] !== undefined
+                ? <span className="text-gray-200 font-mono max-w-[150px] truncate">{variables[s.name]}</span>
+                : <span className="text-orange-400/70 italic">not set</span>
+            }
+          </div>
+        ))}
+      </>
+    ));
+  };
+
   return (
-    <div className={`relative ${wrapperClassName}`}>
+    <div ref={wrapperRef} className={`relative ${wrapperClassName}`}>
       {hasVars && (
         <div
           ref={overlayRef}
@@ -118,9 +138,6 @@ export function VariableInput({
         </div>
       )}
 
-      {/* Fully uncontrolled — no value/onChange props on the element itself.
-          The native "input" listener above handles all user edits without
-          going through React's controlled-input pipeline. */}
       <input
         ref={inputRef}
         defaultValue={value}
@@ -130,34 +147,12 @@ export function VariableInput({
         style={{ ...inputStyle, ...(hasVars ? { caretColor: "#9ca3af" } : {}) }}
         onKeyDown={onKeyDown}
         onScroll={hasVars ? syncScroll : undefined}
-        onMouseEnter={() => varSegments.length > 0 && setShowTooltip(true)}
-        onMouseLeave={() => setShowTooltip(false)}
-        onFocus={() => varSegments.length > 0 && setShowTooltip(true)}
-        onBlur={() => setShowTooltip(false)}
+        onMouseEnter={showVarTooltip}
+        onMouseLeave={hide}
+        onFocus={showVarTooltip}
+        onBlur={hide}
       />
-
-      {showTooltip && varSegments.length > 0 && (
-        <div className="absolute top-full left-0 z-50 mt-1 bg-[#1a1a1a] border border-gray-700 rounded shadow-xl p-2 min-w-[160px] text-xs pointer-events-none">
-          {varSegments.map(s => (
-            <div key={s.name} className="flex items-center gap-1.5 py-0.5">
-              <span className={`font-mono ${
-                s.name.startsWith("$") ? "text-purple-400"
-                : variables[s.name] !== undefined ? "text-emerald-400"
-                : "text-orange-400"
-              }`}>
-                {`{{${s.name}}}`}
-              </span>
-              <span className="text-gray-600">→</span>
-              {s.name.startsWith("$")
-                ? <span className="text-purple-300/70 italic">dynamic</span>
-                : variables[s.name] !== undefined
-                  ? <span className="text-gray-200 font-mono max-w-[150px] truncate">{variables[s.name]}</span>
-                  : <span className="text-orange-400/70 italic">not set</span>
-              }
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
+

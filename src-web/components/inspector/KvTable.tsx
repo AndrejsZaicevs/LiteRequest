@@ -1,4 +1,4 @@
-import { Trash2, Check } from "lucide-react";
+import { Trash2, Check, Eye, EyeOff } from "lucide-react";
 import type { KeyValuePair } from "../../lib/types";
 import { VariableInput } from "../shared/VariableInput";
 
@@ -8,9 +8,10 @@ interface KvTableProps {
   placeholder?: { key: string; value: string };
   fixedKeys?: boolean;
   variables?: Record<string, string>;
+  showSecretToggle?: boolean;
 }
 
-export function KvTable({ rows, onChange, placeholder, fixedKeys, variables = {} }: KvTableProps) {
+export function KvTable({ rows, onChange, placeholder, fixedKeys, variables = {}, showSecretToggle }: KvTableProps) {
   const update = (index: number, field: keyof KeyValuePair, value: string | boolean) => {
     const next = [...rows];
     next[index] = { ...next[index], [field]: value };
@@ -56,28 +57,53 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys, variables = {}
             )}
           </div>
 
-          {/* Key input */}
+          {/* Key input — capped width so value column grows on wide panels */}
           <input
             value={row.key}
             onChange={(e) => update(i, "key", e.target.value)}
             placeholder={placeholder?.key ?? "key"}
-            className={`w-0 flex-1 bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent rounded px-1.5 py-0.5 transition-all text-gray-200 ${
+            className={`min-w-[80px] max-w-[180px] w-[35%] shrink bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent rounded px-1.5 py-0.5 transition-all text-gray-200 ${
               !fixedKeys ? "focus:border-gray-700 focus:bg-[#1a1a1a]" : "text-gray-500 font-mono cursor-default"
             } ${!row.enabled ? "opacity-40 line-through" : ""}`}
             readOnly={fixedKeys}
           />
 
-          {/* Value input */}
-          <VariableInput
-            value={row.value}
-            onChange={(v) => update(i, "value", v)}
-            variables={variables}
-            wrapperClassName="w-0 flex-1"
-            className={`bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent focus:border-gray-700 focus:bg-[#1a1a1a] rounded px-1.5 py-0.5 transition-all text-gray-200 ${
-              !row.enabled ? "opacity-40 line-through" : ""
-            }`}
-            placeholder={placeholder?.value ?? "value"}
-          />
+          {/* Value input — takes remaining space */}
+          {row.is_secret ? (
+            <input
+              value={row.value}
+              type="password"
+              onChange={(e) => update(i, "value", e.target.value)}
+              className={`flex-1 min-w-0 bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent focus:border-gray-700 focus:bg-[#1a1a1a] rounded px-1.5 py-0.5 transition-all text-gray-200 ${
+                !row.enabled ? "opacity-40 line-through" : ""
+              }`}
+              placeholder={placeholder?.value ?? "value"}
+            />
+          ) : (
+            <VariableInput
+              value={row.value}
+              onChange={(v) => update(i, "value", v)}
+              variables={variables}
+              wrapperClassName="flex-1 min-w-0"
+              className={`bg-transparent text-xs outline-none placeholder-gray-600 border border-transparent focus:border-gray-700 focus:bg-[#1a1a1a] rounded px-1.5 py-0.5 transition-all text-gray-200 ${
+                !row.enabled ? "opacity-40 line-through" : ""
+              }`}
+              placeholder={placeholder?.value ?? "value"}
+            />
+          )}
+
+          {/* Secret toggle */}
+          {showSecretToggle && (row.key !== "" || row.value !== "") && (
+            <div className="w-5 flex justify-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={() => update(i, "is_secret", !row.is_secret)}
+                className="text-gray-500 hover:text-gray-300 p-0.5 rounded"
+                title={row.is_secret ? "Show value" : "Hide value"}
+              >
+                {row.is_secret ? <EyeOff size={12} /> : <Eye size={12} />}
+              </button>
+            </div>
+          )}
 
           {/* Delete */}
           <div className="w-5 flex justify-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -93,10 +119,10 @@ export function KvTable({ rows, onChange, placeholder, fixedKeys, variables = {}
       {needsEmptyRow && (
         <div className="group flex items-center gap-1.5 h-7 opacity-40 cursor-text" onClick={addRow}>
           <div className="w-4 shrink-0" />
-          <span className="w-0 flex-1 text-xs px-1.5 py-1 text-gray-600">
+          <span className="min-w-[80px] max-w-[180px] w-[35%] shrink text-xs px-1.5 py-1 text-gray-600">
             {placeholder?.key ?? "key"}
           </span>
-          <span className="w-0 flex-1 text-xs px-1.5 py-1 text-gray-600">
+          <span className="flex-1 min-w-0 text-xs px-1.5 py-1 text-gray-600">
             {placeholder?.value ?? "value"}
           </span>
           <div className="w-5 shrink-0" />

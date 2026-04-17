@@ -4,6 +4,7 @@ import type { Environment, EnvVarDef, VarRow, KeyValuePair, ClientCertEntry, Tra
 import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
+import { VarDefTable } from "../shared/VarDefTable";
 import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
@@ -14,7 +15,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-type Section = "environments" | "headers" | "variables" | "certificates" | "cleanup" | "trash";
+type Section = "environments" | "headers" | "variables" | "globalvars" | "certificates" | "cleanup" | "trash";
 
 interface SortableEnvRowProps {
   env: Environment;
@@ -97,7 +98,7 @@ interface AppSettingsProps {
 }
 
 export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
-  const [open, setOpen] = useState<Set<Section>>(new Set(["environments", "headers", "variables", "certificates"]));
+  const [open, setOpen] = useState<Set<Section>>(new Set(["environments", "headers", "variables", "globalvars", "certificates"]));
   const [selectedEnv, setSelectedEnv] = useState<string | null>(environments[0]?.id ?? null);
   const [renamingEnv, setRenamingEnv] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -207,6 +208,9 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
     api.getAppSetting("client_certs").then(v => {
       if (v) { try { setClientCerts(JSON.parse(v)); } catch {} }
     }).catch(() => {});
+    api.getAppSetting("settings_open_sections").then(v => {
+      if (v) { try { setOpen(new Set(JSON.parse(v) as Section[])); } catch {} }
+    }).catch(() => {});
   }, []);
 
   const addEnvironment = async () => {
@@ -274,6 +278,16 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
     await reloadVars(selectedEnv);
   };
 
+  const createEnvVarRow = (defId: string, defKey: string, value: string) => {
+    if (!selectedEnv) return;
+    const newId = crypto.randomUUID();
+    const newRow: VarRow = { value_id: newId, def_id: defId, key: defKey, value, is_secret: false };
+    setEnvVarRows(prev => [...prev, newRow]);
+    api.upsertEnvVarValue(newId, defId, selectedEnv, value, false)
+      .then(() => onUpdate())
+      .catch(console.error);
+  };
+
   const saveDefaultHeaders = async (headers: KeyValuePair[]) => {
     setDefaultHeaders(headers);
     await api.setAppSetting("default_headers", JSON.stringify(headers));
@@ -283,6 +297,26 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
     setAppWideVars(vars);
     await api.setAppSetting("app_variables", JSON.stringify(vars));
   };
+
+  const addAppVar = () => saveAppVars([...appWideVars, { key: "", value: "", enabled: true }]);
+
+  const deleteAppVar = (i: number) =>
+    saveAppVars(appWideVars.filter((_, idx) => idx !== i));
+
+  const updateAppVarKey = (i: number, key: string) => {
+    const next = appWideVars.map((v, idx) => idx === i ? { ...v, key } : v);
+    setAppWideVars(next);
+    api.setAppSetting("app_variables", JSON.stringify(next)).catch(console.error);
+  };
+
+  const updateAppVarValue = (i: number, value: string) => {
+    const next = appWideVars.map((v, idx) => idx === i ? { ...v, value } : v);
+    setAppWideVars(next);
+    api.setAppSetting("app_variables", JSON.stringify(next)).catch(console.error);
+  };
+
+  const toggleAppVarSecret = (i: number) =>
+    saveAppVars(appWideVars.map((v, idx) => idx === i ? { ...v, is_secret: !v.is_secret } : v));
 
   const addCert = () => {
     setClientCerts([...clientCerts, {
@@ -317,6 +351,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
         if (s === "cleanup") loadDbStats();
         if (s === "trash") loadTrash();
       }
+      api.setAppSetting("settings_open_sections", JSON.stringify([...next])).catch(() => {});
       return next;
     });
   };
@@ -394,60 +429,73 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
             : <span className="text-[10px] text-gray-600">select an env above to edit values</span>
           }
         </div>
-        <div className="border border-gray-800 rounded-md overflow-hidden">
-          {envVarDefs.map(def => {
-            const row = envVarRows.find(r => r.def_id === def.id);
-            return (
-              <div key={def.id} className="kv-row">
-                <input
-                  value={def.key}
-                  onChange={(e) => updateEnvVarKey(def.id, e.target.value)}
-                  className="kv-cell"
-                  style={{ border: "none", borderRadius: 0, fontWeight: 500 }}
-                />
-                <div className="kv-divider" />
-                <input
-                  value={row?.value ?? ""}
-                  type={row?.is_secret ? "password" : "text"}
-                  onChange={(e) => {
-                    if (row) {
-                      updateEnvVarValue(row, e.target.value);
-                    } else if (selectedEnv) {
-                      const newId = crypto.randomUUID();
-                      const newRow: VarRow = { value_id: newId, def_id: def.id, key: def.key, value: e.target.value, is_secret: false };
-                      setEnvVarRows(prev => [...prev, newRow]);
-                      api.upsertEnvVarValue(newId, def.id, selectedEnv, e.target.value, false)
-                        .then(() => onUpdate())
-                        .catch(console.error);
-                    }
-                  }}
-                  placeholder={selectedEnv ? "value" : "—"}
-                  className="kv-cell"
-                  style={{ border: "none", borderRadius: 0 }}
-                  disabled={!selectedEnv}
-                />
-                {row && (
-                  <button
-                    onClick={() => toggleEnvVarSecret(row)}
-                    className="kv-action text-gray-600 hover:text-gray-300"
-                    title={row.is_secret ? "Show" : "Hide"}
-                  >
-                    {row.is_secret ? <EyeOff size={12} /> : <Eye size={12} />}
-                  </button>
-                )}
-                <button onClick={() => deleteEnvVarDef(def.id)} className="kv-action text-gray-600 hover:text-red-400">
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            );
-          })}
-          {envVarDefs.length === 0 && (
-            <div className="px-4 py-4 text-xs text-center text-gray-600">No variables — click + Add</div>
-          )}
-        </div>
+        <VarDefTable
+          defs={envVarDefs}
+          rows={envVarRows}
+          hasEnv={!!selectedEnv}
+          onKeyChange={updateEnvVarKey}
+          onValueChange={updateEnvVarValue}
+          onValueCreate={createEnvVarRow}
+          onToggleSecret={toggleEnvVarSecret}
+          onDelete={deleteEnvVarDef}
+        />
         <p className="text-xs mt-2 text-gray-600">
           Variable keys are shared across all environments. Each environment has its own values.
         </p>
+      </CollapsibleSection>
+
+      {/* Global Variables */}
+      <CollapsibleSection
+        title="Global Variables"
+        count={appWideVars.filter(v => v.key).length}
+        isOpen={open.has("globalvars")}
+        onToggle={() => toggle("globalvars")}
+        action={
+          <button onClick={addAppVar} className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 hover:text-gray-200 hover:bg-[#2a2a2a] rounded transition-colors">
+            <Plus size={11} /> Add
+          </button>
+        }
+      >
+        <p className="text-xs mb-3 text-gray-600">Available in all collections, not environment-specific</p>
+        <div className="border border-gray-800 rounded-md overflow-hidden">
+          {appWideVars.map((v, i) => (
+            <div key={i} className="kv-row">
+              <input
+                value={v.key}
+                onChange={e => updateAppVarKey(i, e.target.value)}
+                className="kv-cell"
+                style={{ border: "none", borderRadius: 0, fontWeight: 500 }}
+                placeholder="VARIABLE_NAME"
+              />
+              <div className="kv-divider" />
+              <input
+                value={v.value}
+                type={v.is_secret ? "password" : "text"}
+                onChange={e => updateAppVarValue(i, e.target.value)}
+                className="kv-cell"
+                style={{ border: "none", borderRadius: 0 }}
+                placeholder="value"
+              />
+              <button
+                onClick={() => toggleAppVarSecret(i)}
+                className="kv-action text-gray-600 hover:text-gray-300"
+                title={v.is_secret ? "Show value" : "Hide value"}
+              >
+                {v.is_secret ? <EyeOff size={12} /> : <Eye size={12} />}
+              </button>
+              <button
+                onClick={() => deleteAppVar(i)}
+                className="kv-action text-gray-600 hover:text-red-400"
+                title="Delete variable"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+          {appWideVars.length === 0 && (
+            <div className="px-4 py-4 text-xs text-center text-gray-600">No variables — click + Add</div>
+          )}
+        </div>
       </CollapsibleSection>
 
       {/* Default Headers */}
@@ -460,19 +508,6 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
         <p className="text-xs mb-3 text-gray-600">Sent with every request across all collections</p>
         <div className="border border-gray-800 rounded-md overflow-hidden" style={{ maxWidth: 600 }}>
           <KvTable rows={defaultHeaders} onChange={saveDefaultHeaders} placeholder={{ key: "Header-Name", value: "value" }} />
-        </div>
-      </CollapsibleSection>
-
-      {/* Global Variables */}
-      <CollapsibleSection
-        title="Global Variables"
-        count={appWideVars.filter(v => v.key).length}
-        isOpen={open.has("environments")}
-        onToggle={() => toggle("environments")}
-      >
-        <p className="text-xs mb-3 text-gray-600">Available in all collections, not environment-specific</p>
-        <div className="border border-gray-800 rounded-md overflow-hidden" style={{ maxWidth: 600 }}>
-          <KvTable rows={appWideVars} onChange={saveAppVars} placeholder={{ key: "VARIABLE_NAME", value: "value" }} />
         </div>
       </CollapsibleSection>
 

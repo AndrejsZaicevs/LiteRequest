@@ -30,6 +30,7 @@ export interface KeyValuePair {
   key: string;
   value: string;
   enabled: boolean;
+  is_secret?: boolean;
 }
 
 // ── Body Type ────────────────────────────────────────────────

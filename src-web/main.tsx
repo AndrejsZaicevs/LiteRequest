@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { TooltipProvider } from "./components/shared/TooltipPortal";
 import App from "./App";
 import "./index.css";
 
@@ -82,6 +83,8 @@ new MutationObserver(mutations => {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <TooltipProvider>
+      <App />
+    </TooltipProvider>
   </React.StrictMode>,
 );

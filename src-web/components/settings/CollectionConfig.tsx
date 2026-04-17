@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { FolderOpen, Plus, Trash2 } from "lucide-react";
+import { FolderOpen, Plus } from "lucide-react";
 import type { Collection, Environment, VarDef, VarRow, AuthConfig, KeyValuePair } from "../../lib/types";
 import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
+import { VarDefTable } from "../shared/VarDefTable";
 
 interface CollectionConfigProps {
   collectionId: string;
@@ -53,8 +54,15 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
   const toggle = (s: Section) => setOpen(prev => {
     const next = new Set(prev);
     if (next.has(s)) next.delete(s); else next.add(s);
+    api.setAppSetting("collection_config_open_sections", JSON.stringify([...next])).catch(() => {});
     return next;
   });
+
+  useEffect(() => {
+    api.getAppSetting("collection_config_open_sections").then(v => {
+      if (v) { try { setOpen(new Set(JSON.parse(v) as Section[])); } catch {} }
+    }).catch(() => {});
+  }, []);
 
   const save = async () => {
     if (!collection) return;
@@ -124,6 +132,24 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
     await api.deleteVarDef(defId);
     setVarDefs(await api.listVarDefs(collectionId));
     if (activeEnv) setVarRows(await api.loadVarRows(collectionId, activeEnv.id));
+  };
+
+  const toggleVarSecret = (row: VarRow) => {
+    if (!activeEnv) return;
+    setVarRows(prev => prev.map(r => r.value_id === row.value_id ? { ...r, is_secret: !r.is_secret } : r));
+    api.upsertVarValue(row.value_id ?? crypto.randomUUID(), row.def_id, activeEnv.id, row.value, !row.is_secret)
+      .then(() => onUpdate())
+      .catch(console.error);
+  };
+
+  const createVarRow = (defId: string, defKey: string, value: string) => {
+    if (!activeEnv) return;
+    const newId = crypto.randomUUID();
+    const newRow: VarRow = { value_id: newId, def_id: defId, key: defKey, value, is_secret: false };
+    setVarRows(prev => [...prev, newRow]);
+    api.upsertVarValue(newId, defId, activeEnv.id, value, false)
+      .then(() => onUpdate())
+      .catch(console.error);
   };
 
   if (!collection) {
@@ -290,52 +316,17 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
             : <span className="text-[10px] text-gray-600">none active — select an env to edit values</span>
           }
         </div>
-        <div className="border border-gray-800 rounded-md overflow-hidden">
-          {varDefs.map(def => {
-            const row = varRows.find(r => r.def_id === def.id);
-            return (
-              <div key={def.id} className="kv-row">
-                <input
-                  value={def.key}
-                  onChange={(e) => updateVarKey(def.id, e.target.value)}
-                  className="kv-cell"
-                  style={{ border: "none", borderRadius: 0, fontWeight: 500 }}
-                />
-                <div className="kv-divider" />
-                <input
-                  value={row?.value ?? ""}
-                  onChange={(e) => {
-                    if (row) {
-                      updateVarValue(row, e.target.value);
-                    } else if (activeEnv) {
-                      const newId = crypto.randomUUID();
-                      const newRow: VarRow = { value_id: newId, def_id: def.id, key: def.key, value: e.target.value, is_secret: false };
-                      setVarRows(prev => [...prev, newRow]);
-                      api.upsertVarValue(newId, def.id, activeEnv.id, e.target.value, false)
-                        .then(() => onUpdate())
-                        .catch(console.error);
-                    }
-                  }}
-                  placeholder="value"
-                  className="kv-cell"
-                  style={{ border: "none", borderRadius: 0 }}
-                  disabled={!activeEnv}
-                />
-                <button
-                  onClick={() => deleteVarDef(def.id)}
-                  className="kv-action text-gray-600 hover:text-red-400"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            );
-          })}
-          {varDefs.length === 0 && (
-            <div className="px-4 py-4 text-xs text-center text-gray-600">
-              No variables yet
-            </div>
-          )}
-        </div>
+        <VarDefTable
+          defs={varDefs}
+          rows={varRows}
+          hasEnv={!!activeEnv}
+          onKeyChange={updateVarKey}
+          onValueChange={updateVarValue}
+          onValueCreate={createVarRow}
+          onToggleSecret={toggleVarSecret}
+          onDelete={deleteVarDef}
+          emptyMessage="No variables yet"
+        />
       </CollapsibleSection>
     </div>
   );

@@ -7,7 +7,8 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { autocompletion } from "@codemirror/autocomplete";
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { useTooltip } from "../shared/TooltipPortal";
 import { DYNAMIC_VARS } from "../../lib/dynamicVars";
 
 const varHighlightTheme = EditorView.theme({
@@ -90,6 +91,44 @@ const liteSyntax = HighlightStyle.define([
   { tag: tags.bracket,            color: "#9ca3af" },
 ]);
 
+function makeVarHoverPlugin(
+  onHover: (name: string, rect: DOMRect) => void,
+  onLeave: () => void,
+) {
+  return ViewPlugin.fromClass(
+    class {
+      private _scroller: HTMLElement | null = null;
+      private _onOver: (e: MouseEvent) => void;
+      private _onOut: (e: MouseEvent) => void;
+
+      constructor(view: EditorView) {
+        this._scroller = view.scrollDOM;
+        this._onOver = (e: MouseEvent) => {
+          const target = e.target as HTMLElement;
+          if (target.classList.contains("cm-var-resolved") || target.classList.contains("cm-var-unresolved")) {
+            const text = target.textContent ?? "";
+            const m = text.match(/\{\{([^}]+)\}\}/);
+            if (m) onHover(m[1].trim(), target.getBoundingClientRect());
+          }
+        };
+        this._onOut = (e: MouseEvent) => {
+          const rel = e.relatedTarget as HTMLElement | null;
+          if (!rel?.classList.contains("cm-var-resolved") && !rel?.classList.contains("cm-var-unresolved")) {
+            onLeave();
+          }
+        };
+        this._scroller.addEventListener("mouseover", this._onOver);
+        this._scroller.addEventListener("mouseout", this._onOut);
+      }
+
+      destroy() {
+        this._scroller?.removeEventListener("mouseover", this._onOver);
+        this._scroller?.removeEventListener("mouseout", this._onOut);
+      }
+    }
+  );
+}
+
 // Groups for dynamic variable display
 const DYNAMIC_VAR_SECTION: Record<string, string> = {};
 for (const name of Object.keys(DYNAMIC_VARS)) {
@@ -169,10 +208,39 @@ interface CodeEditorProps {
 }
 
 export function CodeEditor({ value, onChange, language = "json", placeholder, variables = {} }: CodeEditorProps) {
+  const { show, hide } = useTooltip();
+  const showRef = useRef(show);
+  const hideRef = useRef(hide);
+  const variablesRef = useRef(variables);
+  showRef.current = show;
+  hideRef.current = hide;
+  variablesRef.current = variables;
+
   const extensions = useMemo(() => {
+    const onHover = (name: string, rect: DOMRect) => {
+      const vars = variablesRef.current;
+      const isDynamic = name.startsWith("$");
+      const val = vars[name];
+      showRef.current(rect, (
+        <div className="flex items-center gap-1.5 py-0.5">
+          <span className={`font-mono ${isDynamic ? "text-purple-400" : val !== undefined ? "text-emerald-400" : "text-orange-400"}`}>
+            {`{{${name}}}`}
+          </span>
+          <span className="text-gray-600">→</span>
+          {isDynamic
+            ? <span className="text-purple-300/70 italic">dynamic</span>
+            : val !== undefined
+              ? <span className="text-gray-200 font-mono max-w-[150px] truncate">{val}</span>
+              : <span className="text-orange-400/70 italic">not set</span>
+          }
+        </div>
+      ));
+    };
+
     const exts = [
       liteTheme, syntaxHighlighting(liteSyntax), EditorView.lineWrapping,
       varHighlightTheme, makeVarPlugin(variables),
+      makeVarHoverPlugin(onHover, () => hideRef.current()),
       autocompletion({ override: [makeVarCompletionSource(variables)], activateOnTyping: true }),
     ];
     if (language === "json") exts.push(json());
