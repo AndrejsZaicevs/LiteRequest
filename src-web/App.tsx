@@ -265,21 +265,25 @@ export default function App() {
   const saveCurrentVersion = useCallback(async () => {
     if (!currentRequest) return;
 
-    const version = await api.saveVersion(currentRequest.id, editorData);
+    try {
+      const version = await api.saveVersion(currentRequest.id, editorData);
 
-    // Update local state
-    const changed = version.id !== selectedVersionId;
-    setSelectedVersionId(version.id);
-    setDirty(false);
-    setRequestMeta(prev => new Map(prev).set(currentRequest.id, { method: editorData.method, url: editorData.url }));
+      // Update local state
+      const changed = version.id !== selectedVersionId;
+      setSelectedVersionId(version.id);
+      setDirty(false);
+      setRequestMeta(prev => new Map(prev).set(currentRequest.id, { method: editorData.method, url: editorData.url }));
 
-    if (changed) {
-      setCurrentRequest(prev => prev ? { ...prev, current_version_id: version.id } : prev);
-      setRequests(prev => prev.map(r => r.id === currentRequest.id ? { ...r, current_version_id: version.id } : r));
+      if (changed) {
+        setCurrentRequest(prev => prev ? { ...prev, current_version_id: version.id } : prev);
+        setRequests(prev => prev.map(r => r.id === currentRequest.id ? { ...r, current_version_id: version.id } : r));
+      }
+
+      const vers = await api.listVersions(currentRequest.id);
+      setVersions(vers);
+    } catch (e) {
+      setErrorMessage(`Failed to save: ${e}`);
     }
-
-    const vers = await api.listVersions(currentRequest.id);
-    setVersions(vers);
   }, [currentRequest, selectedVersionId, editorData]);
 
   // ── Navigate to request (from search) ────────────────────
@@ -630,8 +634,12 @@ export default function App() {
                     <button
                       key={env.id}
                       onClick={async () => {
-                        if (!env.is_active) await api.setActiveEnvironment(env.id);
-                        await refreshAll();
+                        try {
+                          if (!env.is_active) await api.setActiveEnvironment(env.id);
+                          await refreshAll();
+                        } catch (e) {
+                          setErrorMessage(String(e));
+                        }
                       }}
                       className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all shrink-0 border ${
                         env.is_active
@@ -779,10 +787,14 @@ export default function App() {
                   selectedVersionId={selectedVersionId}
                   selectedExecutionId={selectedExecutionId}
                   onSelectVersion={async (vid) => {
-                    setSelectedVersionId(vid);
-                    const v = await api.getVersion(vid);
-                    setEditorData(v.data);
-                    setDirty(false);
+                    try {
+                      setSelectedVersionId(vid);
+                      const v = await api.getVersion(vid);
+                      setEditorData(v.data);
+                      setDirty(false);
+                    } catch (e) {
+                      setErrorMessage(String(e));
+                    }
                   }}
                   onSelectExecution={(eid) => {
                     setSelectedExecutionId(eid);

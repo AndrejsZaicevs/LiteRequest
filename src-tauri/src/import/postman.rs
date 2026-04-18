@@ -449,7 +449,7 @@ pub fn import_from_json(json: &str, db: &Database) -> Result<ImportSummary, Stri
         None,
         &now,
         &mut counters,
-    );
+    )?;
 
     Ok(ImportSummary {
         collection_name: col.info.name,
@@ -467,7 +467,7 @@ fn walk_items(
     parent_folder_id: Option<&str>,
     now: &str,
     counters: &mut (usize, usize),
-) {
+) -> Result<(), String> {
     for (i, item) in items.iter().enumerate() {
         let name = item.name.as_deref().unwrap_or("Unnamed").to_string();
 
@@ -483,9 +483,9 @@ fn walk_items(
                 auth_override: None,
                 sort_order: i as i32,
             };
-            let _ = db.insert_folder(&folder);
+            db.insert_folder(&folder).map_err(|e| format!("Failed to insert folder: {e}"))?;
             counters.0 += 1;
-            walk_items(db, sub_items, collection_id, Some(&folder_id), now, counters);
+            walk_items(db, sub_items, collection_id, Some(&folder_id), now, counters)?;
         } else if let Some(req) = &item.request {
             // Request
             let request_id = uuid::Uuid::new_v4().to_string();
@@ -511,12 +511,13 @@ fn walk_items(
             };
 
             // Insert request first (FK: request_versions.request_id → requests.id)
-            let _ = db.insert_request(&request);
+            db.insert_request(&request).map_err(|e| format!("Failed to insert request: {e}"))?;
             // insert_version also runs UPDATE requests SET current_version_id=...
-            let _ = db.insert_version(&version);
+            db.insert_version(&version).map_err(|e| format!("Failed to insert version: {e}"))?;
             counters.1 += 1;
         }
     }
+    Ok(())
 }
 
 // ── Request data mapper ───────────────────────────────────────

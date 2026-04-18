@@ -4,26 +4,7 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 
 fn uuid() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    // Generate a UUID v4 using random bytes from the OS
-    let mut bytes = [0u8; 16];
-    // Mix entropy from time + thread id to avoid pulling in a uuid crate
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-    let ns = t.as_nanos();
-    let tid = std::thread::current().id();
-    let seed = format!("{:?}{}", tid, ns);
-    // Extend with sha256 to spread the bits
-    let hash = sha2::Sha256::digest(seed.as_bytes());
-    bytes.copy_from_slice(&hash[..16]);
-    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
-    bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant
-    format!(
-        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0], bytes[1], bytes[2], bytes[3],
-        bytes[4], bytes[5], bytes[6], bytes[7],
-        bytes[8], bytes[9],
-        bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
-    )
+    uuid::Uuid::new_v4().to_string()
 }
 
 pub struct Database {
@@ -316,6 +297,20 @@ impl Database {
     ///     fingerprint and reuse it (update its data, make it current).
     ///  6. No matching version at all → create new.
     pub fn save_version(&self, request_id: &str, data: &RequestData) -> rusqlite::Result<RequestVersion> {
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        match self.save_version_inner(request_id, data) {
+            Ok(v) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(v)
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    }
+
+    fn save_version_inner(&self, request_id: &str, data: &RequestData) -> rusqlite::Result<RequestVersion> {
         let now = chrono::Utc::now().to_rfc3339();
         let new_fp = data.fingerprint();
 
