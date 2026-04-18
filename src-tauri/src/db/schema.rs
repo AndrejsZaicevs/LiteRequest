@@ -4,6 +4,19 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;
     conn.execute_batch("PRAGMA foreign_keys=ON;")?;
 
+    // Schema version tracking
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_version (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );"
+    )?;
+
+    let current_version: i64 = conn
+        .query_row("SELECT COALESCE(MAX(version), 0) FROM schema_version", [], |r| r.get(0))
+        .unwrap_or(0);
+
+    // Version 0: base schema (always idempotent via IF NOT EXISTS)
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS collections (
@@ -82,6 +95,8 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_env_vars_env ON env_variables(environment_id);
         CREATE INDEX IF NOT EXISTS idx_executions_env ON request_executions(environment_id);
         CREATE INDEX IF NOT EXISTS idx_executions_body_hash ON request_executions(body_hash);
+        CREATE INDEX IF NOT EXISTS idx_versions_request_fp ON request_versions(request_id, fingerprint);
+        CREATE INDEX IF NOT EXISTS idx_executions_req_date ON request_executions(request_id, executed_at DESC);
 
         CREATE TABLE IF NOT EXISTS collection_variables (
             id             TEXT PRIMARY KEY,
@@ -113,54 +128,46 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
         ",
     )?;
 
-    // Migrate old collection_variables → new split tables
-    migrate_collection_variables(conn);
+    // ── Versioned migrations ────────────────────────────────────
+    // Each migration only runs once; version is recorded on success.
 
-    // Add fingerprint column to request_versions (for version dedup by structure)
-    migrate_add_version_fingerprint(conn);
+    if current_version < 1 {
+        migrate_collection_variables(conn);
+        migrate_add_version_fingerprint(conn);
+        migrate_add_execution_request_data(conn);
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS app_settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT ''
+            );",
+        )?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS env_var_defs (
+                id         TEXT PRIMARY KEY,
+                key        TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS env_var_values (
+                id             TEXT PRIMARY KEY,
+                def_id         TEXT NOT NULL REFERENCES env_var_defs(id) ON DELETE CASCADE,
+                environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+                value          TEXT NOT NULL DEFAULT '',
+                is_secret      INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(def_id, environment_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_env_var_values_def ON env_var_values(def_id);
+            CREATE INDEX IF NOT EXISTS idx_env_var_values_env ON env_var_values(environment_id);
+            ",
+        )?;
+        migrate_env_variables(conn);
+        migrate_environment_sort_order(conn);
+        migrate_add_soft_delete(conn);
+        migrate_var_type(conn);
+        conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])?;
+    }
 
-    // Add request_data_json column to request_executions (execution request snapshot)
-    migrate_add_execution_request_data(conn);
-
-    // Global app settings (key-value store for JSON blobs)
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS app_settings (
-            key   TEXT PRIMARY KEY,
-            value TEXT NOT NULL DEFAULT ''
-        );",
-    )?;
-
-    // Global env variable defs (keys shared across all environments)
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS env_var_defs (
-            id         TEXT PRIMARY KEY,
-            key        TEXT NOT NULL,
-            sort_order INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS env_var_values (
-            id             TEXT PRIMARY KEY,
-            def_id         TEXT NOT NULL REFERENCES env_var_defs(id) ON DELETE CASCADE,
-            environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
-            value          TEXT NOT NULL DEFAULT '',
-            is_secret      INTEGER NOT NULL DEFAULT 0,
-            UNIQUE(def_id, environment_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_env_var_values_def ON env_var_values(def_id);
-        CREATE INDEX IF NOT EXISTS idx_env_var_values_env ON env_var_values(environment_id);
-        ",
-    )?;
-
-    // Migrate old env_variables → new env_var_defs + env_var_values
-    migrate_env_variables(conn);
-
-    // Add sort_order to environments table
-    migrate_environment_sort_order(conn);
-
-    // Add soft-delete support (deleted_at column on collections, folders, requests)
-    migrate_add_soft_delete(conn);
-
-    // Add var_type to collection_var_defs (regular vs operative)
-    migrate_var_type(conn);
+    // Future migrations go here:
+    // if current_version < 2 { ... conn.execute("INSERT INTO schema_version (version) VALUES (2)", [])?; }
 
     Ok(())
 }
@@ -175,6 +182,12 @@ fn migrate_add_soft_delete(conn: &Connection) {
         // Ignore "duplicate column" errors — column already exists
         let _ = conn.execute_batch(ddl);
     }
+    // Indexes for soft-delete filtered queries (idempotent via IF NOT EXISTS)
+    let _ = conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_collections_deleted ON collections(deleted_at);
+         CREATE INDEX IF NOT EXISTS idx_folders_deleted ON folders(deleted_at, collection_id);
+         CREATE INDEX IF NOT EXISTS idx_requests_deleted ON requests(deleted_at, collection_id);",
+    );
 }
 
 /// Migrate data from the legacy `collection_variables` table into the

@@ -498,13 +498,14 @@ impl Database {
     }
 
     pub fn reorder_environments(&self, ordered_ids: &[String]) -> rusqlite::Result<()> {
+        self.conn.execute_batch("BEGIN")?;
         for (i, id) in ordered_ids.iter().enumerate() {
             self.conn.execute(
                 "UPDATE environments SET sort_order=?2 WHERE id=?1",
                 params![id, i as i32],
             )?;
         }
-        Ok(())
+        self.conn.execute_batch("COMMIT")
     }
 
     pub fn set_active_environment(&self, id: &str) -> rusqlite::Result<()> {
@@ -845,23 +846,25 @@ impl Database {
     }
 
     pub fn reorder_requests(&self, ordered_ids: &[String]) -> rusqlite::Result<()> {
+        self.conn.execute_batch("BEGIN")?;
         for (i, id) in ordered_ids.iter().enumerate() {
             self.conn.execute(
                 "UPDATE requests SET sort_order=?2 WHERE id=?1",
                 params![id, i as i32],
             )?;
         }
-        Ok(())
+        self.conn.execute_batch("COMMIT")
     }
 
     pub fn reorder_folders(&self, ordered_ids: &[String]) -> rusqlite::Result<()> {
+        self.conn.execute_batch("BEGIN")?;
         for (i, id) in ordered_ids.iter().enumerate() {
             self.conn.execute(
                 "UPDATE folders SET sort_order=?2 WHERE id=?1",
                 params![id, i as i32],
             )?;
         }
-        Ok(())
+        self.conn.execute_batch("COMMIT")
     }
 
     pub fn rename_folder(&self, id: &str, name: &str) -> rusqlite::Result<()> {
@@ -1057,10 +1060,12 @@ impl Database {
         // ── 1. Request names ──────────────────────────────────────
         {
             let mut stmt = self.conn.prepare(
-                "SELECT r.id, r.name, r.collection_id, c.name, r.current_version_id
+                "SELECT r.id, r.name, r.collection_id, c.name, r.current_version_id, v.data_json
                  FROM requests r
                  JOIN collections c ON r.collection_id = c.id
-                 WHERE LOWER(r.name) LIKE ?1
+                 LEFT JOIN request_versions v ON r.current_version_id = v.id
+                 WHERE r.deleted_at IS NULL AND c.deleted_at IS NULL
+                   AND LOWER(r.name) LIKE ?1
                  LIMIT 20",
             )?;
             let rows = stmt.query_map(params![q_pat], |row| {
@@ -1070,16 +1075,14 @@ impl Database {
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
                 ))
             })?;
-            for (req_id, req_name, col_id, col_name, cur_vid) in rows.filter_map(|r| r.ok()) {
-                let (method, url) = if let Some(ref vid) = cur_vid {
-                    self.get_version(vid)
-                        .map(|v| (Some(v.data.method.to_string()), Some(v.data.url)))
-                        .unwrap_or((None, None))
-                } else {
-                    (None, None)
-                };
+            for (req_id, req_name, col_id, col_name, cur_vid, data_json) in rows.filter_map(|r| r.ok()) {
+                let (method, url) = data_json
+                    .and_then(|json| serde_json::from_str::<RequestData>(&json).ok())
+                    .map(|d| (Some(d.method.to_string()), Some(d.url)))
+                    .unwrap_or((None, None));
                 hits.push(SearchHit {
                     result_type: "request".to_string(),
                     request_id: req_id,

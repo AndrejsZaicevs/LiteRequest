@@ -99,6 +99,7 @@ pub async fn execute_request(
     }
 
     let client = builder
+        .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 

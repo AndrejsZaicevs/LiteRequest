@@ -2,12 +2,15 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type {
   Collection, Folder, Request, RequestVersion, RequestExecution,
   Environment, EnvVariable, RequestData, ResponseData, HttpMethod,
-  KeyValuePair, AuthConfig, VarRow,
+  VarRow,
 } from "./lib/types";
 import { defaultRequestData, resolveVariableRefs, findUnresolvedVars } from "./lib/types";
-import { resolveDynamicVars, getDynamicVarPreviews } from "./lib/dynamicVars";
+import { getDynamicVarPreviews } from "./lib/dynamicVars";
+import { buildResolvedVariables } from "./lib/variables";
+import { buildEffectiveData } from "./lib/request";
+import { useLayoutState } from "./hooks/useLayoutState";
 import * as api from "./lib/api";
-import { Search, Settings, Maximize2, Minimize2 } from "lucide-react";
+import { Search, Settings } from "lucide-react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Inspector } from "./components/layout/Inspector";
 import { UrlBar } from "./components/editor/UrlBar";
@@ -52,20 +55,11 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
 
   // ── Panel sizing ─────────────────────────────────────────
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const v = localStorage.getItem("lr.sidebarWidth");
-    return v ? Math.max(160, Math.min(500, Number(v))) : 240;
-  });
-  const [inspectorWidth, setInspectorWidth] = useState(() => {
-    const v = localStorage.getItem("lr.inspectorWidth");
-    return v ? Math.max(200, Math.min(600, Number(v))) : 280;
-  });
-  const [splitRatio, setSplitRatio] = useState(() => {
-    const v = localStorage.getItem("lr.splitRatio");
-    return v ? Math.max(0.15, Math.min(0.85, Number(v))) : 0.5;
-  });
-  // "auto" = derive from context; "request"/"response" = user-maximized; "split" = force split
-  const [splitOverride, setSplitOverride] = useState<"auto" | "request" | "response" | "split">("auto");
+  const {
+    sidebarWidth, inspectorWidth, splitRatio,
+    splitOverride, setSplitOverride,
+    splitContainerRef, startDrag,
+  } = useLayoutState();
 
   // ── Search ───────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
@@ -79,6 +73,10 @@ export default function App() {
   const [operativeVarRows, setOperativeVarRows] = useState<VarRow[]>([]);
 
   const activeEnvId = environments.find(e => e.is_active)?.id;
+  const currentCollection = useMemo(
+    () => collections.find(c => c.id === currentRequest?.collection_id),
+    [collections, currentRequest?.collection_id]
+  );
 
   const loadCollectionVars = () => {
     if (!currentRequest) { setCollectionDisplayVars({}); setOperativeVarRows([]); return; }
@@ -106,7 +104,7 @@ export default function App() {
   const displayVariables = useMemo(() => {
     const vars: Record<string, string> = { ...collectionDisplayVars };
     for (const v of envVariables) vars[v.key] = v.value;
-    const colName = collections.find(c => c.id === currentRequest?.collection_id)?.name;
+    const colName = currentCollection?.name;
     if (colName) vars["collectionName"] = colName;
     if (currentRequest?.name) vars["requestName"] = currentRequest.name;
     // Add stable preview values for dynamic variables (tooltip display only)
@@ -115,11 +113,7 @@ export default function App() {
       if (!(k in vars)) vars[k] = v;
     }
     return resolveVariableRefs(vars);
-  }, [envVariables, collectionDisplayVars, collections, currentRequest?.collection_id, currentRequest?.name]);
-
-  // ── Refs for drag tracking ───────────────────────────────
-  const dragging = useRef<"sidebar" | "inspector" | "split" | null>(null);
-  const splitContainerRef = useRef<HTMLDivElement>(null);
+  }, [envVariables, collectionDisplayVars, currentCollection, currentRequest?.name]);
 
   // ── Effective split pane mode ────────────────────────────
   const noBody = editorData.body_type === "None";
@@ -135,62 +129,69 @@ export default function App() {
   })();
 
   // ── Data loading ─────────────────────────────────────────
+  const refreshCollections = useCallback(async () => {
+    const cols = await api.listCollections();
+    setCollections(cols);
+    return cols;
+  }, []);
+
+  const refreshEnvironments = useCallback(async () => {
+    const envs = await api.listEnvironments();
+    setEnvironments(envs);
+    const activeEnv = envs.find(e => e.is_active);
+    if (activeEnv) {
+      const rows = await api.loadEnvVarRows(activeEnv.id);
+      setEnvVariables(rows.map(r => ({
+        id: r.value_id ?? r.def_id,
+        environment_id: activeEnv.id,
+        key: r.key, value: r.value, is_secret: r.is_secret,
+      })));
+    } else {
+      setEnvVariables([]);
+    }
+    return envs;
+  }, []);
+
+  const refreshSidebarData = useCallback(async (cols?: Collection[]) => {
+    const colList = cols ?? await api.listCollections();
+    const allFolders: Folder[] = [];
+    const allRequests: Request[] = [];
+    for (const c of colList) {
+      const [f, r] = await Promise.all([
+        api.listFolders(c.id),
+        api.listRequestsByCollection(c.id),
+      ]);
+      allFolders.push(...f);
+      allRequests.push(...r);
+    }
+    setFolders(allFolders);
+    setRequests(allRequests);
+
+    const metaMap = new Map<string, { method: HttpMethod; url: string }>();
+    await Promise.all(
+      allRequests
+        .filter(r => r.current_version_id)
+        .map(async (req) => {
+          try {
+            const v = await api.getVersion(req.current_version_id!);
+            metaMap.set(req.id, { method: v.data.method, url: v.data.url });
+          } catch { /* ignore missing versions */ }
+        })
+    );
+    setRequestMeta(metaMap);
+  }, []);
+
   const refreshAll = useCallback(async () => {
     try {
-      const [cols, envs] = await Promise.all([
-        api.listCollections(),
-        api.listEnvironments(),
+      const [cols] = await Promise.all([
+        refreshCollections(),
+        refreshEnvironments(),
       ]);
-      setCollections(cols);
-      setEnvironments(envs);
-
-      // Load all folders and requests for all collections
-      const allFolders: Folder[] = [];
-      const allRequests: Request[] = [];
-      for (const c of cols) {
-        const [f, r] = await Promise.all([
-          api.listFolders(c.id),
-          api.listRequestsByCollection(c.id),
-        ]);
-        allFolders.push(...f);
-        allRequests.push(...r);
-      }
-      setFolders(allFolders);
-      setRequests(allRequests);
-
-      // Load current version data for all requests so sidebar shows methods
-      const metaMap = new Map<string, { method: HttpMethod; url: string }>();
-      await Promise.all(
-        allRequests
-          .filter(r => r.current_version_id)
-          .map(async (req) => {
-            try {
-              const v = await api.getVersion(req.current_version_id!);
-              metaMap.set(req.id, { method: v.data.method, url: v.data.url });
-            } catch { /* ignore missing versions */ }
-          })
-      );
-      setRequestMeta(metaMap);
-
-      // Load active env variables from new split model
-      const activeEnv = envs.find(e => e.is_active);
-      if (activeEnv) {
-        const rows = await api.loadEnvVarRows(activeEnv.id);
-        // Map VarRow → EnvVariable shape for downstream consumers
-        setEnvVariables(rows.map(r => ({
-          id: r.value_id ?? r.def_id,
-          environment_id: activeEnv.id,
-          key: r.key,
-          value: r.value,
-          is_secret: r.is_secret,
-        })));
-      } else {
-        setEnvVariables([]);
-      }
+      await refreshSidebarData(cols);
     } catch (e) {
       setErrorMessage(String(e));
     }
-  }, []);
+  }, [refreshCollections, refreshEnvironments, refreshSidebarData]);
 
   useEffect(() => { refreshAll(); }, [refreshAll]);
 
@@ -345,44 +346,10 @@ export default function App() {
   }, [dirty, currentRequest, requests, saveCurrentVersion]);
 
   // ── Build effective request data (with collection auth + headers) ──
-  const buildEffectiveData = useCallback((baseData: RequestData): RequestData => {
-    const col = collections.find(c => c.id === currentRequest?.collection_id);
-    const requestHeaderKeys = new Set(
-      baseData.headers.filter(h => h.enabled && h.key).map(h => h.key.toLowerCase())
-    );
-    const extraHeaders: KeyValuePair[] = [];
-    if (col?.headers_config) {
-      try {
-        const defaults = JSON.parse(col.headers_config) as KeyValuePair[];
-        for (const h of defaults.filter(h => h.enabled && h.key)) {
-          if (!requestHeaderKeys.has(h.key.toLowerCase())) {
-            extraHeaders.push(h);
-            requestHeaderKeys.add(h.key.toLowerCase());
-          }
-        }
-      } catch { /* ignore */ }
-    }
-    if (col?.auth_config) {
-      try {
-        const auth = JSON.parse(col.auth_config) as AuthConfig;
-        let authHeader: KeyValuePair | null = null;
-        if (auth.auth_type === "bearer" && auth.bearer_token) {
-          authHeader = { key: "Authorization", value: `Bearer ${auth.bearer_token}`, enabled: true };
-        } else if (auth.auth_type === "basic") {
-          const encoded = btoa(`${auth.basic_username ?? ""}:${auth.basic_password ?? ""}`);
-          authHeader = { key: "Authorization", value: `Basic ${encoded}`, enabled: true };
-        } else if (auth.auth_type === "api_key" && auth.api_key_value) {
-          authHeader = { key: auth.api_key_header ?? "X-API-Key", value: auth.api_key_value, enabled: true };
-        }
-        if (authHeader && !requestHeaderKeys.has(authHeader.key.toLowerCase())) {
-          extraHeaders.push(authHeader);
-        }
-      } catch { /* ignore */ }
-    }
-    return extraHeaders.length > 0
-      ? { ...baseData, headers: [...extraHeaders, ...baseData.headers] }
-      : baseData;
-  }, [collections, currentRequest]);
+  const getEffectiveData = useCallback(
+    (baseData: RequestData) => buildEffectiveData(baseData, currentCollection),
+    [currentCollection]
+  );
 
   // ── Execute request ──────────────────────────────────────
   const sendRequest = useCallback(async () => {
@@ -395,25 +362,13 @@ export default function App() {
     setErrorMessage(null);
     setSplitOverride("auto"); // reset so response auto-shows after send
     try {
-      // Build variables
-      const variables: Record<string, string> = {};
-      for (const v of envVariables) {
-        variables[v.key] = v.value;
-      }
-      const colVars = await api.getActiveCollectionVariables(currentRequest.collection_id);
-      for (const [k, v] of colVars) {
-        variables[k] = v;
-      }
-      const col = collections.find(c => c.id === currentRequest.collection_id);
-      if (col) variables["collectionName"] = col.name;
-      variables["requestName"] = currentRequest.name;
+      const resolvedVariables = await buildResolvedVariables(
+        envVariables, currentCollection, currentRequest,
+      );
 
-      // Inject fresh dynamic variable values ($randomInt, $randomEmail, etc.)
-      const resolvedVariables = resolveVariableRefs(resolveDynamicVars(variables));
+      const basePath = currentCollection?.base_path ?? "";
 
-      const basePath = col?.base_path ?? "";
-
-      const effectiveData = buildEffectiveData(editorData);
+      const effectiveData = getEffectiveData(editorData);
 
       // Block send if any {{variable}} references are unresolved
       const unresolved = findUnresolvedVars(effectiveData, basePath, resolvedVariables);
@@ -460,7 +415,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentRequest, editorData, envVariables, collections, environments, selectedVersionId, saveCurrentVersion, buildEffectiveData]);
+  }, [currentRequest, editorData, envVariables, currentCollection, environments, selectedVersionId, saveCurrentVersion, getEffectiveData]);
 
   // ── Editor data change ───────────────────────────────────
   const onEditorChange = useCallback((data: RequestData) => {
@@ -472,23 +427,18 @@ export default function App() {
   const copyCurl = useCallback(async () => {
     if (!currentRequest) return;
     try {
-      const col = collections.find(c => c.id === currentRequest.collection_id);
-      const variables: Record<string, string> = {};
-      for (const v of envVariables) variables[v.key] = v.value;
-      const colVars = await api.getActiveCollectionVariables(currentRequest.collection_id);
-      for (const [k, v] of colVars) variables[k] = v;
-      if (col) variables["collectionName"] = col.name;
-      variables["requestName"] = currentRequest.name;
-      const resolvedVariables = resolveVariableRefs(resolveDynamicVars(variables));
-      const basePath = col?.base_path ?? "";
-      const effectiveData = buildEffectiveData(editorData);
+      const resolvedVariables = await buildResolvedVariables(
+        envVariables, currentCollection, currentRequest,
+      );
+      const basePath = currentCollection?.base_path ?? "";
+      const effectiveData = getEffectiveData(editorData);
       const curlStr = await api.toCurl(effectiveData, resolvedVariables, basePath);
       await api.copyToClipboard(curlStr);
       setErrorMessage(null);
     } catch (e) {
       setErrorMessage(`Copy cURL failed: ${e}`);
     }
-  }, [currentRequest, collections, envVariables, editorData, buildEffectiveData]);
+  }, [currentRequest, currentCollection, envVariables, editorData, getEffectiveData]);
 
   // ── Import from cURL ─────────────────────────────────────
   const importCurl = useCallback(async (curlStr: string) => {
@@ -528,47 +478,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [centerView, isLoading, sendRequest]);
 
-  // ── Panel drag handlers ──────────────────────────────────
-  useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
-      if (!dragging.current) return;
-      e.preventDefault();
-      if (dragging.current === "sidebar") {
-        setSidebarWidth(Math.max(180, Math.min(400, e.clientX)));
-      } else if (dragging.current === "inspector") {
-        setInspectorWidth(Math.max(200, Math.min(500, window.innerWidth - e.clientX)));
-      } else if (dragging.current === "split") {
-        const container = splitContainerRef.current;
-        if (!container) return;
-        const rect = container.getBoundingClientRect();
-        const ratio = (e.clientY - rect.top) / rect.height;
-        setSplitRatio(Math.max(0.2, Math.min(0.8, ratio)));
-      }
-    };
-    const onMouseUp = () => {
-      if (dragging.current === "sidebar") {
-        setSidebarWidth(w => { localStorage.setItem("lr.sidebarWidth", String(w)); return w; });
-      } else if (dragging.current === "inspector") {
-        setInspectorWidth(w => { localStorage.setItem("lr.inspectorWidth", String(w)); return w; });
-      } else if (dragging.current === "split") {
-        setSplitRatio(r => { localStorage.setItem("lr.splitRatio", String(r)); return r; });
-      }
-      dragging.current = null;
-      document.body.classList.remove("resizing");
-    };
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-  }, [sidebarWidth, inspectorWidth]);
-
-  const startDrag = (panel: "sidebar" | "inspector" | "split") => {
-    dragging.current = panel;
-    document.body.classList.add("resizing");
-  };
-
   // ── Render ───────────────────────────────────────────────
   const showInspector = centerView.type === "request";
   const mainWidth = window.innerWidth - sidebarWidth - (showInspector ? inspectorWidth : 0);
@@ -588,7 +497,7 @@ export default function App() {
             requestMeta={requestMeta}
             onSelectRequest={(req) => selectRequest(req)}
             onSelectCollection={(id) => setCenterView({ type: "collection", collectionId: id })}
-            onDataChange={refreshAll}
+            onDataChange={() => refreshSidebarData()}
           />
         </div>
 
@@ -636,7 +545,7 @@ export default function App() {
                       onClick={async () => {
                         try {
                           if (!env.is_active) await api.setActiveEnvironment(env.id);
-                          await refreshAll();
+                          await refreshEnvironments();
                         } catch (e) {
                           setErrorMessage(String(e));
                         }
@@ -671,7 +580,7 @@ export default function App() {
               onCopyCurl={copyCurl}
               onImportCurl={importCurl}
               isLoading={isLoading}
-              basePath={collections.find(c => c.id === currentRequest?.collection_id)?.base_path ?? ""}
+              basePath={currentCollection?.base_path ?? ""}
               variables={displayVariables}
             />
           )}
@@ -707,7 +616,7 @@ export default function App() {
                         data={editorData}
                         onChange={onEditorChange}
                         isLoading={isLoading}
-                        basePath={collections.find(c => c.id === currentRequest?.collection_id)?.base_path ?? ""}
+                        basePath={currentCollection?.base_path ?? ""}
                         requestName={currentRequest?.name ?? ""}
                         variables={displayVariables}
                         isMaximized={effectivePane === "request"}
