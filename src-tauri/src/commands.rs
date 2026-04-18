@@ -668,3 +668,283 @@ pub fn clone_request(state: State<AppState>, id: String) -> CmdResult<String> {
 pub fn clone_folder(state: State<AppState>, id: String) -> CmdResult<String> {
     db(&state)?.clone_folder(&id).map_err(map_err)
 }
+
+// ── Scripts ──────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn list_scripts_by_collection(state: State<AppState>, collection_id: String) -> CmdResult<Vec<Script>> {
+    db(&state)?.list_scripts_by_collection(&collection_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn list_scripts_by_folder(state: State<AppState>, folder_id: String) -> CmdResult<Vec<Script>> {
+    db(&state)?.list_scripts_by_folder(&folder_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn insert_script(state: State<AppState>, script: Script) -> CmdResult<()> {
+    db(&state)?.insert_script(&script).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn get_script(state: State<AppState>, id: String) -> CmdResult<Script> {
+    db(&state)?.get_script(&id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn rename_script(state: State<AppState>, id: String, name: String) -> CmdResult<()> {
+    db(&state)?.rename_script(&id, &name).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn delete_script(state: State<AppState>, id: String) -> CmdResult<()> {
+    db(&state)?.delete_script(&id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn move_script(state: State<AppState>, id: String, collection_id: String, folder_id: Option<String>) -> CmdResult<()> {
+    db(&state)?.move_script(&id, &collection_id, folder_id.as_deref()).map_err(map_err)
+}
+
+// ── Script Versions ──────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_script_version(state: State<AppState>, id: String) -> CmdResult<ScriptVersion> {
+    db(&state)?.get_script_version(&id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn list_script_versions(state: State<AppState>, script_id: String) -> CmdResult<Vec<ScriptVersion>> {
+    db(&state)?.list_script_versions(&script_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn save_script_version(
+    state: State<AppState>,
+    script_id: String,
+    content_ts: String,
+    content_js: String,
+) -> CmdResult<ScriptVersion> {
+    db(&state)?.save_script_version(&script_id, &content_ts, &content_js).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn script_version_has_runs(state: State<AppState>, version_id: String) -> CmdResult<bool> {
+    Ok(db(&state)?.script_version_has_runs(&version_id))
+}
+
+// ── Script Runs ──────────────────────────────────────────────
+
+#[tauri::command]
+pub fn list_script_runs(state: State<AppState>, script_id: String) -> CmdResult<Vec<ScriptRun>> {
+    db(&state)?.list_script_runs(&script_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn list_script_runs_by_request(state: State<AppState>, request_id: String) -> CmdResult<Vec<ScriptRun>> {
+    db(&state)?.list_script_runs_by_request(&request_id).map_err(map_err)
+}
+
+// ── Post-Script ──────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_post_script(state: State<AppState>, request_id: String) -> CmdResult<String> {
+    db(&state)?.get_post_script(&request_id).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn set_post_script(state: State<AppState>, request_id: String, script: String) -> CmdResult<()> {
+    db(&state)?.set_post_script(&request_id, &script).map_err(map_err)
+}
+
+#[tauri::command]
+pub fn apply_script_variables(
+    state: State<AppState>,
+    collection_id: String,
+    environment_id: String,
+    variables: std::collections::HashMap<String, String>,
+) -> CmdResult<()> {
+    db(&state)?.apply_script_variables(&collection_id, &environment_id, &variables).map_err(map_err)
+}
+
+// ── Script Execution ─────────────────────────────────────────
+
+#[tauri::command]
+pub async fn run_post_script(
+    state: State<'_, AppState>,
+    request_id: String,
+    execution_id: String,
+    request_data: RequestData,
+    response_data: ResponseData,
+    latency_ms: u64,
+    variables: HashMap<String, String>,
+    environment: String,
+    script_js: String,
+) -> CmdResult<ScriptResult> {
+    let post_script = db(&state)?.get_post_script(&request_id).map_err(map_err)?;
+    if post_script.is_empty() && script_js.is_empty() {
+        return Ok(ScriptResult {
+            status: "success".to_string(),
+            logs: vec![],
+            variables_set: HashMap::new(),
+            error: None,
+            duration_ms: 0,
+            transformed_response: None,
+        });
+    }
+
+    let js_code = if script_js.is_empty() { post_script.clone() } else { script_js };
+    let script_source = post_script;
+
+    // Run QuickJS on a blocking thread (not Send-safe)
+    let result = tokio::task::spawn_blocking(move || {
+        use crate::scripting::context::{PostExecContext, ScriptSideEffects, SharedEffects};
+        use std::sync::Arc;
+
+        let effects: SharedEffects = Arc::new(std::sync::Mutex::new(ScriptSideEffects::default()));
+        let start = std::time::Instant::now();
+
+        let engine = crate::scripting::runtime::ScriptEngine::new()?;
+        let ctx = engine.create_context()?;
+
+        let effects_clone = effects.clone();
+        let post_ctx = PostExecContext {
+            request: request_data,
+            response: response_data,
+            latency_ms,
+            variables,
+            environment,
+        };
+
+        let exec_result = ctx.with(|js_ctx| {
+            crate::scripting::context::inject_post_exec_globals(&js_ctx, &post_ctx, effects_clone)?;
+            js_ctx.eval::<(), String>(js_code).map_err(|e| format!("Script error: {e}"))
+        });
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let eff = effects.lock().unwrap_or_else(|e| e.into_inner());
+
+        let (status, error) = match exec_result {
+            Ok(()) => ("success".to_string(), None),
+            Err(e) => ("error".to_string(), Some(e)),
+        };
+
+        Ok::<(ScriptResult, ScriptRun), String>((
+            ScriptResult {
+                status: status.clone(),
+                logs: eff.logs.clone(),
+                variables_set: eff.variables_set.clone(),
+                error: error.clone(),
+                duration_ms,
+                transformed_response: eff.transformed_response.clone(),
+            },
+            ScriptRun {
+                id: uuid::Uuid::new_v4().to_string(),
+                script_id: None,
+                version_id: None,
+                request_id: Some(request_id),
+                execution_id: Some(execution_id),
+                status,
+                logs: serde_json::to_string(&eff.logs).unwrap_or_else(|_| "[]".to_string()),
+                variables_set: serde_json::to_string(&eff.variables_set).unwrap_or_else(|_| "{}".to_string()),
+                script_source,
+                error,
+                duration_ms,
+                executed_at: chrono::Utc::now().to_rfc3339(),
+            },
+        ))
+    }).await.map_err(|e| LiteRequestError::Internal(format!("Script task failed: {e}")))?
+      .map_err(map_err)?;
+
+    let _ = db(&state)?.insert_script_run(&result.1);
+    Ok(result.0)
+}
+
+#[tauri::command]
+pub async fn run_script(
+    state: State<'_, AppState>,
+    script_id: String,
+    content_js: String,
+    variables: HashMap<String, String>,
+    environment: String,
+) -> CmdResult<ScriptResult> {
+    if content_js.is_empty() {
+        return Ok(ScriptResult {
+            status: "success".to_string(),
+            logs: vec![],
+            variables_set: HashMap::new(),
+            error: None,
+            duration_ms: 0,
+            transformed_response: None,
+        });
+    }
+
+    let script = db(&state)?.get_script(&script_id).map_err(map_err)?;
+    let version_id = script.current_version_id.clone();
+    let js_for_log = content_js.clone();
+
+    let result = tokio::task::spawn_blocking(move || {
+        use crate::scripting::context::{StandaloneContext, ScriptSideEffects, SharedEffects};
+        use std::sync::Arc;
+
+        let effects: SharedEffects = Arc::new(std::sync::Mutex::new(ScriptSideEffects::default()));
+        let start = std::time::Instant::now();
+
+        let engine = crate::scripting::runtime::ScriptEngine::new()?;
+        let ctx = engine.create_context()?;
+
+        let effects_clone = effects.clone();
+        let standalone_ctx = StandaloneContext { variables, environment };
+
+        let exec_result = ctx.with(|js_ctx| {
+            crate::scripting::context::inject_standalone_globals(&js_ctx, &standalone_ctx, effects_clone)?;
+            crate::scripting::bridge::install_sleep_bridge(&js_ctx)?;
+            js_ctx.eval::<(), String>(content_js).map_err(|e| format!("Script error: {e}"))
+        });
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let eff = effects.lock().unwrap_or_else(|e| e.into_inner());
+
+        let (status, error) = match exec_result {
+            Ok(()) => ("success".to_string(), None),
+            Err(e) => ("error".to_string(), Some(e)),
+        };
+
+        Ok::<(ScriptResult, ScriptRun), String>((
+            ScriptResult {
+                status: status.clone(),
+                logs: eff.logs.clone(),
+                variables_set: eff.variables_set.clone(),
+                error: error.clone(),
+                duration_ms,
+                transformed_response: eff.transformed_response.clone(),
+            },
+            ScriptRun {
+                id: uuid::Uuid::new_v4().to_string(),
+                script_id: Some(script_id),
+                version_id,
+                request_id: None,
+                execution_id: None,
+                status,
+                logs: serde_json::to_string(&eff.logs).unwrap_or_else(|_| "[]".to_string()),
+                variables_set: serde_json::to_string(&eff.variables_set).unwrap_or_else(|_| "{}".to_string()),
+                script_source: js_for_log,
+                error,
+                duration_ms,
+                executed_at: chrono::Utc::now().to_rfc3339(),
+            },
+        ))
+    }).await.map_err(|e| LiteRequestError::Internal(format!("Script task failed: {e}")))?
+      .map_err(map_err)?;
+
+    let _ = db(&state)?.insert_script_run(&result.1);
+    Ok(result.0)
+}
+
+// ── Type Generation ──────────────────────────────────────────
+
+#[tauri::command]
+pub fn generate_script_types(state: State<AppState>) -> CmdResult<String> {
+    let db_guard = db(&state)?;
+    crate::scripting::typegen::generate_all_types(&db_guard).map_err(map_err)
+}

@@ -169,6 +169,11 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
     // Future migrations go here:
     // if current_version < 2 { ... conn.execute("INSERT INTO schema_version (version) VALUES (2)", [])?; }
 
+    if current_version < 2 {
+        migrate_add_scripting(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (2)", [])?;
+    }
+
     Ok(())
 }
 
@@ -404,4 +409,59 @@ fn migrate_environment_sort_order(conn: &Connection) {
         "ALTER TABLE environments ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
          UPDATE environments SET sort_order = rowid;",
     );
+}
+
+/// Add scripting tables: post_script on requests, scripts + script_versions + script_runs.
+fn migrate_add_scripting(conn: &Connection) -> rusqlite::Result<()> {
+    // post_script column on requests (for post-execution scripts)
+    let _ = conn.execute_batch(
+        "ALTER TABLE requests ADD COLUMN post_script TEXT NOT NULL DEFAULT '';"
+    );
+
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS scripts (
+            id                 TEXT PRIMARY KEY,
+            collection_id      TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+            folder_id          TEXT REFERENCES folders(id) ON DELETE SET NULL,
+            name               TEXT NOT NULL,
+            current_version_id TEXT,
+            sort_order         INTEGER NOT NULL DEFAULT 0,
+            created_at         TEXT NOT NULL,
+            updated_at         TEXT NOT NULL,
+            deleted_at         TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_scripts_collection ON scripts(collection_id);
+        CREATE INDEX IF NOT EXISTS idx_scripts_deleted ON scripts(deleted_at, collection_id);
+
+        CREATE TABLE IF NOT EXISTS script_versions (
+            id          TEXT PRIMARY KEY,
+            script_id   TEXT NOT NULL REFERENCES scripts(id) ON DELETE CASCADE,
+            content_ts  TEXT NOT NULL DEFAULT '',
+            content_js  TEXT NOT NULL DEFAULT '',
+            created_at  TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_script_versions_script ON script_versions(script_id);
+
+        CREATE TABLE IF NOT EXISTS script_runs (
+            id             TEXT PRIMARY KEY,
+            script_id      TEXT,
+            version_id     TEXT,
+            request_id     TEXT,
+            execution_id   TEXT,
+            status         TEXT NOT NULL,
+            logs           TEXT NOT NULL DEFAULT '[]',
+            variables_set  TEXT NOT NULL DEFAULT '{}',
+            script_source  TEXT NOT NULL DEFAULT '',
+            error          TEXT,
+            duration_ms    INTEGER NOT NULL DEFAULT 0,
+            executed_at    TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_script_runs_script ON script_runs(script_id);
+        CREATE INDEX IF NOT EXISTS idx_script_runs_version ON script_runs(version_id);
+        CREATE INDEX IF NOT EXISTS idx_script_runs_request ON script_runs(request_id);
+        CREATE INDEX IF NOT EXISTS idx_script_runs_execution ON script_runs(execution_id);
+        ",
+    )?;
+    Ok(())
 }

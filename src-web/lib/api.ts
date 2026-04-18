@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Collection, Folder, Request, RequestVersion, RequestExecution,
   RequestData, ResponseData, Environment, EnvVariable, EnvVarDef, VarDef, VarRow,
-  ClientCertEntry,
+  ClientCertEntry, Script, ScriptVersion, ScriptRun, ScriptResult,
 } from "./types";
 
 // ── Collections ──────────────────────────────────────────────
@@ -151,3 +151,62 @@ export const emptyTrash = () => invoke<void>("empty_trash");
 // Clone
 export const cloneRequest = (id: string) => invoke<string>("clone_request", { id });
 export const cloneFolder = (id: string) => invoke<string>("clone_folder", { id });
+
+// ── Scripts ──────────────────────────────────────────────────
+export const listScriptsByCollection = (collectionId: string) =>
+  invoke<Script[]>("list_scripts_by_collection", { collectionId });
+export const listScriptsByFolder = (folderId: string) =>
+  invoke<Script[]>("list_scripts_by_folder", { folderId });
+export const insertScript = (script: Script) => invoke<void>("insert_script", { script });
+export const getScript = (id: string) => invoke<Script>("get_script", { id });
+export const renameScript = (id: string, name: string) => invoke<void>("rename_script", { id, name });
+export const deleteScript = (id: string) => invoke<void>("delete_script", { id });
+export const moveScript = (id: string, collectionId: string, folderId?: string | null) =>
+  invoke<void>("move_script", { id, collectionId, folderId });
+
+// ── Script Versions ──────────────────────────────────────────
+export const getScriptVersion = (id: string) => invoke<ScriptVersion>("get_script_version", { id });
+export const listScriptVersions = (scriptId: string) =>
+  invoke<ScriptVersion[]>("list_script_versions", { scriptId });
+export const saveScriptVersion = (scriptId: string, contentTs: string, contentJs: string) =>
+  invoke<ScriptVersion>("save_script_version", { scriptId, contentTs, contentJs });
+export const scriptVersionHasRuns = (versionId: string) =>
+  invoke<boolean>("script_version_has_runs", { versionId });
+
+// ── Script Runs ──────────────────────────────────────────────
+export const listScriptRuns = (scriptId: string) =>
+  invoke<ScriptRun[]>("list_script_runs", { scriptId });
+export const listScriptRunsByRequest = (requestId: string) =>
+  invoke<ScriptRun[]>("list_script_runs_by_request", { requestId });
+
+// ── Post-Script ──────────────────────────────────────────────
+export const getPostScript = (requestId: string) =>
+  invoke<string>("get_post_script", { requestId });
+export const setPostScript = (requestId: string, script: string) =>
+  invoke<void>("set_post_script", { requestId, script });
+export const applyScriptVariables = (collectionId: string, environmentId: string, variables: Record<string, string>) =>
+  invoke<void>("apply_script_variables", { collectionId, environmentId, variables });
+
+// ── Script Execution ─────────────────────────────────────────
+export const runPostScript = (
+  requestId: string,
+  executionId: string,
+  requestData: RequestData,
+  responseData: ResponseData,
+  latencyMs: number,
+  variables: Record<string, string>,
+  environment: string,
+  scriptJs: string,
+) => invoke<ScriptResult>("run_post_script", {
+  requestId, executionId, requestData, responseData, latencyMs, variables, environment, scriptJs,
+});
+
+export const runScript = (
+  scriptId: string,
+  contentJs: string,
+  variables: Record<string, string>,
+  environment: string,
+) => invoke<ScriptResult>("run_script", { scriptId, contentJs, variables, environment });
+
+// ── Type Generation ──────────────────────────────────────────
+export const generateScriptTypes = () => invoke<string>("generate_script_types");

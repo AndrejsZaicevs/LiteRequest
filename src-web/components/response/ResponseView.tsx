@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { Download, Maximize2, Minimize2, Copy, Check, Search, X } from "lucide-react";
-import type { ResponseData } from "../../lib/types";
+import type { ResponseData, ScriptResult } from "../../lib/types";
 import { statusColor } from "../../lib/types";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import * as api from "../../lib/api";
@@ -17,9 +17,10 @@ interface ResponseViewProps {
   isLoading: boolean;
   isMaximized?: boolean;
   onMaximize?: () => void;
+  scriptResult?: ScriptResult | null;
 }
 
-type Tab = "body" | "headers";
+type Tab = "body" | "headers" | "script";
 
 function statusDotColor(code: number): string {
   if (code >= 200 && code < 300) return "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]";
@@ -29,7 +30,7 @@ function statusDotColor(code: number): string {
   return "bg-gray-500";
 }
 
-export function ResponseView({ response, latency, isLoading, isMaximized, onMaximize }: ResponseViewProps) {
+export function ResponseView({ response, latency, isLoading, isMaximized, onMaximize, scriptResult }: ResponseViewProps) {
   const [tab, setTab] = useState<Tab>("body");
   const [copied, setCopied] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -145,7 +146,7 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
         </div>
 
         <div className="flex items-center gap-4 text-gray-400">
-          {(["body", "headers"] as const).map(t => (
+          {(["body", "headers", ...(scriptResult ? ["script" as const] : [])] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -153,9 +154,12 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
                 tab === t
                   ? "text-gray-200 border-b-2 border-blue-500 -mb-[9px]"
                   : "hover:text-gray-200"
-              }`}
+              } ${t === "script" && scriptResult?.error ? "text-red-400" : ""}`}
             >
               {t}{t === "headers" ? ` (${headerCount})` : ""}
+              {t === "script" && scriptResult?.logs && scriptResult.logs.length > 0
+                ? ` (${scriptResult.logs.length})`
+                : ""}
             </button>
           ))}
           {copyText && tab === "body" && (
@@ -211,6 +215,7 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
         <div className="flex-1 overflow-auto">
           {tab === "body" && <ResponseBody body={response.body} isBinary={response.is_binary ?? false} searchText={showSearch ? searchText : ""} />}
           {tab === "headers" && <ResponseHeaders headers={response.headers} searchText={showSearch ? searchText : ""} />}
+          {tab === "script" && scriptResult && <ScriptOutput result={scriptResult} />}
         </div>
       </div>
     </div>
@@ -416,6 +421,74 @@ function ResponseHeaders({ headers, searchText }: { headers: Record<string, stri
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ScriptOutput({ result }: { result: ScriptResult }) {
+  const varsEntries = Object.entries(result.variables_set);
+
+  return (
+    <div className="p-4 space-y-4 text-xs font-mono">
+      {/* Status + duration */}
+      <div className="flex items-center gap-3">
+        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
+          result.status === "success"
+            ? "bg-green-500/15 text-green-400 border border-green-500/20"
+            : "bg-red-500/15 text-red-400 border border-red-500/20"
+        }`}>
+          {result.status}
+        </span>
+        <span className="text-gray-500">{result.duration_ms}ms</span>
+      </div>
+
+      {/* Error */}
+      {result.error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-md p-3">
+          <div className="text-[10px] text-red-400 font-semibold uppercase tracking-wider mb-1">Error</div>
+          <pre className="text-red-300 whitespace-pre-wrap break-all">{result.error}</pre>
+        </div>
+      )}
+
+      {/* Variables set */}
+      {varsEntries.length > 0 && (
+        <div>
+          <div className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2">Variables Set</div>
+          <div className="space-y-1">
+            {varsEntries.map(([key, value]) => (
+              <div key={key} className="flex items-center gap-2 px-2 py-1 rounded bg-[#1a1a1a]">
+                <span className="text-blue-400">{key}</span>
+                <span className="text-gray-600">=</span>
+                <span className="text-gray-300 break-all">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Logs */}
+      {result.logs.length > 0 && (
+        <div>
+          <div className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2">
+            Console Output ({result.logs.length})
+          </div>
+          <div className="bg-[#0a0a0a] rounded-md border border-gray-800 p-3 max-h-[300px] overflow-auto">
+            {result.logs.map((line, i) => (
+              <div key={i} className="text-gray-400 py-0.5 break-all whitespace-pre-wrap">
+                <span className="text-gray-600 mr-2 select-none">{i + 1}</span>
+                {line}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {result.logs.length === 0 && varsEntries.length === 0 && !result.error && (
+        <div className="text-gray-600 text-center py-8">
+          Script ran successfully with no output
+        </div>
+      )}
     </div>
   );
 }

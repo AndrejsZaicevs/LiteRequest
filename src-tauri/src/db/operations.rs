@@ -1496,4 +1496,337 @@ impl Database {
 
         Ok(new_folder_id)
     }
+
+    // ── Scripts ──────────────────────────────────────────────────
+
+    pub fn insert_script(&self, s: &Script) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO scripts (id, collection_id, folder_id, name, current_version_id, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![s.id, s.collection_id, s.folder_id, s.name, s.current_version_id, s.sort_order, s.created_at, s.updated_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_script(&self, id: &str) -> rusqlite::Result<Script> {
+        self.conn.query_row(
+            "SELECT id, collection_id, folder_id, name, current_version_id, sort_order, created_at, updated_at
+             FROM scripts WHERE id=?1 AND deleted_at IS NULL",
+            params![id],
+            |row| Ok(Script {
+                id: row.get(0)?,
+                collection_id: row.get(1)?,
+                folder_id: row.get(2)?,
+                name: row.get(3)?,
+                current_version_id: row.get(4)?,
+                sort_order: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            }),
+        )
+    }
+
+    pub fn list_scripts_by_collection(&self, collection_id: &str) -> rusqlite::Result<Vec<Script>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, collection_id, folder_id, name, current_version_id, sort_order, created_at, updated_at
+             FROM scripts WHERE collection_id=?1 AND deleted_at IS NULL ORDER BY sort_order",
+        )?;
+        let rows = stmt.query_map(params![collection_id], |row| {
+            Ok(Script {
+                id: row.get(0)?,
+                collection_id: row.get(1)?,
+                folder_id: row.get(2)?,
+                name: row.get(3)?,
+                current_version_id: row.get(4)?,
+                sort_order: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn list_scripts_by_folder(&self, folder_id: &str) -> rusqlite::Result<Vec<Script>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, collection_id, folder_id, name, current_version_id, sort_order, created_at, updated_at
+             FROM scripts WHERE folder_id=?1 AND deleted_at IS NULL ORDER BY sort_order",
+        )?;
+        let rows = stmt.query_map(params![folder_id], |row| {
+            Ok(Script {
+                id: row.get(0)?,
+                collection_id: row.get(1)?,
+                folder_id: row.get(2)?,
+                name: row.get(3)?,
+                current_version_id: row.get(4)?,
+                sort_order: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn rename_script(&self, id: &str, name: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE scripts SET name=?2, updated_at=datetime('now') WHERE id=?1",
+            params![id, name],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_script(&self, id: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE scripts SET deleted_at=datetime('now') WHERE id=?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    pub fn move_script(&self, id: &str, collection_id: &str, folder_id: Option<&str>) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE scripts SET collection_id=?2, folder_id=?3, updated_at=datetime('now') WHERE id=?1",
+            params![id, collection_id, folder_id],
+        )?;
+        Ok(())
+    }
+
+    // ── Script Versions ─────────────────────────────────────────
+
+    pub fn insert_script_version(&self, v: &ScriptVersion) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO script_versions (id, script_id, content_ts, content_js, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![v.id, v.script_id, v.content_ts, v.content_js, v.created_at],
+        )?;
+        // Point the script to this version
+        self.conn.execute(
+            "UPDATE scripts SET current_version_id=?2, updated_at=datetime('now') WHERE id=?1",
+            params![v.script_id, v.id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_script_version(&self, id: &str) -> rusqlite::Result<ScriptVersion> {
+        self.conn.query_row(
+            "SELECT id, script_id, content_ts, content_js, created_at
+             FROM script_versions WHERE id=?1",
+            params![id],
+            |row| Ok(ScriptVersion {
+                id: row.get(0)?,
+                script_id: row.get(1)?,
+                content_ts: row.get(2)?,
+                content_js: row.get(3)?,
+                created_at: row.get(4)?,
+            }),
+        )
+    }
+
+    pub fn list_script_versions(&self, script_id: &str) -> rusqlite::Result<Vec<ScriptVersion>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, script_id, content_ts, content_js, created_at
+             FROM script_versions WHERE script_id=?1 ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map(params![script_id], |row| {
+            Ok(ScriptVersion {
+                id: row.get(0)?,
+                script_id: row.get(1)?,
+                content_ts: row.get(2)?,
+                content_js: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// Check whether a script version has any runs linked to it.
+    pub fn script_version_has_runs(&self, version_id: &str) -> bool {
+        self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM script_runs WHERE version_id=?1)",
+            params![version_id],
+            |row| row.get::<_, bool>(0),
+        ).unwrap_or(false)
+    }
+
+    /// Save script content with same versioning logic as requests:
+    /// 1. No current version → create
+    /// 2. Content identical → no-op
+    /// 3. Current version has NO runs → overwrite in place
+    /// 4. Current version has runs → create new version
+    pub fn save_script_version(
+        &self,
+        script_id: &str,
+        content_ts: &str,
+        content_js: &str,
+    ) -> rusqlite::Result<ScriptVersion> {
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        match self.save_script_version_inner(script_id, content_ts, content_js) {
+            Ok(v) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(v)
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    }
+
+    fn save_script_version_inner(
+        &self,
+        script_id: &str,
+        content_ts: &str,
+        content_js: &str,
+    ) -> rusqlite::Result<ScriptVersion> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let current_vid: Option<String> = self.conn.query_row(
+            "SELECT current_version_id FROM scripts WHERE id=?1",
+            params![script_id],
+            |row| row.get(0),
+        )?;
+
+        if let Some(ref vid) = current_vid {
+            let current = self.get_script_version(vid)?;
+
+            // Identical content → no-op
+            if current.content_ts == content_ts {
+                return Ok(current);
+            }
+
+            let has_runs = self.script_version_has_runs(vid);
+
+            if !has_runs {
+                // Draft — overwrite in place
+                self.conn.execute(
+                    "UPDATE script_versions SET content_ts=?2, content_js=?3, created_at=?4 WHERE id=?1",
+                    params![vid, content_ts, content_js, now],
+                )?;
+                return self.get_script_version(vid);
+            }
+
+            // Has runs → create new version (immutable)
+        }
+
+        // Create new version
+        let version = ScriptVersion {
+            id: uuid::Uuid::new_v4().to_string(),
+            script_id: script_id.to_string(),
+            content_ts: content_ts.to_string(),
+            content_js: content_js.to_string(),
+            created_at: now,
+        };
+        self.insert_script_version(&version)?;
+        Ok(version)
+    }
+
+    // ── Script Runs ─────────────────────────────────────────────
+
+    pub fn insert_script_run(&self, r: &ScriptRun) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO script_runs (id, script_id, version_id, request_id, execution_id, status, logs, variables_set, script_source, error, duration_ms, executed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                r.id, r.script_id, r.version_id, r.request_id, r.execution_id,
+                r.status, r.logs, r.variables_set, r.script_source, r.error,
+                r.duration_ms as i64, r.executed_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_script_runs(&self, script_id: &str) -> rusqlite::Result<Vec<ScriptRun>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, script_id, version_id, request_id, execution_id, status, logs, variables_set, script_source, error, duration_ms, executed_at
+             FROM script_runs WHERE script_id=?1 ORDER BY executed_at DESC",
+        )?;
+        let rows = stmt.query_map(params![script_id], Self::map_script_run)?;
+        rows.collect()
+    }
+
+    pub fn list_script_runs_by_request(&self, request_id: &str) -> rusqlite::Result<Vec<ScriptRun>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, script_id, version_id, request_id, execution_id, status, logs, variables_set, script_source, error, duration_ms, executed_at
+             FROM script_runs WHERE request_id=?1 ORDER BY executed_at DESC",
+        )?;
+        let rows = stmt.query_map(params![request_id], Self::map_script_run)?;
+        rows.collect()
+    }
+
+    fn map_script_run(row: &rusqlite::Row) -> rusqlite::Result<ScriptRun> {
+        Ok(ScriptRun {
+            id: row.get(0)?,
+            script_id: row.get(1)?,
+            version_id: row.get(2)?,
+            request_id: row.get(3)?,
+            execution_id: row.get(4)?,
+            status: row.get(5)?,
+            logs: row.get(6)?,
+            variables_set: row.get(7)?,
+            script_source: row.get(8)?,
+            error: row.get(9)?,
+            duration_ms: row.get::<_, i64>(10)? as u64,
+            executed_at: row.get(11)?,
+        })
+    }
+
+    // ── Post-Script on Requests ─────────────────────────────────
+
+    pub fn get_post_script(&self, request_id: &str) -> rusqlite::Result<String> {
+        self.conn.query_row(
+            "SELECT COALESCE(post_script, '') FROM requests WHERE id=?1",
+            params![request_id],
+            |row| row.get(0),
+        )
+    }
+
+    pub fn set_post_script(&self, request_id: &str, script: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE requests SET post_script=?2 WHERE id=?1",
+            params![request_id, script],
+        )?;
+        Ok(())
+    }
+
+    /// Apply script variable side-effects: for each key→value pair, find the var def
+    /// by key in the collection and upsert its value for the given environment.
+    /// Creates new var defs (as operative) if they don't exist yet.
+    pub fn apply_script_variables(
+        &self,
+        collection_id: &str,
+        environment_id: &str,
+        variables: &std::collections::HashMap<String, String>,
+    ) -> rusqlite::Result<()> {
+        for (key, value) in variables {
+            // Look up existing var def by key + collection
+            let def_id: Option<String> = self.conn.query_row(
+                "SELECT id FROM collection_var_defs WHERE collection_id=?1 AND key=?2",
+                params![collection_id, key],
+                |row| row.get(0),
+            ).optional()?;
+
+            let def_id = match def_id {
+                Some(id) => id,
+                None => {
+                    // Create a new operative var def
+                    let new_id = uuid::Uuid::new_v4().to_string();
+                    let max_sort: i64 = self.conn.query_row(
+                        "SELECT COALESCE(MAX(sort_order), 0) FROM collection_var_defs WHERE collection_id=?1",
+                        params![collection_id],
+                        |row| row.get(0),
+                    )?;
+                    self.conn.execute(
+                        "INSERT INTO collection_var_defs (id, collection_id, key, var_type, sort_order)
+                         VALUES (?1, ?2, ?3, 'operative', ?4)",
+                        params![new_id, collection_id, key, max_sort + 1],
+                    )?;
+                    new_id
+                }
+            };
+
+            // Upsert the value
+            let val_id = uuid::Uuid::new_v4().to_string();
+            self.upsert_var_value(&val_id, &def_id, environment_id, value, false)?;
+        }
+        Ok(())
+    }
 }

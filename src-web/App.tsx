@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type {
   Collection, Folder, Request, RequestVersion, RequestExecution,
   Environment, EnvVariable, RequestData, ResponseData, HttpMethod,
-  VarRow,
+  VarRow, Script, ScriptVersion, ScriptResult,
 } from "./lib/types";
 import { defaultRequestData, resolveVariableRefs, findUnresolvedVars } from "./lib/types";
 import { getDynamicVarPreviews } from "./lib/dynamicVars";
@@ -19,11 +19,13 @@ import { ResponseView } from "./components/response/ResponseView";
 import { CollectionConfig } from "./components/settings/CollectionConfig";
 import { AppSettings } from "./components/settings/AppSettings";
 import { GlobalSearch } from "./components/search/GlobalSearch";
+import { ScriptView } from "./components/script/ScriptView";
 
 export type CenterView =
   | { type: "welcome" }
   | { type: "request"; requestId: string }
   | { type: "collection"; collectionId: string }
+  | { type: "script"; scriptId: string }
   | { type: "settings" };
 
 export default function App() {
@@ -53,6 +55,18 @@ export default function App() {
   const [currentResponse, setCurrentResponse] = useState<ResponseData | null>(null);
   const [currentLatency, setCurrentLatency] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(false);
+
+  // ── Script state (post-exec) ─────────────────────────────
+  const [postScript, setPostScript] = useState<string>("");
+  const [scriptResult, setScriptResult] = useState<ScriptResult | null>(null);
+
+  // ── Standalone script state ────────────────────────────
+  const [scripts, setScripts] = useState<Script[]>([]);
+  const [currentScript, setCurrentScript] = useState<Script | null>(null);
+  const [scriptVersions, setScriptVersions] = useState<ScriptVersion[]>([]);
+  const [scriptEditorContent, setScriptEditorContent] = useState<string>("");
+  const [scriptDirty, setScriptDirty] = useState(false);
+  const [scriptRunResult, setScriptRunResult] = useState<ScriptResult | null>(null);
 
   // ── Panel sizing ─────────────────────────────────────────
   const {
@@ -156,16 +170,20 @@ export default function App() {
     const colList = cols ?? await api.listCollections();
     const allFolders: Folder[] = [];
     const allRequests: Request[] = [];
+    const allScripts: Script[] = [];
     for (const c of colList) {
-      const [f, r] = await Promise.all([
+      const [f, r, s] = await Promise.all([
         api.listFolders(c.id),
         api.listRequestsByCollection(c.id),
+        api.listScriptsByCollection(c.id),
       ]);
       allFolders.push(...f);
       allRequests.push(...r);
+      allScripts.push(...s);
     }
     setFolders(allFolders);
     setRequests(allRequests);
+    setScripts(allScripts);
 
     const metaMap = new Map<string, { method: HttpMethod; url: string }>();
     await Promise.all(
@@ -214,7 +232,12 @@ export default function App() {
     if (dirty && currentRequest) {
       await saveCurrentVersion();
     }
+    // Auto-save current script if dirty
+    if (scriptDirty && currentScript) {
+      await saveCurrentScript();
+    }
 
+    setCurrentScript(null);
     setCurrentRequest(req);
     setCenterView({ type: "request", requestId: req.id });
     setSplitOverride("auto"); // reset pane layout for each new request
@@ -242,8 +265,15 @@ export default function App() {
         setSelectedVersionId(null);
       }
       setDirty(false);
+      setScriptResult(null);
 
-      // Auto-select the most recent execution matching current filters (env: selected, ver: selected)
+      // Load post-script
+      try {
+        const ps = await api.getPostScript(req.id);
+        setPostScript(ps);
+      } catch {
+        setPostScript("");
+      }
       const activeEnvId = environments.find(e => e.is_active)?.id ?? null;
       const matchingExec = execs.find(e =>
         (!activeEnvId || e.environment_id === activeEnvId) &&
@@ -259,7 +289,7 @@ export default function App() {
     } catch (e) {
       setErrorMessage(String(e));
     }
-  }, [dirty, currentRequest, environments]);
+  }, [dirty, currentRequest, scriptDirty, currentScript, environments]);
 
   // ── Save version ─────────────────────────────────────────
   // All version logic (update-in-place vs create-new) lives in the backend.
@@ -286,6 +316,53 @@ export default function App() {
       setErrorMessage(`Failed to save: ${e}`);
     }
   }, [currentRequest, selectedVersionId, editorData]);
+
+  // ── Save standalone script ──────────────────────────────
+  const saveCurrentScript = useCallback(async () => {
+    if (!currentScript || !scriptDirty) return;
+    try {
+      const { transpileTS } = await import("./components/editor/ScriptEditor");
+      const contentJs = await transpileTS(scriptEditorContent);
+      const version = await api.saveScriptVersion(currentScript.id, scriptEditorContent, contentJs);
+      setScriptVersions(prev => {
+        const idx = prev.findIndex(v => v.id === version.id);
+        return idx >= 0 ? prev.map((v, i) => (i === idx ? version : v)) : [version, ...prev];
+      });
+      setScriptDirty(false);
+    } catch (e) {
+      setErrorMessage(`Failed to save script: ${e}`);
+    }
+  }, [currentScript, scriptDirty, scriptEditorContent]);
+
+  // ── Select standalone script ────────────────────────────
+  const selectScript = useCallback(async (script: Script) => {
+    if (dirty && currentRequest) {
+      await saveCurrentVersion();
+    }
+    if (scriptDirty && currentScript) {
+      await saveCurrentScript();
+    }
+
+    setCurrentScript(script);
+    setCurrentRequest(null);
+    setCenterView({ type: "script", scriptId: script.id });
+
+    try {
+      const vers = await api.listScriptVersions(script.id);
+      setScriptVersions(vers);
+
+      if (script.current_version_id) {
+        const v = await api.getScriptVersion(script.current_version_id);
+        setScriptEditorContent(v.content_ts);
+      } else {
+        setScriptEditorContent("");
+      }
+      setScriptDirty(false);
+      setScriptRunResult(null);
+    } catch (e) {
+      setErrorMessage(String(e));
+    }
+  }, [dirty, currentRequest, scriptDirty, currentScript, saveCurrentVersion, saveCurrentScript]);
 
   // ── Navigate to request (from search) ────────────────────
   const navigateToRequest = useCallback(async (
@@ -406,6 +483,58 @@ export default function App() {
       const execs = await api.listExecutions(currentRequest.id);
       setExecutions(execs);
       setSelectedExecutionId(execution.id);
+
+      // Run post-execution script if present
+      if (postScript.trim()) {
+        try {
+          const { transpileTS } = await import("./components/editor/ScriptEditor");
+          const scriptJs = await transpileTS(postScript);
+          const result = await api.runPostScript(
+            currentRequest.id,
+            execution.id,
+            effectiveData,
+            response,
+            latency,
+            resolvedVariables,
+            activeEnv?.name ?? "",
+            scriptJs,
+          );
+          setScriptResult(result);
+
+          // Apply variable side-effects to operative variables
+          const varsSet = result.variables_set;
+          if (varsSet && Object.keys(varsSet).length > 0) {
+            const activeEnvId = activeEnv?.id ?? "";
+            if (activeEnvId && currentRequest.collection_id) {
+              await api.applyScriptVariables(
+                currentRequest.collection_id,
+                activeEnvId,
+                varsSet,
+              );
+              // Refresh env variables to reflect changes
+              const rows = await api.loadVarRows(currentRequest.collection_id, activeEnvId);
+              setEnvVariables(rows.map(r => ({
+                id: r.value_id ?? r.def_id,
+                environment_id: activeEnvId,
+                key: r.key, value: r.value, is_secret: r.is_secret,
+              })));
+              const opRows = await api.loadOperativeVarRows(currentRequest.collection_id, activeEnvId);
+              setOperativeVarRows(opRows);
+            }
+          }
+        } catch (scriptErr) {
+          setScriptResult({
+            status: "error",
+            logs: [],
+            variables_set: {},
+            error: String(scriptErr),
+            duration_ms: 0,
+            transformed_response: null,
+          });
+        }
+      } else {
+        setScriptResult(null);
+      }
     } catch (e) {
       if (String(e).includes("Request cancelled")) {
         setErrorMessage(null);
@@ -415,13 +544,28 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentRequest, editorData, envVariables, currentCollection, environments, selectedVersionId, saveCurrentVersion, getEffectiveData]);
+  }, [currentRequest, editorData, envVariables, currentCollection, environments, selectedVersionId, postScript, saveCurrentVersion, getEffectiveData]);
 
   // ── Editor data change ───────────────────────────────────
   const onEditorChange = useCallback((data: RequestData) => {
     setEditorData(data);
     setDirty(true);
   }, []);
+
+  // ── Post-script change (debounced save) ─────────────────
+  const postScriptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onPostScriptChange = useCallback((script: string) => {
+    setPostScript(script);
+    if (!currentRequest) return;
+    if (postScriptTimer.current) clearTimeout(postScriptTimer.current);
+    postScriptTimer.current = setTimeout(async () => {
+      try {
+        await api.setPostScript(currentRequest.id, script);
+      } catch (e) {
+        console.error("Failed to save post-script:", e);
+      }
+    }, 800);
+  }, [currentRequest]);
 
   // ── Copy as cURL ─────────────────────────────────────────
   const copyCurl = useCallback(async () => {
@@ -462,6 +606,17 @@ export default function App() {
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [dirty, editorData, currentRequest, saveCurrentVersion]);
 
+  // ── Script auto-save on modification (debounced) ─────────
+  const scriptSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!scriptDirty || !currentScript) return;
+    if (scriptSaveTimer.current) clearTimeout(scriptSaveTimer.current);
+    scriptSaveTimer.current = setTimeout(() => {
+      saveCurrentScript();
+    }, 1500);
+    return () => { if (scriptSaveTimer.current) clearTimeout(scriptSaveTimer.current); };
+  }, [scriptDirty, currentScript, saveCurrentScript]);
+
   // ── Keyboard shortcuts ───────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -492,10 +647,13 @@ export default function App() {
             collections={collections}
             folders={folders}
             requests={requests}
+            scripts={scripts}
             selectedRequestId={centerView.type === "request" ? centerView.requestId : null}
             selectedCollectionId={centerView.type === "collection" ? centerView.collectionId : null}
+            selectedScriptId={centerView.type === "script" ? centerView.scriptId : null}
             requestMeta={requestMeta}
             onSelectRequest={(req) => selectRequest(req)}
+            onSelectScript={(script) => selectScript(script)}
             onSelectCollection={(id) => setCenterView({ type: "collection", collectionId: id })}
             onDataChange={() => refreshSidebarData()}
           />
@@ -620,6 +778,8 @@ export default function App() {
                         requestName={currentRequest?.name ?? ""}
                         variables={displayVariables}
                         isMaximized={effectivePane === "request"}
+                        postScript={postScript}
+                        onPostScriptChange={onPostScriptChange}
                         // Only show maximize when there's a response to switch to
                         onMaximize={noResponse ? undefined : () => setSplitOverride(
                           splitOverride === "request" ? "auto" : "request"
@@ -643,6 +803,7 @@ export default function App() {
                         response={currentResponse}
                         latency={currentLatency}
                         isLoading={isLoading}
+                        scriptResult={scriptResult}
                         isMaximized={effectivePane === "response"}
                         onMaximize={() => {
                           if (splitOverride === "response") {
@@ -667,6 +828,54 @@ export default function App() {
                   environments={environments}
                   onUpdate={refreshAll}
                   variables={displayVariables}
+                />
+              )}
+
+              {centerView.type === "script" && currentScript && (
+                <ScriptView
+                  script={currentScript}
+                  content={scriptEditorContent}
+                  versions={scriptVersions}
+                  dirty={scriptDirty}
+                  onContentChange={(content) => {
+                    setScriptEditorContent(content);
+                    setScriptDirty(true);
+                  }}
+                  onRun={async () => {
+                    await saveCurrentScript();
+                    try {
+                      const { transpileTS } = await import("./components/editor/ScriptEditor");
+                      const contentJs = await transpileTS(scriptEditorContent);
+                      const resolvedVariables = currentRequest
+                        ? await buildResolvedVariables(envVariables, currentCollection, currentRequest)
+                        : {};
+                      const activeEnv = environments.find(e => e.is_active);
+                      const result = await api.runScript(
+                        currentScript.id,
+                        contentJs,
+                        resolvedVariables,
+                        activeEnv?.name ?? "",
+                      );
+                      setScriptRunResult(result);
+
+                      if (result.variables_set && Object.keys(result.variables_set).length > 0) {
+                        const activeEnvId = activeEnv?.id ?? "";
+                        if (activeEnvId && currentScript.collection_id) {
+                          await api.applyScriptVariables(currentScript.collection_id, activeEnvId, result.variables_set);
+                        }
+                      }
+                    } catch (e) {
+                      setScriptRunResult({
+                        status: "error",
+                        logs: [],
+                        variables_set: {},
+                        error: String(e),
+                        duration_ms: 0,
+                        transformed_response: null,
+                      });
+                    }
+                  }}
+                  runResult={scriptRunResult}
                 />
               )}
 

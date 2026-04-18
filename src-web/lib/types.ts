@@ -331,3 +331,47 @@ export interface TrashedItem {
   parent_name: string;
   deleted_at: string;
 }
+
+// ── Script ───────────────────────────────────────────────────
+export interface Script {
+  id: string;
+  collection_id: string;
+  folder_id: string | null;
+  name: string;
+  current_version_id: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScriptVersion {
+  id: string;
+  script_id: string;
+  content_ts: string;
+  content_js: string;
+  created_at: string;
+}
+
+export interface ScriptRun {
+  id: string;
+  script_id: string | null;
+  version_id: string | null;
+  request_id: string | null;
+  execution_id: string | null;
+  status: string;
+  logs: string;
+  variables_set: string;
+  script_source: string;
+  error: string | null;
+  duration_ms: number;
+  executed_at: string;
+}
+
+export interface ScriptResult {
+  status: string;
+  logs: string[];
+  variables_set: Record<string, string>;
+  error: string | null;
+  duration_ms: number;
+  transformed_response: string | null;
+}

@@ -1,9 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Paperclip, Maximize2, Minimize2 } from "lucide-react";
 import type { RequestData, KeyValuePair, MultipartField } from "../../lib/types";
 import { CodeEditor } from "./CodeEditor";
 import { VariableInput } from "../shared/VariableInput";
 import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
+
+const ScriptEditorLazy = lazy(() =>
+  import("./ScriptEditor").then(m => ({ default: m.ScriptEditor }))
+);
 
 interface RequestEditorProps {
   data: RequestData;
@@ -14,8 +18,12 @@ interface RequestEditorProps {
   variables?: Record<string, string>;
   isMaximized?: boolean;
   onMaximize?: () => void;
+  /** Post-execution script content (TypeScript) */
+  postScript?: string;
+  onPostScriptChange?: (script: string) => void;
 }
 
+type EditorPanel = "body" | "script";
 type BodyTab = "none" | "json" | "form" | "raw" | "multipart";
 
 function bodyTypeToTab(bt: string): BodyTab {
@@ -26,8 +34,10 @@ function bodyTypeToTab(bt: string): BodyTab {
   return "none";
 }
 
-export function RequestEditor({ data, onChange, isLoading, basePath, requestName, variables = {}, isMaximized, onMaximize }: RequestEditorProps) {
+export function RequestEditor({ data, onChange, isLoading, basePath, requestName, variables = {}, isMaximized, onMaximize, postScript, onPostScriptChange }: RequestEditorProps) {
   const [bodyTab, setBodyTab] = useState<BodyTab>(() => bodyTypeToTab(data.body_type));
+  const [panel, setPanel] = useState<EditorPanel>("body");
+  const hasScript = (postScript ?? "").trim().length > 0;
 
   // Sync tab when switching to a different request
   useEffect(() => {
@@ -47,41 +57,78 @@ export function RequestEditor({ data, onChange, isLoading, basePath, requestName
   return (
     <div className="h-full flex flex-col overflow-hidden">
 
-      {/* Body toolbar */}
+      {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-[#121212] flex-shrink-0">
         <div className="flex items-center gap-3">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Request Body</span>
-          {bodyTab === "json" && (
+          {/* Panel toggle: Body / Script */}
+          <div className="flex bg-[#1a1a1a] rounded p-0.5 border border-gray-800 mr-2">
             <button
-              onClick={() => {
-                try {
-                  const formatted = JSON.stringify(JSON.parse(data.body), null, 2);
-                  updateField("body", formatted);
-                } catch { /* invalid JSON, ignore */ }
-              }}
-              className="text-[10px] px-2 py-0.5 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 border border-gray-700/50 transition-colors font-mono"
-              title="Format JSON"
+              onClick={() => setPanel("body")}
+              className={`text-xs px-3 py-1 rounded-sm transition-colors ${
+                panel === "body"
+                  ? "bg-gray-700 text-gray-200 shadow-sm"
+                  : "text-gray-500 hover:text-gray-300"
+              }`}
             >
-              {"{ }"}
+              Body
             </button>
+            <button
+              onClick={() => setPanel("script")}
+              className={`text-xs px-3 py-1 rounded-sm transition-colors relative ${
+                panel === "script"
+                  ? "bg-gray-700 text-gray-200 shadow-sm"
+                  : "text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              Script
+              {hasScript && panel !== "script" && (
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-blue-400" />
+              )}
+            </button>
+          </div>
+
+          {panel === "body" && (
+            <>
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Request Body</span>
+              {bodyTab === "json" && (
+                <button
+                  onClick={() => {
+                    try {
+                      const formatted = JSON.stringify(JSON.parse(data.body), null, 2);
+                      updateField("body", formatted);
+                    } catch { /* invalid JSON, ignore */ }
+                  }}
+                  className="text-[10px] px-2 py-0.5 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 border border-gray-700/50 transition-colors font-mono"
+                  title="Format JSON"
+                >
+                  {"{ }"}
+                </button>
+              )}
+            </>
+          )}
+
+          {panel === "script" && (
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Post-Execution Script</span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex bg-[#1a1a1a] rounded p-0.5 border border-gray-800">
-            {(["none", "json", "form", "raw", "multipart"] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => handleBodyTabChange(tab)}
-                className={`text-xs px-3 py-1 rounded-sm transition-colors ${
-                  bodyTab === tab
-                    ? "bg-gray-700 text-gray-200 shadow-sm"
-                    : "text-gray-500 hover:text-gray-300"
-                }`}
-              >
-                {tab === "none" ? "None" : tab === "form" ? "Form" : tab === "multipart" ? "Multipart" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
-          </div>
+          {panel === "body" && (
+            <div className="flex bg-[#1a1a1a] rounded p-0.5 border border-gray-800">
+              {(["none", "json", "form", "raw", "multipart"] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => handleBodyTabChange(tab)}
+                  className={`text-xs px-3 py-1 rounded-sm transition-colors ${
+                    bodyTab === tab
+                      ? "bg-gray-700 text-gray-200 shadow-sm"
+                      : "text-gray-500 hover:text-gray-300"
+                  }`}
+                >
+                  {tab === "none" ? "None" : tab === "form" ? "Form" : tab === "multipart" ? "Multipart" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
           {onMaximize && (
             <button
               onClick={onMaximize}
@@ -94,46 +141,64 @@ export function RequestEditor({ data, onChange, isLoading, basePath, requestName
         </div>
       </div>
 
-      {/* Body editor */}
+      {/* Content */}
       <div className="flex-1 overflow-hidden bg-[#0d0d0d]">
-        {bodyTab === "none" && (
-          <div className="flex items-center justify-center h-full text-sm text-gray-600">
-          </div>
+        {panel === "body" && (
+          <>
+            {bodyTab === "none" && (
+              <div className="flex items-center justify-center h-full text-sm text-gray-600">
+              </div>
+            )}
+
+            {bodyTab === "json" && (
+              <div className="h-full overflow-hidden">
+                <CodeEditor
+                  value={data.body}
+                  onChange={(v) => updateField("body", v)}
+                  language="json"
+                  variables={variables}
+                />
+              </div>
+            )}
+
+            {bodyTab === "form" && (
+              <FormEditor
+                body={data.body}
+                onChange={(body) => updateField("body", body)}
+              />
+            )}
+
+            {bodyTab === "raw" && (
+              <CodeEditor
+                value={data.body}
+                onChange={(v) => updateField("body", v)}
+                language="text"
+                variables={variables}
+              />
+            )}
+
+            {bodyTab === "multipart" && (
+              <MultipartEditor
+                fields={data.multipart_fields ?? []}
+                onChange={(fields) => updateField("multipart_fields", fields)}
+                variables={variables}
+              />
+            )}
+          </>
         )}
 
-        {bodyTab === "json" && (
-          <div className="h-full overflow-hidden">
-            <CodeEditor
-              value={data.body}
-              onChange={(v) => updateField("body", v)}
-              language="json"
-              variables={variables}
+        {panel === "script" && (
+          <Suspense fallback={
+            <div className="h-full flex items-center justify-center">
+              <span className="text-xs text-gray-600">Loading editor…</span>
+            </div>
+          }>
+            <ScriptEditorLazy
+              value={postScript ?? ""}
+              onChange={(v) => onPostScriptChange?.(v)}
+              mode="post-exec"
             />
-          </div>
-        )}
-
-        {bodyTab === "form" && (
-          <FormEditor
-            body={data.body}
-            onChange={(body) => updateField("body", body)}
-          />
-        )}
-
-        {bodyTab === "raw" && (
-          <CodeEditor
-            value={data.body}
-            onChange={(v) => updateField("body", v)}
-            language="text"
-            variables={variables}
-          />
-        )}
-
-        {bodyTab === "multipart" && (
-          <MultipartEditor
-            fields={data.multipart_fields ?? []}
-            onChange={(fields) => updateField("multipart_fields", fields)}
-            variables={variables}
-          />
+          </Suspense>
         )}
       </div>
     </div>

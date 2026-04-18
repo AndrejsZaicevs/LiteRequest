@@ -1,11 +1,11 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from "react";
-import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Plus, Upload, Download } from "lucide-react";
+import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Plus, Upload, Download, Code2 } from "lucide-react";
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable,
 } from "@dnd-kit/core";
 import type { DragMoveEvent, DragEndEvent, DragStartEvent } from "@dnd-kit/core";
-import type { Collection, Folder as FolderType, Request, HttpMethod } from "../../lib/types";
+import type { Collection, Folder as FolderType, Request, HttpMethod, Script } from "../../lib/types";
 import { METHOD_STYLES } from "../../lib/types";
 import * as api from "../../lib/api";
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
@@ -16,22 +16,26 @@ interface SidebarProps {
   collections: Collection[];
   folders: FolderType[];
   requests: Request[];
+  scripts: Script[];
   selectedRequestId: string | null;
   selectedCollectionId: string | null;
+  selectedScriptId: string | null;
   requestMeta: Map<string, { method: HttpMethod; url: string }>;
   onSelectRequest: (req: Request) => void;
+  onSelectScript: (script: Script) => void;
   onSelectCollection: (id: string) => void;
   onDataChange: () => void;
 }
 
 type TreeItem = {
   id: string;
-  type: "folder" | "request";
+  type: "folder" | "request" | "script";
   depth: number;
   parentFolderId: string | null;
   collectionId: string;
   folder?: FolderType;
   request?: Request;
+  script?: Script;
 };
 
 type DropState = {
@@ -45,6 +49,7 @@ function buildFlatTree(
   collections: Collection[],
   folders: FolderType[],
   requests: Request[],
+  scripts: Script[],
   collapsed: Set<string>,
 ): TreeItem[] {
   const items: TreeItem[] = [];
@@ -56,11 +61,15 @@ function buildFlatTree(
         folders.filter(f => f.parent_folder_id === folder.id).sort((a, b) => a.sort_order - b.sort_order).forEach(f => addFolder(f, depth + 1));
         requests.filter(r => r.folder_id === folder.id).sort((a, b) => a.sort_order - b.sort_order)
           .forEach(r => items.push({ id: r.id, type: "request", depth: depth + 1, parentFolderId: folder.id, collectionId: folder.collection_id, request: r }));
+        scripts.filter(s => s.collection_id === folder.collection_id && s.folder_id === folder.id).sort((a, b) => a.sort_order - b.sort_order)
+          .forEach(s => items.push({ id: s.id, type: "script", depth: depth + 1, parentFolderId: folder.id, collectionId: folder.collection_id, script: s }));
       }
     };
     folders.filter(f => f.collection_id === col.id && !f.parent_folder_id).sort((a, b) => a.sort_order - b.sort_order).forEach(f => addFolder(f, 0));
     requests.filter(r => r.collection_id === col.id && !r.folder_id).sort((a, b) => a.sort_order - b.sort_order)
       .forEach(r => items.push({ id: r.id, type: "request", depth: 0, parentFolderId: null, collectionId: col.id, request: r }));
+    scripts.filter(s => s.collection_id === col.id && !s.folder_id).sort((a, b) => a.sort_order - b.sort_order)
+      .forEach(s => items.push({ id: s.id, type: "script", depth: 0, parentFolderId: null, collectionId: col.id, script: s }));
   }
   return items;
 }
@@ -117,9 +126,9 @@ function CollectionEndZone({ collectionId, dropState }: { collectionId: string; 
 // ── Main sidebar ──────────────────────────────────────────────
 
 export function Sidebar({
-  collections, folders, requests,
-  selectedRequestId, selectedCollectionId, requestMeta,
-  onSelectRequest, onSelectCollection, onDataChange,
+  collections, folders, requests, scripts,
+  selectedRequestId, selectedCollectionId, selectedScriptId, requestMeta,
+  onSelectRequest, onSelectScript, onSelectCollection, onDataChange,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     try {
@@ -166,8 +175,8 @@ export function Sidebar({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const flatItems = useMemo(
-    () => buildFlatTree(collections, folders, requests, collapsed),
-    [collections, folders, requests, collapsed],
+    () => buildFlatTree(collections, folders, requests, scripts, collapsed),
+    [collections, folders, requests, scripts, collapsed],
   );
 
   // ── Helpers ─────────────────────────────────────────────────
@@ -191,6 +200,7 @@ export function Sidebar({
       if (renaming.type === "collection") await api.renameCollection(renaming.id, renaming.value);
       else if (renaming.type === "folder")  await api.renameFolder(renaming.id, renaming.value);
       else if (renaming.type === "request") await api.renameRequest(renaming.id, renaming.value);
+      else if (renaming.type === "script")  await api.renameScript(renaming.id, renaming.value);
       onDataChange();
     } catch (e) { console.error(e); }
     setRenaming(null);
@@ -201,6 +211,7 @@ export function Sidebar({
       if (type === "collection") await api.deleteCollection(id);
       else if (type === "folder")  await api.deleteFolder(id);
       else if (type === "request") await api.deleteRequest(id);
+      else if (type === "script")  await api.deleteScript(id);
       onDataChange();
     } catch (e) { console.error(e); }
     closeCtx();
@@ -271,6 +282,21 @@ export function Sidebar({
       onDataChange();
       setRenaming({ type: "folder", id: newId, value: (folders.find(f => f.id === folderId)?.name ?? "Folder") + " Copy" });
     } catch (e) { console.error(e); }
+  };
+
+  const handleNewScript = async (collectionId: string, folderId?: string) => {
+    const s: Script = {
+      id: crypto.randomUUID(),
+      collection_id: collectionId,
+      folder_id: folderId ?? null,
+      name: "New Script",
+      current_version_id: null,
+      sort_order: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    try { await api.insertScript(s); onDataChange(); setRenaming({ type: "script", id: s.id, value: s.name }); } catch (e) { console.error(e); }
+    closeCtx();
   };
 
   // ── DnD handlers ────────────────────────────────────────────
@@ -350,6 +376,9 @@ export function Sidebar({
           .filter(r => r.collection_id === colId && !r.folder_id && r.id !== req.id)
           .sort((a, b) => a.sort_order - b.sort_order);
         await api.reorderRequests([...sibs.map(r => r.id), req.id]);
+      } else if (activeItem.type === "script") {
+        const scr = activeItem.script!;
+        await api.moveScript(scr.id, colId, null);
       }
       onDataChange();
       return;
@@ -422,10 +451,25 @@ export function Sidebar({
         ids.splice(ref === -1 ? ids.length : ref + 1, 0, fld.id);
       }
       await api.reorderFolders(ids);
+
+    } else if (activeItem.type === "script") {
+      const scr = activeItem.script!;
+      let newFolder: string | null;
+      let newCol: string;
+
+      if (ds.position === "inside" && overItem.type === "folder") {
+        newFolder = overItem.id; newCol = overItem.collectionId;
+      } else {
+        newFolder = overItem.parentFolderId; newCol = overItem.collectionId;
+      }
+
+      if (scr.folder_id !== newFolder || scr.collection_id !== newCol) {
+        await api.moveScript(scr.id, newCol, newFolder);
+      }
     }
 
     onDataChange();
-  }, [dropState, flatItems, requests, folders, wouldCreateCycle, onDataChange]);
+  }, [dropState, flatItems, requests, folders, scripts, wouldCreateCycle, onDataChange]);
 
   const handleDragCancel = useCallback(() => {
     setActiveDragId(null);
@@ -457,6 +501,7 @@ export function Sidebar({
 
     const subfolders = folders.filter(f => f.parent_folder_id === folder.id).sort((a, b) => a.sort_order - b.sort_order);
     const folderReqs = requests.filter(r => r.folder_id === folder.id).sort((a, b) => a.sort_order - b.sort_order);
+    const folderScripts = scripts.filter(s => s.collection_id === folder.collection_id && s.folder_id === folder.id).sort((a, b) => a.sort_order - b.sort_order);
 
     const content = item ? (
       <DnDRow key={folder.id} item={item} dropState={dropState}>
@@ -493,6 +538,7 @@ export function Sidebar({
             <div className="absolute top-0 bottom-2 w-px bg-gray-700/40" style={{ left: depth * 12 + 21 }} />
             {subfolders.map(f => renderFolder(f, depth + 1))}
             {folderReqs.map(r => renderRequest(r, depth + 1))}
+            {folderScripts.map(s => renderScript(s, depth + 1))}
           </div>
         )}
       </div>
@@ -532,6 +578,37 @@ export function Sidebar({
             <span className={`text-[10px] font-mono font-semibold shrink-0 ${colors.text}`}>
               {method}
             </span>
+          </div>
+        )}
+      </DnDRow>
+    );
+  };
+
+  const renderScript = (scr: Script, depth: number): React.ReactNode => {
+    const isSelected = scr.id === selectedScriptId;
+    const item = flatItems.find(i => i.id === scr.id);
+    const pl = depth * 12 + 8;
+
+    if (!item) return null;
+
+    return (
+      <DnDRow key={scr.id} item={item} dropState={dropState}>
+        {(_isDropInside) => (
+          <div
+            className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer text-sm rounded-md mx-1.5 transition-colors group ${
+              isSelected ? "bg-blue-500/10 text-purple-400" : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+            }`}
+            style={{ paddingLeft: pl }}
+            onClick={e => { e.stopPropagation(); onSelectScript(scr); }}
+            onContextMenu={e => handleContextMenu(e, "script", scr.id)}
+            onDoubleClick={e => { e.stopPropagation(); setRenaming({ type: "script", id: scr.id, value: scr.name }); }}
+          >
+            <span className="w-3.5 shrink-0" />
+            <Code2 size={13} className={`shrink-0 ${isSelected ? "text-purple-400" : "text-purple-400/60"}`} />
+            {renaming?.id === scr.id
+              ? renameInput(renaming.value, v => setRenaming({ ...renaming, value: v }))
+              : <span className="truncate flex-1">{scr.name}</span>
+            }
           </div>
         )}
       </DnDRow>
@@ -580,6 +657,7 @@ export function Sidebar({
             const isSelected  = col.id === selectedCollectionId;
             const colFolders  = folders.filter(f => f.collection_id === col.id && !f.parent_folder_id).sort((a, b) => a.sort_order - b.sort_order);
             const orphans     = requests.filter(r => r.collection_id === col.id && !r.folder_id).sort((a, b) => a.sort_order - b.sort_order);
+            const orphanScripts = scripts.filter(s => s.collection_id === col.id && !s.folder_id).sort((a, b) => a.sort_order - b.sort_order);
             const reqCount    = requests.filter(r => r.collection_id === col.id).length;
 
             return (
@@ -614,6 +692,7 @@ export function Sidebar({
                   <div className="mt-0.5">
                     {colFolders.map(f => renderFolder(f, 1))}
                     {orphans.map(r => renderRequest(r, 1))}
+                    {orphanScripts.map(s => renderScript(s, 1))}
                     <CollectionEndZone collectionId={col.id} dropState={dropState} />
                   </div>
                 )}
@@ -634,6 +713,11 @@ export function Sidebar({
                   <>
                     <FolderOpen size={14} className="text-amber-400 shrink-0" />
                     <span className="text-sm text-gray-300">{activeDragItem.folder?.name}</span>
+                  </>
+                ) : activeDragItem.type === "script" ? (
+                  <>
+                    <Code2 size={14} className="text-purple-400 shrink-0" />
+                    <span className="text-sm text-gray-300">{activeDragItem.script?.name}</span>
                   </>
                 ) : (
                   <>
@@ -656,6 +740,7 @@ export function Sidebar({
         <div ref={ctxMenuRef} className="fixed z-50 rounded-lg shadow-2xl overflow-hidden bg-[#1a1a1a] border border-gray-700 py-1" style={{ left: contextMenu.x, top: contextMenu.y, minWidth: 180 }}>
           {contextMenu.type === "collection" && (<>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => handleNewRequest(contextMenu.id)}>New Request</button>
+            <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => handleNewScript(contextMenu.id)}>New Script</button>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => handleNewFolder(contextMenu.id)}>New Folder</button>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { onSelectCollection(contextMenu.id); closeCtx(); }}>Settings</button>
             <div className="my-1 border-t border-gray-800" />
@@ -668,6 +753,7 @@ export function Sidebar({
           </>)}
           {contextMenu.type === "folder" && (<>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { const f = folders.find(ff => ff.id === contextMenu.id); if (f) handleNewRequest(f.collection_id, f.id); }}>New Request</button>
+            <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { const f = folders.find(ff => ff.id === contextMenu.id); if (f) handleNewScript(f.collection_id, f.id); }}>New Script</button>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { const f = folders.find(ff => ff.id === contextMenu.id); if (f) handleNewFolder(f.collection_id, f.id); }}>New Subfolder</button>
             <div className="my-1 border-t border-gray-800" />
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => handleCloneFolder(contextMenu.id)}>Clone</button>
@@ -678,6 +764,10 @@ export function Sidebar({
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => handleCloneRequest(contextMenu.id)}>Clone</button>
             <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { setRenaming({ type: "request", id: contextMenu.id, value: requests.find(r => r.id === contextMenu.id)?.name ?? "" }); closeCtx(); }}>Rename</button>
             <button className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-[#242424] hover:text-red-300" onClick={() => handleDelete("request", contextMenu.id)}>Delete</button>
+          </>)}
+          {contextMenu.type === "script" && (<>
+            <button className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#242424] hover:text-gray-100" onClick={() => { setRenaming({ type: "script", id: contextMenu.id, value: scripts.find(s => s.id === contextMenu.id)?.name ?? "" }); closeCtx(); }}>Rename</button>
+            <button className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-[#242424] hover:text-red-300" onClick={() => handleDelete("script", contextMenu.id)}>Delete</button>
           </>)}
         </div>
       )}

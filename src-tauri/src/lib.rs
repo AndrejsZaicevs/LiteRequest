@@ -4,6 +4,7 @@ pub mod error;
 pub mod http;
 pub mod import;
 pub mod models;
+pub mod scripting;
 pub mod utils;
 
 use db::Database;
@@ -140,6 +141,31 @@ pub fn run() {
             // Clone
             commands::clone_request,
             commands::clone_folder,
+            // Scripts
+            commands::list_scripts_by_collection,
+            commands::list_scripts_by_folder,
+            commands::insert_script,
+            commands::get_script,
+            commands::rename_script,
+            commands::delete_script,
+            commands::move_script,
+            // Script Versions
+            commands::get_script_version,
+            commands::list_script_versions,
+            commands::save_script_version,
+            commands::script_version_has_runs,
+            // Script Runs
+            commands::list_script_runs,
+            commands::list_script_runs_by_request,
+            // Post-Script
+            commands::get_post_script,
+            commands::set_post_script,
+            commands::apply_script_variables,
+            // Script Execution
+            commands::run_post_script,
+            commands::run_script,
+            // Type Generation
+            commands::generate_script_types,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
