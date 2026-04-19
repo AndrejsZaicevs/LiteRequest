@@ -16,11 +16,6 @@ function getTSDefaults(monaco: MonacoInstance): TSDefaults {
   return (monaco.languages as any).typescript.typescriptDefaults;
 }
 
-function getTSWorker(monaco: MonacoInstance): Promise<(...uris: Monaco.Uri[]) => Promise<any>> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (monaco.languages as any).typescript.getTypeScriptWorker();
-}
-
 // Dark theme matching the app's design
 const LITE_THEME: Monaco.editor.IStandaloneThemeData = {
   base: "vs-dark",
@@ -173,49 +168,21 @@ export function ScriptEditor({ value, onChange, mode, readOnly = false }: Script
 }
 
 /**
- * Transpile TypeScript source to JavaScript using Monaco's TypeScript worker.
- * Returns the compiled JS or throws on failure.
+ * Transpile TypeScript source to JavaScript using the TypeScript compiler API.
+ * This is a pure in-process transform — no Monaco workers required.
  */
-/**
- * Transpile TypeScript to JavaScript using Monaco's TS worker.
- * Can be called with or without an existing monaco instance.
- * If no instance is provided, it lazily loads one via @monaco-editor/react loader.
- */
-export async function transpileTS(
-  source: string,
-  monacoInstance?: typeof Monaco,
-  fileName = "script.ts",
-): Promise<string> {
-  let monaco = monacoInstance;
-  if (!monaco) {
-    const loader = await import("@monaco-editor/react");
-    monaco = (await loader.loader.init()) as typeof Monaco;
+export async function transpileTS(source: string): Promise<string> {
+  const ts = await import("typescript");
+  const result = ts.transpileModule(source, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2020,
+      module: ts.ModuleKind.CommonJS,
+    },
+  });
+  if (!result.outputText) {
+    throw new Error("TypeScript transpilation produced no output");
   }
-
-  const uri = monaco.Uri.parse(`file:///${fileName}`);
-
-  // Create a temporary model so the TS worker can compile it
-  let model = monaco.editor.getModel(uri);
-  const needsDispose = !model;
-  if (!model) {
-    model = monaco.editor.createModel(source, "typescript", uri);
-  } else {
-    model.setValue(source);
-  }
-
-  try {
-    const worker = await getTSWorker(monaco);
-    const client = await worker(uri);
-    const output = await client.getEmitOutput(uri.toString());
-
-    if (output.outputFiles.length === 0) {
-      throw new Error("TypeScript transpilation produced no output");
-    }
-
-    return output.outputFiles[0].text;
-  } finally {
-    if (needsDispose) model.dispose();
-  }
+  return result.outputText;
 }
 
 /**
