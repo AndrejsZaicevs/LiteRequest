@@ -176,7 +176,7 @@ export async function transpileTS(source: string): Promise<string> {
   const result = ts.transpileModule(source, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2020,
-      module: ts.ModuleKind.CommonJS,
+      module: ts.ModuleKind.None,
     },
   });
   if (!result.outputText) {

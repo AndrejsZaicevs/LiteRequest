@@ -817,8 +817,11 @@ pub async fn run_post_script(
         };
 
         let exec_result = ctx.with(|js_ctx| {
+            use rquickjs::CatchResultExt;
             crate::scripting::context::inject_post_exec_globals(&js_ctx, &post_ctx, effects_clone)?;
-            js_ctx.eval::<(), String>(js_code).map_err(|e| format!("Script error: {e}"))
+            js_ctx.eval::<(), String>(js_code)
+                .catch(&js_ctx)
+                .map_err(|e| format!("{e}"))
         });
 
         let duration_ms = start.elapsed().as_millis() as u64;
@@ -897,9 +900,12 @@ pub async fn run_script(
         let standalone_ctx = StandaloneContext { variables, environment };
 
         let exec_result = ctx.with(|js_ctx| {
+            use rquickjs::CatchResultExt;
             crate::scripting::context::inject_standalone_globals(&js_ctx, &standalone_ctx, effects_clone)?;
             crate::scripting::bridge::install_sleep_bridge(&js_ctx)?;
-            js_ctx.eval::<(), String>(content_js).map_err(|e| format!("Script error: {e}"))
+            js_ctx.eval::<(), String>(content_js)
+                .catch(&js_ctx)
+                .map_err(|e| format!("{e}"))
         });
 
         let duration_ms = start.elapsed().as_millis() as u64;
