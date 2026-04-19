@@ -1,5 +1,5 @@
 use crate::models::{RequestData, ResponseData};
-use rquickjs::{Function, Object, Ctx, IntoJs};
+use rquickjs::{Function, Object, Ctx, IntoJs, Coerced};
 use rquickjs::prelude::Rest;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -30,9 +30,9 @@ pub struct StandaloneContext {
     pub environment: String,
 }
 
-fn make_log_fn(effects: SharedEffects) -> impl Fn(Rest<String>) + Clone {
-    move |args: Rest<String>| {
-        let line = args.0.join(" ");
+fn make_log_fn(effects: SharedEffects) -> impl Fn(Rest<Coerced<String>>) + Clone {
+    move |args: Rest<Coerced<String>>| {
+        let line = args.0.iter().map(|s| s.0.as_str()).collect::<Vec<_>>().join(" ");
         if let Ok(mut eff) = effects.lock() {
             eff.logs.push(line);
         }
