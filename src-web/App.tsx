@@ -666,6 +666,7 @@ export default function App() {
                   collections={collections}
                   environments={environments}
                   onUpdate={refreshAll}
+                  variables={displayVariables}
                 />
               )}
 
@@ -673,6 +674,7 @@ export default function App() {
                 <AppSettings
                   environments={environments}
                   onUpdate={refreshAll}
+                  variables={displayVariables}
                 />
               )}
             </div>

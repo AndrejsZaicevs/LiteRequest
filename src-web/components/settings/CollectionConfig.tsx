@@ -4,12 +4,14 @@ import type { Collection, Environment, VarDef, VarRow, AuthConfig, KeyValuePair 
 import * as api from "../../lib/api";import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
 import { VarDefTable } from "../shared/VarDefTable";
+import { VariableInput } from "../shared/VariableInput";
 
 interface CollectionConfigProps {
   collectionId: string;
   collections: Collection[];
   environments: Environment[];
   onUpdate: () => void;
+  variables?: Record<string, string>;
 }
 
 function parseAuthConfig(json: string | null): AuthConfig {
@@ -24,7 +26,7 @@ function parseHeadersConfig(json: string | null): KeyValuePair[] {
 
 type Section = "general" | "auth" | "headers" | "variables";
 
-export function CollectionConfig({ collectionId, collections, environments, onUpdate }: CollectionConfigProps) {
+export function CollectionConfig({ collectionId, collections, environments, onUpdate, variables = {} }: CollectionConfigProps) {
   const collection = collections.find(c => c.id === collectionId);
   const [basePath, setBasePath] = useState(collection?.base_path ?? "");
   const [authConfig, setAuthConfig] = useState<AuthConfig>(() => parseAuthConfig(collection?.auth_config ?? null));
@@ -183,10 +185,11 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
         <div className="space-y-3 max-w-lg">
           <div>
             <label className={labelClass}>Base Path</label>
-            <input
+            <VariableInput
               value={basePath}
-              onChange={(e) => setBasePath(e.target.value)}
+              onChange={setBasePath}
               onBlur={save}
+              variables={variables}
               placeholder="https://api.example.com"
               className={inputClass}
             />
@@ -226,10 +229,11 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
           {authConfig.auth_type === "bearer" && (
             <div>
               <label className={labelClass}>Token</label>
-              <input
+              <VariableInput
                 value={authConfig.bearer_token ?? ""}
-                onChange={(e) => setAuthConfig({ ...authConfig, bearer_token: e.target.value })}
+                onChange={(v) => setAuthConfig({ ...authConfig, bearer_token: v })}
                 onBlur={save}
+                variables={variables}
                 placeholder="Bearer token value..."
                 className={inputClass}
               />
@@ -240,20 +244,22 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className={labelClass}>Username</label>
-                <input
+                <VariableInput
                   value={authConfig.basic_username ?? ""}
-                  onChange={(e) => setAuthConfig({ ...authConfig, basic_username: e.target.value })}
+                  onChange={(v) => setAuthConfig({ ...authConfig, basic_username: v })}
                   onBlur={save}
+                  variables={variables}
                   className={inputClass}
                 />
               </div>
               <div className="flex-1">
                 <label className={labelClass}>Password</label>
-                <input
-                  type="password"
+                <VariableInput
                   value={authConfig.basic_password ?? ""}
-                  onChange={(e) => setAuthConfig({ ...authConfig, basic_password: e.target.value })}
+                  onChange={(v) => setAuthConfig({ ...authConfig, basic_password: v })}
                   onBlur={save}
+                  variables={variables}
+                  placeholder="password"
                   className={inputClass}
                 />
               </div>
@@ -264,19 +270,22 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className={labelClass}>Header Name</label>
-                <input
+                <VariableInput
                   value={authConfig.api_key_header ?? "X-API-Key"}
-                  onChange={(e) => setAuthConfig({ ...authConfig, api_key_header: e.target.value })}
+                  onChange={(v) => setAuthConfig({ ...authConfig, api_key_header: v })}
                   onBlur={save}
+                  variables={variables}
                   className={inputClass}
                 />
               </div>
               <div className="flex-1">
                 <label className={labelClass}>API Key</label>
-                <input
+                <VariableInput
                   value={authConfig.api_key_value ?? ""}
-                  onChange={(e) => setAuthConfig({ ...authConfig, api_key_value: e.target.value })}
+                  onChange={(v) => setAuthConfig({ ...authConfig, api_key_value: v })}
                   onBlur={save}
+                  variables={variables}
+                  placeholder="API key value..."
                   className={inputClass}
                 />
               </div>
@@ -296,7 +305,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
           Sent with every request in this collection
         </p>
         <div className="border border-gray-800 rounded-md overflow-hidden">
-          <KvTable rows={headersConfig} onChange={saveHeaders} placeholder={{ key: "Header-Name", value: "value" }} />
+          <KvTable rows={headersConfig} onChange={saveHeaders} placeholder={{ key: "Header-Name", value: "value" }} variables={variables} />
         </div>
       </CollapsibleSection>
 

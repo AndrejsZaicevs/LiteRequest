@@ -1,5 +1,6 @@
 import { Eye, EyeOff, Trash2, Zap } from "lucide-react";
 import type { VarRow } from "../../lib/types";
+import { VariableInput } from "./VariableInput";
 
 interface Def {
   id: string;
@@ -21,6 +22,7 @@ interface VarDefTableProps {
   onDelete: (defId: string) => void;
   emptyMessage?: string;
   valuePlaceholder?: string;
+  variables?: Record<string, string>;
 }
 
 export function VarDefTable({
@@ -35,6 +37,7 @@ export function VarDefTable({
   onDelete,
   emptyMessage = "No variables — click + Add",
   valuePlaceholder = "value",
+  variables = {},
 }: VarDefTableProps) {
   return (
     <div className="border border-gray-800 rounded-md overflow-hidden">
@@ -50,21 +53,37 @@ export function VarDefTable({
               style={{ border: "none", borderRadius: 0, fontWeight: 500 }}
             />
             <div className="kv-divider" />
-            <input
-              value={row?.value ?? ""}
-              type={row?.is_secret ? "password" : "text"}
-              onChange={e => {
-                if (row) {
-                  onValueChange(row, e.target.value);
-                } else if (hasEnv) {
-                  onValueCreate(def.id, def.key, e.target.value);
-                }
-              }}
-              placeholder={hasEnv ? valuePlaceholder : "—"}
-              className="kv-cell"
-              style={{ border: "none", borderRadius: 0 }}
-              disabled={!hasEnv}
-            />
+            {!hasEnv ? (
+              <input
+                value=""
+                placeholder="—"
+                className="kv-cell"
+                style={{ border: "none", borderRadius: 0 }}
+                disabled
+              />
+            ) : row?.is_secret ? (
+              <input
+                value={row.value}
+                type="password"
+                onChange={e => onValueChange(row, e.target.value)}
+                placeholder={valuePlaceholder}
+                className="kv-cell"
+                style={{ border: "none", borderRadius: 0 }}
+              />
+            ) : (
+              <VariableInput
+                value={row?.value ?? ""}
+                onChange={v => {
+                  if (row) onValueChange(row, v);
+                  else onValueCreate(def.id, def.key, v);
+                }}
+                variables={variables}
+                wrapperClassName="flex-1 min-w-0"
+                className="kv-cell"
+                inputStyle={{ border: "none", borderRadius: 0 }}
+                placeholder={valuePlaceholder}
+              />
+            )}
             {onToggleOperative && (
               <button
                 onClick={() => onToggleOperative(def)}

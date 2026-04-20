@@ -5,6 +5,7 @@ import * as api from "../../lib/api";
 import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
 import { VarDefTable } from "../shared/VarDefTable";
+import { VariableInput } from "../shared/VariableInput";
 import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
@@ -95,9 +96,10 @@ function SortableEnvRow({
 interface AppSettingsProps {
   environments: Environment[];
   onUpdate: () => void;
+  variables?: Record<string, string>;
 }
 
-export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
+export function AppSettings({ environments, onUpdate, variables = {} }: AppSettingsProps) {
   const [open, setOpen] = useState<Set<Section>>(new Set(["environments", "headers", "variables", "globalvars", "certificates"]));
   const [selectedEnv, setSelectedEnv] = useState<string | null>(environments[0]?.id ?? null);
   const [renamingEnv, setRenamingEnv] = useState<string | null>(null);
@@ -438,6 +440,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
           onValueCreate={createEnvVarRow}
           onToggleSecret={toggleEnvVarSecret}
           onDelete={deleteEnvVarDef}
+          variables={variables}
         />
         <p className="text-xs mt-2 text-gray-600">
           Variable keys are shared across all environments. Each environment has its own values.
@@ -468,14 +471,26 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
                 placeholder="VARIABLE_NAME"
               />
               <div className="kv-divider" />
-              <input
-                value={v.value}
-                type={v.is_secret ? "password" : "text"}
-                onChange={e => updateAppVarValue(i, e.target.value)}
-                className="kv-cell"
-                style={{ border: "none", borderRadius: 0 }}
-                placeholder="value"
-              />
+              {v.is_secret ? (
+                <input
+                  value={v.value}
+                  type="password"
+                  onChange={e => updateAppVarValue(i, e.target.value)}
+                  className="kv-cell"
+                  style={{ border: "none", borderRadius: 0 }}
+                  placeholder="value"
+                />
+              ) : (
+                <VariableInput
+                  value={v.value}
+                  onChange={val => updateAppVarValue(i, val)}
+                  variables={variables}
+                  wrapperClassName="flex-1 min-w-0"
+                  className="kv-cell"
+                  inputStyle={{ border: "none", borderRadius: 0 }}
+                  placeholder="value"
+                />
+              )}
               <button
                 onClick={() => toggleAppVarSecret(i)}
                 className="kv-action text-gray-600 hover:text-gray-300"
@@ -507,7 +522,7 @@ export function AppSettings({ environments, onUpdate }: AppSettingsProps) {
       >
         <p className="text-xs mb-3 text-gray-600">Sent with every request across all collections</p>
         <div className="border border-gray-800 rounded-md overflow-hidden" style={{ maxWidth: 600 }}>
-          <KvTable rows={defaultHeaders} onChange={saveDefaultHeaders} placeholder={{ key: "Header-Name", value: "value" }} />
+          <KvTable rows={defaultHeaders} onChange={saveDefaultHeaders} placeholder={{ key: "Header-Name", value: "value" }} variables={variables} />
         </div>
       </CollapsibleSection>
 
