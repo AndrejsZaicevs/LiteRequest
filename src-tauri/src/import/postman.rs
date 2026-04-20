@@ -687,3 +687,273 @@ fn map_body(body: &PostmanBody) -> (BodyType, String, Vec<MultipartField>) {
         _ => (BodyType::None, String::new(), vec![]),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: deserialize a Postman collection JSON and map its first item to RequestData
+    fn parse_first_request(json: &str) -> RequestData {
+        let col: PostmanCollection = serde_json::from_str(json).unwrap();
+        let item = &col.item.unwrap()[0];
+        map_request_data(item.request.as_ref().unwrap())
+    }
+
+    #[test]
+    fn test_simple_get() {
+        let json = r#"{
+            "info": { "name": "Test" },
+            "item": [{
+                "name": "Get Users",
+                "request": {
+                    "method": "GET",
+                    "url": "https://api.example.com/users"
+                }
+            }]
+        }"#;
+        let data = parse_first_request(json);
+        assert_eq!(data.method, HttpMethod::GET);
+        assert_eq!(data.url, "https://api.example.com/users");
+        assert!(data.body.is_empty());
+        assert_eq!(data.body_type, BodyType::None);
+    }
+
+    #[test]
+    fn test_post_with_json_body() {
+        let json = r#"{
+            "info": { "name": "Test" },
+            "item": [{
+                "name": "Create User",
+                "request": {
+                    "method": "POST",
+                    "url": "https://api.example.com/users",
+                    "header": [{ "key": "Accept", "value": "application/json" }],
+                    "body": {
+                        "mode": "raw",
+                        "raw": "{\"name\": \"Alice\"}",
+                        "options": { "raw": { "language": "json" } }
+                    }
+                }
+            }]
+        }"#;
+        let data = parse_first_request(json);
+        assert_eq!(data.method, HttpMethod::POST);
+        assert_eq!(data.body_type, BodyType::Json);
+        assert!(data.body.contains("Alice"));
+        assert_eq!(data.headers.len(), 1);
+        assert_eq!(data.headers[0].key, "Accept");
+    }
+
+    #[test]
+    fn test_url_as_object_with_query_params() {
+        let json = r#"{
+            "info": { "name": "Test" },
+            "item": [{
+                "name": "Search",
+                "request": {
+                    "method": "GET",
+                    "url": {
+                        "raw": "https://api.example.com/search?q=hello&limit=10",
+                        "query": [
+                            { "key": "q", "value": "hello" },
+                            { "key": "limit", "value": "10" }
+                        ]
+                    }
+                }
+            }]
+        }"#;
+        let data = parse_first_request(json);
+        assert_eq!(data.url, "https://api.example.com/search");
+        assert_eq!(data.query_params.len(), 2);
+        assert_eq!(data.query_params[0].key, "q");
+        assert_eq!(data.query_params[1].value, "10");
+    }
+
+    #[test]
+    fn test_disabled_query_params_excluded() {
+        let json = r#"{
+            "info": { "name": "Test" },
+            "item": [{
+                "name": "Search",
+                "request": {
+                    "method": "GET",
+                    "url": {
+                        "raw": "https://example.com/api",
+                        "query": [
+                            { "key": "active", "value": "true" },
+                            { "key": "debug", "value": "1", "disabled": true }
+                        ]
+                    }
+                }
+            }]
+        }"#;
+        let data = parse_first_request(json);
+        assert_eq!(data.query_params.len(), 1);
+        assert_eq!(data.query_params[0].key, "active");
+    }
+
+    #[test]
+    fn test_disabled_headers_excluded() {
+        let json = r#"{
+            "info": { "name": "Test" },
+            "item": [{
+                "name": "Req",
+                "request": {
+                    "method": "GET",
+                    "url": "https://example.com",
+                    "header": [
+                        { "key": "Accept", "value": "*/*" },
+                        { "key": "X-Debug", "value": "1", "disabled": true }
+                    ]
+                }
+            }]
+        }"#;
+        let data = parse_first_request(json);
+        assert_eq!(data.headers.len(), 1);
+        assert_eq!(data.headers[0].key, "Accept");
+    }
+
+    #[test]
+    fn test_form_urlencoded_body() {
+        let json = r#"{
+            "info": { "name": "Test" },
+            "item": [{
+                "name": "Login",
+                "request": {
+                    "method": "POST",
+                    "url": "https://example.com/login",
+                    "body": {
+                        "mode": "urlencoded",
+                        "urlencoded": [
+                            { "key": "user", "value": "admin" },
+                            { "key": "pass", "value": "secret" }
+                        ]
+                    }
+                }
+            }]
+        }"#;
+        let data = parse_first_request(json);
+        assert_eq!(data.body_type, BodyType::FormUrlEncoded);
+        assert!(data.body.contains("user=admin"));
+        assert!(data.body.contains("pass=secret"));
+    }
+
+    #[test]
+    fn test_multipart_formdata() {
+        let json = r#"{
+            "info": { "name": "Test" },
+            "item": [{
+                "name": "Upload",
+                "request": {
+                    "method": "POST",
+                    "url": "https://example.com/upload",
+                    "body": {
+                        "mode": "formdata",
+                        "formdata": [
+                            { "key": "name", "value": "test", "type": "text" },
+                            { "key": "file", "type": "file", "src": "/path/to/file.pdf" }
+                        ]
+                    }
+                }
+            }]
+        }"#;
+        let data = parse_first_request(json);
+        assert_eq!(data.body_type, BodyType::Multipart);
+        assert_eq!(data.multipart_fields.len(), 2);
+        assert_eq!(data.multipart_fields[0].key, "name");
+        assert!(!data.multipart_fields[0].is_file);
+        assert_eq!(data.multipart_fields[1].key, "file");
+        assert!(data.multipart_fields[1].is_file);
+        assert_eq!(data.multipart_fields[1].file_path, "/path/to/file.pdf");
+    }
+
+    #[test]
+    fn test_missing_method_defaults_to_get() {
+        let json = r#"{
+            "info": { "name": "Test" },
+            "item": [{
+                "name": "Default",
+                "request": { "url": "https://example.com" }
+            }]
+        }"#;
+        let data = parse_first_request(json);
+        assert_eq!(data.method, HttpMethod::GET);
+    }
+
+    #[test]
+    fn test_raw_body_auto_detects_json() {
+        let json = r#"{
+            "info": { "name": "Test" },
+            "item": [{
+                "name": "Auto JSON",
+                "request": {
+                    "method": "POST",
+                    "url": "https://example.com",
+                    "body": {
+                        "mode": "raw",
+                        "raw": "{\"key\": \"value\"}"
+                    }
+                }
+            }]
+        }"#;
+        let data = parse_first_request(json);
+        assert_eq!(data.body_type, BodyType::Json);
+    }
+
+    #[test]
+    fn test_raw_body_non_json() {
+        let json = r#"{
+            "info": { "name": "Test" },
+            "item": [{
+                "name": "Plain text",
+                "request": {
+                    "method": "POST",
+                    "url": "https://example.com",
+                    "body": {
+                        "mode": "raw",
+                        "raw": "Hello world"
+                    }
+                }
+            }]
+        }"#;
+        let data = parse_first_request(json);
+        assert_eq!(data.body_type, BodyType::Raw);
+    }
+
+    #[test]
+    fn test_url_string_with_query_params_extracted() {
+        let (base, params) = parse_url_string("https://example.com/api?key=val&page=2");
+        assert_eq!(base, "https://example.com/api");
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0].key, "key");
+        assert_eq!(params[1].value, "2");
+    }
+
+    #[test]
+    fn test_collection_deserialization() {
+        let json = r#"{
+            "info": { "name": "My API" },
+            "item": [
+                {
+                    "name": "Folder A",
+                    "item": [
+                        {
+                            "name": "Request 1",
+                            "request": { "method": "GET", "url": "https://example.com/1" }
+                        }
+                    ]
+                },
+                {
+                    "name": "Request 2",
+                    "request": { "method": "POST", "url": "https://example.com/2" }
+                }
+            ]
+        }"#;
+        let col: PostmanCollection = serde_json::from_str(json).unwrap();
+        assert_eq!(col.info.name, "My API");
+        let items = col.item.unwrap();
+        assert_eq!(items.len(), 2);
+        assert!(items[0].item.is_some()); // folder
+        assert!(items[1].request.is_some()); // request
+    }
+}

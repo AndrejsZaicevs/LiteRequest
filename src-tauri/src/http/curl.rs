@@ -453,11 +453,128 @@ mod tests {
             path_params: Vec::new(),
             body: r#"{"test": true}"#.to_string(),
             body_type: BodyType::Json,
+            multipart_fields: Vec::new(),
         };
         let curl = to_curl(&data, &HashMap::new(), "");
         let parsed = parse_curl(&curl).unwrap();
         assert_eq!(parsed.method, HttpMethod::POST);
         assert_eq!(parsed.body_type, BodyType::Json);
         assert!(parsed.body.contains(r#""test": true"#));
+    }
+
+    #[test]
+    fn test_parse_empty_input() {
+        assert!(parse_curl("").is_err());
+    }
+
+    #[test]
+    fn test_parse_no_url() {
+        assert!(parse_curl("curl -X POST -H 'Accept: */*'").is_err());
+    }
+
+    #[test]
+    fn test_parse_form_urlencoded() {
+        let input = r#"curl -X POST https://example.com/login \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'user=admin&pass=secret'"#;
+        let data = parse_curl(input).unwrap();
+        assert_eq!(data.method, HttpMethod::POST);
+        assert_eq!(data.body_type, BodyType::FormUrlEncoded);
+        assert_eq!(data.body, "user=admin&pass=secret");
+    }
+
+    #[test]
+    fn test_parse_inferred_post_from_body() {
+        let input = r#"curl https://api.example.com/data -d '{"key":"value"}'"#;
+        let data = parse_curl(input).unwrap();
+        assert_eq!(data.method, HttpMethod::POST);
+        assert_eq!(data.body_type, BodyType::Json);
+    }
+
+    #[test]
+    fn test_parse_all_methods() {
+        for method in &["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] {
+            let input = format!("curl -X {} https://example.com", method);
+            let data = parse_curl(&input).unwrap();
+            assert_eq!(data.method.as_str(), *method);
+        }
+    }
+
+    #[test]
+    fn test_parse_unknown_method() {
+        assert!(parse_curl("curl -X FOOBAR https://example.com").is_err());
+    }
+
+    #[test]
+    fn test_parse_data_raw_flag() {
+        let input = r#"curl https://api.example.com --data-raw '{"a": 1}'"#;
+        let data = parse_curl(input).unwrap();
+        assert_eq!(data.body, r#"{"a": 1}"#);
+    }
+
+    #[test]
+    fn test_parse_double_quoted_strings() {
+        let input = r#"curl -X POST "https://api.example.com/data" -H "Authorization: Bearer tok" -d "body""#;
+        let data = parse_curl(input).unwrap();
+        assert_eq!(data.url, "https://api.example.com/data");
+        assert_eq!(data.headers[0].key, "Authorization");
+        assert_eq!(data.headers[0].value, "Bearer tok");
+    }
+
+    #[test]
+    fn test_parse_skip_flags() {
+        let input = "curl -s -S -k -L --compressed --verbose --include https://example.com";
+        let data = parse_curl(input).unwrap();
+        assert_eq!(data.url, "https://example.com");
+        assert_eq!(data.method, HttpMethod::GET);
+    }
+
+    #[test]
+    fn test_to_curl_get_omits_method() {
+        let data = RequestData {
+            method: HttpMethod::GET,
+            url: "https://example.com".to_string(),
+            ..RequestData::default()
+        };
+        let curl = to_curl(&data, &HashMap::new(), "");
+        assert!(!curl.contains("-X"));
+    }
+
+    #[test]
+    fn test_to_curl_with_variables() {
+        let data = RequestData {
+            method: HttpMethod::GET,
+            url: "https://{{host}}/api".to_string(),
+            ..RequestData::default()
+        };
+        let mut vars = HashMap::new();
+        vars.insert("host".to_string(), "example.com".to_string());
+        let curl = to_curl(&data, &vars, "");
+        assert!(curl.contains("https://example.com/api"));
+    }
+
+    #[test]
+    fn test_to_curl_with_base_path() {
+        let data = RequestData {
+            method: HttpMethod::GET,
+            url: "/users".to_string(),
+            ..RequestData::default()
+        };
+        let curl = to_curl(&data, &HashMap::new(), "https://api.example.com");
+        assert!(curl.contains("https://api.example.com/users"));
+    }
+
+    #[test]
+    fn test_shell_quote_with_single_quotes() {
+        let quoted = shell_quote("it's a test");
+        assert!(quoted.contains("'\\''"));
+    }
+
+    #[test]
+    fn test_url_encode_decode_roundtrip() {
+        let original = "hello world&foo=bar";
+        let encoded = url_encode(original);
+        let decoded = url_decode(&encoded);
+        assert_eq!(decoded, original);
     }
 }

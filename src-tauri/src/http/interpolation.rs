@@ -175,4 +175,78 @@ mod tests {
             "https://api.example.com/inst-123/v1/charges"
         );
     }
+
+    #[test]
+    fn test_interpolate_missing_variable_left_as_is() {
+        let vars = HashMap::new();
+        assert_eq!(
+            interpolate("{{host}}/api", &vars),
+            "{{host}}/api"
+        );
+    }
+
+    #[test]
+    fn test_interpolate_empty_input() {
+        assert_eq!(interpolate("", &HashMap::new()), "");
+    }
+
+    #[test]
+    fn test_interpolate_no_placeholders() {
+        let mut vars = HashMap::new();
+        vars.insert("unused".to_string(), "value".to_string());
+        assert_eq!(interpolate("plain text", &vars), "plain text");
+    }
+
+    #[test]
+    fn test_interpolate_multiple_same_variable() {
+        let mut vars = HashMap::new();
+        vars.insert("v".to_string(), "X".to_string());
+        assert_eq!(interpolate("{{v}}-{{v}}-{{v}}", &vars), "X-X-X");
+    }
+
+    #[test]
+    fn test_resolve_url_both_empty() {
+        assert_eq!(resolve_url("", "", &HashMap::new()), "");
+    }
+
+    #[test]
+    fn test_resolve_url_base_with_trailing_slash() {
+        assert_eq!(
+            resolve_url("https://api.com/", "/users", &HashMap::new()),
+            "https://api.com/users"
+        );
+    }
+
+    #[test]
+    fn test_extract_variable_refs_with_whitespace() {
+        let refs = extract_variable_refs("{{ spaced }}");
+        assert_eq!(refs, vec!["spaced"]);
+    }
+
+    #[test]
+    fn test_extract_variable_refs_empty_braces() {
+        let refs = extract_variable_refs("{{}}");
+        assert_eq!(refs, vec![""]);
+    }
+
+    #[test]
+    fn test_extract_variable_refs_none() {
+        let refs = extract_variable_refs("no variables here");
+        assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn test_extract_path_params_with_fragment() {
+        let params = extract_path_params("/users/:id#section");
+        assert_eq!(params, vec!["id"]);
+    }
+
+    #[test]
+    fn test_resolve_path_params_multiple_same() {
+        let params = vec![("id".to_string(), "42".to_string())];
+        assert_eq!(
+            resolve_path_params("/a/:id/b/:id", &params),
+            "/a/42/b/42"
+        );
+    }
 }

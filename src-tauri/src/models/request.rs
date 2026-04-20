@@ -327,3 +327,176 @@ pub struct CleanupResult {
     pub versions_deleted: usize,
     pub executions_deleted: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_request(method: HttpMethod, url: &str) -> RequestData {
+        RequestData {
+            method,
+            url: url.to_string(),
+            ..RequestData::default()
+        }
+    }
+
+    #[test]
+    fn test_fingerprint_basic() {
+        let data = make_request(HttpMethod::GET, "https://example.com/api");
+        let fp = data.fingerprint();
+        assert!(fp.starts_with("GET|"));
+        assert!(fp.contains("https://example.com/api"));
+    }
+
+    #[test]
+    fn test_fingerprint_stable_for_value_changes() {
+        let mut a = make_request(HttpMethod::POST, "/users");
+        a.body = r#"{"name": "Alice"}"#.to_string();
+        a.body_type = BodyType::Json;
+        a.headers = vec![KeyValuePair { key: "Auth".to_string(), value: "Bearer aaa".to_string(), enabled: true }];
+
+        let mut b = a.clone();
+        b.body = r#"{"name": "Bob"}"#.to_string();
+        b.headers[0].value = "Bearer bbb".to_string();
+
+        assert_eq!(a.fingerprint(), b.fingerprint(), "Value-only changes should not change fingerprint");
+    }
+
+    #[test]
+    fn test_fingerprint_changes_on_method() {
+        let a = make_request(HttpMethod::GET, "/users");
+        let b = make_request(HttpMethod::POST, "/users");
+        assert_ne!(a.fingerprint(), b.fingerprint());
+    }
+
+    #[test]
+    fn test_fingerprint_changes_on_url() {
+        let a = make_request(HttpMethod::GET, "/users");
+        let b = make_request(HttpMethod::GET, "/posts");
+        assert_ne!(a.fingerprint(), b.fingerprint());
+    }
+
+    #[test]
+    fn test_fingerprint_changes_on_new_header_key() {
+        let mut a = make_request(HttpMethod::GET, "/api");
+        a.headers = vec![KeyValuePair { key: "Accept".to_string(), value: "application/json".to_string(), enabled: true }];
+
+        let mut b = a.clone();
+        b.headers.push(KeyValuePair { key: "X-Custom".to_string(), value: "yes".to_string(), enabled: true });
+
+        assert_ne!(a.fingerprint(), b.fingerprint());
+    }
+
+    #[test]
+    fn test_fingerprint_changes_on_new_query_param_key() {
+        let mut a = make_request(HttpMethod::GET, "/api");
+        a.query_params = vec![KeyValuePair { key: "page".to_string(), value: "1".to_string(), enabled: true }];
+
+        let mut b = a.clone();
+        b.query_params.push(KeyValuePair { key: "limit".to_string(), value: "10".to_string(), enabled: true });
+
+        assert_ne!(a.fingerprint(), b.fingerprint());
+    }
+
+    #[test]
+    fn test_fingerprint_changes_on_body_type() {
+        let mut a = make_request(HttpMethod::POST, "/api");
+        a.body_type = BodyType::Json;
+
+        let mut b = a.clone();
+        b.body_type = BodyType::Raw;
+
+        assert_ne!(a.fingerprint(), b.fingerprint());
+    }
+
+    #[test]
+    fn test_fingerprint_ignores_disabled_params() {
+        let mut a = make_request(HttpMethod::GET, "/api");
+        a.query_params = vec![KeyValuePair { key: "page".to_string(), value: "1".to_string(), enabled: true }];
+
+        let mut b = a.clone();
+        b.query_params.push(KeyValuePair { key: "ignored".to_string(), value: "yes".to_string(), enabled: false });
+
+        assert_eq!(a.fingerprint(), b.fingerprint(), "Disabled params should not affect fingerprint");
+    }
+
+    #[test]
+    fn test_fingerprint_ignores_empty_key_params() {
+        let mut a = make_request(HttpMethod::GET, "/api");
+        a.query_params = vec![KeyValuePair { key: "page".to_string(), value: "1".to_string(), enabled: true }];
+
+        let mut b = a.clone();
+        b.query_params.push(KeyValuePair { key: "".to_string(), value: "ghost".to_string(), enabled: true });
+
+        assert_eq!(a.fingerprint(), b.fingerprint(), "Empty-key params should not affect fingerprint");
+    }
+
+    #[test]
+    fn test_fingerprint_header_keys_are_case_insensitive() {
+        let mut a = make_request(HttpMethod::GET, "/api");
+        a.headers = vec![KeyValuePair { key: "Content-Type".to_string(), value: "text/plain".to_string(), enabled: true }];
+
+        let mut b = make_request(HttpMethod::GET, "/api");
+        b.headers = vec![KeyValuePair { key: "content-type".to_string(), value: "application/json".to_string(), enabled: true }];
+
+        assert_eq!(a.fingerprint(), b.fingerprint(), "Header key case should not affect fingerprint");
+    }
+
+    #[test]
+    fn test_fingerprint_query_param_order_irrelevant() {
+        let mut a = make_request(HttpMethod::GET, "/api");
+        a.query_params = vec![
+            KeyValuePair { key: "a".to_string(), value: "1".to_string(), enabled: true },
+            KeyValuePair { key: "b".to_string(), value: "2".to_string(), enabled: true },
+        ];
+
+        let mut b = make_request(HttpMethod::GET, "/api");
+        b.query_params = vec![
+            KeyValuePair { key: "b".to_string(), value: "2".to_string(), enabled: true },
+            KeyValuePair { key: "a".to_string(), value: "1".to_string(), enabled: true },
+        ];
+
+        assert_eq!(a.fingerprint(), b.fingerprint(), "Param order should not affect fingerprint");
+    }
+
+    #[test]
+    fn test_fingerprint_multipart_keys() {
+        let mut a = make_request(HttpMethod::POST, "/upload");
+        a.body_type = BodyType::Multipart;
+        a.multipart_fields = vec![MultipartField { key: "file".to_string(), ..MultipartField::default() }];
+
+        let mut b = a.clone();
+        b.multipart_fields.push(MultipartField { key: "desc".to_string(), ..MultipartField::default() });
+
+        assert_ne!(a.fingerprint(), b.fingerprint());
+    }
+
+    #[test]
+    fn test_default_request_data() {
+        let d = RequestData::default();
+        assert_eq!(d.method, HttpMethod::GET);
+        assert!(d.url.is_empty());
+        assert_eq!(d.body_type, BodyType::None);
+        assert!(d.body.is_empty());
+        assert!(d.path_params.is_empty());
+        assert!(d.multipart_fields.is_empty());
+    }
+
+    #[test]
+    fn test_http_method_as_str_roundtrip() {
+        for method in HttpMethod::all() {
+            let s = method.as_str();
+            assert!(!s.is_empty());
+            assert_eq!(format!("{}", method), s);
+        }
+    }
+
+    #[test]
+    fn test_body_type_as_str() {
+        assert_eq!(BodyType::None.as_str(), "None");
+        assert_eq!(BodyType::Json.as_str(), "JSON");
+        assert_eq!(BodyType::FormUrlEncoded.as_str(), "Form URL Encoded");
+        assert_eq!(BodyType::Raw.as_str(), "Raw");
+        assert_eq!(BodyType::Multipart.as_str(), "Multipart");
+    }
+}
