@@ -53,7 +53,7 @@ export function VariableInput({
   // Autocomplete state
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
   const variablesRef = useRef(variables);
   variablesRef.current = variables;
 
@@ -85,7 +85,14 @@ export function VariableInput({
 
     if (wrapperRef.current) {
       const rect = wrapperRef.current.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 240) });
+      const maxDropHeight = 200;
+      const spaceBelow = window.innerHeight - rect.bottom - 2;
+      const spaceAbove = rect.top - 2;
+      if (spaceBelow >= maxDropHeight || spaceBelow >= spaceAbove) {
+        setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 240) });
+      } else {
+        setDropdownPos({ bottom: window.innerHeight - rect.top + 2, left: rect.left, width: Math.max(rect.width, 240) });
+      }
     }
   }, [hide]);
 
@@ -258,7 +265,7 @@ export function VariableInput({
           style={{
             position: "fixed",
             zIndex: 10000,
-            top: dropdownPos.top,
+            ...(dropdownPos.top !== undefined ? { top: dropdownPos.top } : { bottom: dropdownPos.bottom }),
             left: dropdownPos.left,
             width: dropdownPos.width,
             maxHeight: 200,

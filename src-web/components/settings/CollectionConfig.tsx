@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { FolderOpen, Plus } from "lucide-react";
 import type { Collection, Environment, VarDef, VarRow, AuthConfig, KeyValuePair } from "../../lib/types";
 import * as api from "../../lib/api";import { KvTable } from "../inspector/KvTable";
@@ -33,6 +33,16 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
   const [headersConfig, setHeadersConfig] = useState<KeyValuePair[]>(() => parseHeadersConfig(collection?.headers_config ?? null));
   const [varDefs, setVarDefs] = useState<VarDef[]>([]);
   const [varRows, setVarRows] = useState<VarRow[]>([]);
+
+  // Merge collection vars into effective variables so hints/autocomplete work
+  // even when no request is selected (collectionDisplayVars would be empty).
+  const effectiveVariables = useMemo(() => {
+    const local: Record<string, string> = {};
+    for (const row of varRows) {
+      if (row.key && !row.is_secret) local[row.key] = row.value;
+    }
+    return { ...local, ...variables };
+  }, [varRows, variables]);
   const [open, setOpen] = useState<Set<Section>>(new Set(["general", "auth", "headers", "variables"]));
   const activeEnv = environments.find(e => e.is_active);
 
@@ -189,7 +199,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
               value={basePath}
               onChange={setBasePath}
               onBlur={save}
-              variables={variables}
+              variables={effectiveVariables}
               placeholder="https://api.example.com"
               className={inputClass}
             />
@@ -233,7 +243,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                 value={authConfig.bearer_token ?? ""}
                 onChange={(v) => setAuthConfig({ ...authConfig, bearer_token: v })}
                 onBlur={save}
-                variables={variables}
+                variables={effectiveVariables}
                 placeholder="Bearer token value..."
                 className={inputClass}
               />
@@ -248,7 +258,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                   value={authConfig.basic_username ?? ""}
                   onChange={(v) => setAuthConfig({ ...authConfig, basic_username: v })}
                   onBlur={save}
-                  variables={variables}
+                  variables={effectiveVariables}
                   className={inputClass}
                 />
               </div>
@@ -258,7 +268,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                   value={authConfig.basic_password ?? ""}
                   onChange={(v) => setAuthConfig({ ...authConfig, basic_password: v })}
                   onBlur={save}
-                  variables={variables}
+                  variables={effectiveVariables}
                   placeholder="password"
                   className={inputClass}
                 />
@@ -274,7 +284,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                   value={authConfig.api_key_header ?? "X-API-Key"}
                   onChange={(v) => setAuthConfig({ ...authConfig, api_key_header: v })}
                   onBlur={save}
-                  variables={variables}
+                  variables={effectiveVariables}
                   className={inputClass}
                 />
               </div>
@@ -284,7 +294,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
                   value={authConfig.api_key_value ?? ""}
                   onChange={(v) => setAuthConfig({ ...authConfig, api_key_value: v })}
                   onBlur={save}
-                  variables={variables}
+                  variables={effectiveVariables}
                   placeholder="API key value..."
                   className={inputClass}
                 />
@@ -305,7 +315,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
           Sent with every request in this collection
         </p>
         <div className="border border-gray-800 rounded-md overflow-hidden">
-          <KvTable rows={headersConfig} onChange={saveHeaders} placeholder={{ key: "Header-Name", value: "value" }} variables={variables} />
+          <KvTable rows={headersConfig} onChange={saveHeaders} placeholder={{ key: "Header-Name", value: "value" }} variables={effectiveVariables} />
         </div>
       </CollapsibleSection>
 
