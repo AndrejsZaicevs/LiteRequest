@@ -117,7 +117,7 @@ impl Loader for LrLoader {
 /// Convert a name like "Get Users" or "POST /api/users" to "getUsers" or "postApiUsers".
 pub fn sanitize_to_camel_case(name: &str) -> String {
     let cleaned: String = name.chars()
-        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '_' || c == '-' { c } else { ' ' })
+        .map(|c| if c.is_alphanumeric() || c == ' ' { c } else { ' ' })
         .collect();
 
     let words: Vec<&str> = cleaned.split_whitespace().collect();
