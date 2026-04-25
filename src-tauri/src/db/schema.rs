@@ -68,7 +68,8 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
             latency_ms    INTEGER NOT NULL,
             executed_at   TEXT NOT NULL,
             environment_id TEXT NOT NULL DEFAULT '',
-            body_hash      TEXT NOT NULL DEFAULT ''
+            body_hash      TEXT NOT NULL DEFAULT '',
+            operative_variables_json TEXT NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS environments (
@@ -172,6 +173,11 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
     if current_version < 2 {
         migrate_add_scripting(conn)?;
         conn.execute("INSERT INTO schema_version (version) VALUES (2)", [])?;
+    }
+
+    if current_version < 3 {
+        migrate_add_execution_operative_variables(conn);
+        conn.execute("INSERT INTO schema_version (version) VALUES (3)", [])?;
     }
 
     Ok(())
@@ -313,6 +319,20 @@ fn migrate_add_execution_request_data(conn: &Connection) {
 
     let _ = conn.execute_batch(
         "ALTER TABLE request_executions ADD COLUMN request_data_json TEXT NOT NULL DEFAULT '';"
+    );
+}
+
+/// Add `operative_variables_json` column to `request_executions`.
+fn migrate_add_execution_operative_variables(conn: &Connection) {
+    let has_col: bool = conn
+        .prepare("SELECT operative_variables_json FROM request_executions LIMIT 0")
+        .is_ok();
+    if has_col {
+        return;
+    }
+
+    let _ = conn.execute_batch(
+        "ALTER TABLE request_executions ADD COLUMN operative_variables_json TEXT NOT NULL DEFAULT '';"
     );
 }
 

@@ -129,6 +129,8 @@ export interface RequestExecution {
   executed_at: string;
   /** Snapshot of the request data at send time (absent for legacy executions) */
   request_data?: RequestData;
+  /** Operative variable values used at send time (absent for legacy executions) */
+  operative_variables?: Record<string, string>;
 }
 
 // ── Collection ───────────────────────────────────────────────

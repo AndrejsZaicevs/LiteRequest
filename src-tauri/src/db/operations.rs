@@ -409,17 +409,32 @@ impl Database {
             Some(rd) => serde_json::to_string(rd).unwrap_or_default(),
             None => String::new(),
         };
+        let operative_variables_json = match &e.operative_variables {
+            Some(vars) => serde_json::to_string(vars).unwrap_or_default(),
+            None => String::new(),
+        };
         self.conn.execute(
-            "INSERT INTO request_executions (id, version_id, request_id, environment_id, response_json, latency_ms, executed_at, body_hash, request_data_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![e.id, e.version_id, e.request_id, e.environment_id, response_json, e.latency_ms, e.executed_at, body_hash, request_data_json],
+            "INSERT INTO request_executions (id, version_id, request_id, environment_id, response_json, latency_ms, executed_at, body_hash, request_data_json, operative_variables_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                e.id,
+                e.version_id,
+                e.request_id,
+                e.environment_id,
+                response_json,
+                e.latency_ms,
+                e.executed_at,
+                body_hash,
+                request_data_json,
+                operative_variables_json
+            ],
         )?;
         Ok(())
     }
 
     pub fn list_executions_by_request(&self, request_id: &str) -> rusqlite::Result<Vec<RequestExecution>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, version_id, request_id, response_json, latency_ms, executed_at, environment_id, body_hash, request_data_json
+            "SELECT id, version_id, request_id, response_json, latency_ms, executed_at, environment_id, body_hash, request_data_json, operative_variables_json
              FROM request_executions WHERE request_id=?1 ORDER BY executed_at DESC",
         )?;
         let rows = stmt.query_map(params![request_id], |row| {
@@ -440,6 +455,13 @@ impl Database {
             } else {
                 serde_json::from_str(&request_data_json).ok()
             };
+            let operative_variables_json: String = row.get(9)?;
+            let operative_variables: Option<std::collections::HashMap<String, String>> =
+                if operative_variables_json.is_empty() {
+                    None
+                } else {
+                    serde_json::from_str(&operative_variables_json).ok()
+                };
             Ok((
                 RequestExecution {
                     id: row.get(0)?,
@@ -450,6 +472,7 @@ impl Database {
                     latency_ms: row.get(4)?,
                     executed_at: row.get(5)?,
                     request_data,
+                    operative_variables,
                 },
                 body_hash,
             ))

@@ -290,6 +290,9 @@ pub struct RequestExecution {
     /// Snapshot of the request data at send time (None for legacy executions)
     #[serde(default)]
     pub request_data: Option<RequestData>,
+    /// Operative variable values used at send time (None for legacy executions)
+    #[serde(default)]
+    pub operative_variables: Option<HashMap<String, String>>,
 }
 
 /// A single hit returned by the full-text search across all stored data.

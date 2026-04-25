@@ -168,6 +168,7 @@ export default function App() {
 
   const refreshSidebarData = useCallback(async (cols?: Collection[]) => {
     const colList = cols ?? await api.listCollections();
+    setCollections(colList);
     const allFolders: Folder[] = [];
     const allRequests: Request[] = [];
     const allScripts: Script[] = [];
@@ -364,6 +365,41 @@ export default function App() {
     }
   }, [dirty, currentRequest, scriptDirty, currentScript, saveCurrentVersion, saveCurrentScript]);
 
+  const applyExecutionOperativeVariables = useCallback(async (exec: RequestExecution, collectionId: string) => {
+    const vars = exec.operative_variables;
+    const targetEnvId = exec.environment_id || activeEnvId;
+    if (!vars || Object.keys(vars).length === 0 || !targetEnvId) return;
+
+    try {
+      const rows = await api.loadOperativeVarRows(collectionId, targetEnvId);
+      const updates = rows.flatMap(row => {
+        const value = vars[row.key];
+        if (value === undefined || value === row.value) return [];
+        return [{ row, value }];
+      });
+      if (updates.length === 0) return;
+
+      await Promise.all(
+        updates.map(({ row, value }) =>
+          api.upsertVarValue(row.value_id ?? crypto.randomUUID(), row.def_id, targetEnvId, value, row.is_secret)
+        )
+      );
+
+      if (targetEnvId === activeEnvId) {
+        const [opRows, activeVars] = await Promise.all([
+          api.loadOperativeVarRows(collectionId, targetEnvId),
+          api.getActiveCollectionVariables(collectionId),
+        ]);
+        setOperativeVarRows(opRows);
+        const varsObj: Record<string, string> = {};
+        for (const [key, value] of activeVars) varsObj[key] = value;
+        setCollectionDisplayVars(varsObj);
+      }
+    } catch (e) {
+      setErrorMessage(`Failed to restore operative variables: ${e}`);
+    }
+  }, [activeEnvId]);
+
   // ── Navigate to request (from search) ────────────────────
   const navigateToRequest = useCallback(async (
     requestId: string,
@@ -413,6 +449,7 @@ export default function App() {
           if (exec.request_data) {
             setEditorData(exec.request_data);
           }
+          await applyExecutionOperativeVariables(exec, req.collection_id);
         }
       } else {
         setCurrentResponse(null);
@@ -420,7 +457,7 @@ export default function App() {
     } catch (e) {
       setErrorMessage(String(e));
     }
-  }, [dirty, currentRequest, requests, saveCurrentVersion]);
+  }, [dirty, currentRequest, requests, saveCurrentVersion, applyExecutionOperativeVariables]);
 
   // ── Build effective request data (with collection auth + headers) ──
   const getEffectiveData = useCallback(
@@ -478,6 +515,11 @@ export default function App() {
         latency_ms: latency,
         executed_at: new Date().toISOString(),
         request_data: editorData,
+        operative_variables: Object.fromEntries(
+          operativeVarRows
+            .map(row => [row.key, resolvedVariables[row.key]] as const)
+            .filter((entry): entry is [string, string] => entry[1] !== undefined)
+        ),
       };
       await api.insertExecution(execution);
       const execs = await api.listExecutions(currentRequest.id);
@@ -544,7 +586,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentRequest, editorData, envVariables, currentCollection, environments, selectedVersionId, postScript, saveCurrentVersion, getEffectiveData]);
+  }, [currentRequest, editorData, envVariables, currentCollection, environments, selectedVersionId, postScript, saveCurrentVersion, getEffectiveData, operativeVarRows]);
 
   // ── Editor data change ───────────────────────────────────
   const onEditorChange = useCallback((data: RequestData) => {
@@ -916,7 +958,7 @@ export default function App() {
                       setErrorMessage(String(e));
                     }
                   }}
-                  onSelectExecution={(eid) => {
+                  onSelectExecution={async (eid) => {
                     setSelectedExecutionId(eid);
                     const exec = executions.find(e => e.id === eid);
                     if (exec) {
@@ -925,6 +967,9 @@ export default function App() {
                       if (exec.request_data) {
                         setEditorData(exec.request_data);
                         setDirty(false);
+                      }
+                      if (currentRequest) {
+                        await applyExecutionOperativeVariables(exec, currentRequest.collection_id);
                       }
                     }
                   }}
