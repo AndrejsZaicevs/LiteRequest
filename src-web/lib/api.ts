@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Collection, Folder, Request, RequestVersion, RequestExecution,
   RequestData, ResponseData, Environment, EnvVariable, EnvVarDef, VarDef, VarRow,
-  ClientCertEntry, Script, ScriptVersion, ScriptRun, ScriptResult,
+  ClientCertEntry, ScriptRun, ScriptResult,
 } from "./types";
 
 // ── Collections ──────────────────────────────────────────────
@@ -47,12 +47,24 @@ export const updateVersionData = (versionId: string, data: RequestData, createdA
 export const deleteVersion = (versionId: string) => invoke<void>("delete_version", { versionId });
 export const versionHasExecutions = (versionId: string) => invoke<boolean>("version_has_executions", { versionId });
 /** Backend decides update-in-place vs new version. Returns the resulting version. */
-export const saveVersion = (requestId: string, data: RequestData) =>
-  invoke<RequestVersion>("save_version", { requestId, data });
+export const saveVersion = (requestId: string, data: RequestData, baseVersionId?: string | null) =>
+  invoke<RequestVersion>("save_version", { requestId, data, baseVersionId: baseVersionId ?? null });
 
 // ── Executions ───────────────────────────────────────────────
 export const insertExecution = (execution: RequestExecution) => invoke<void>("insert_execution", { execution });
 export const listExecutions = (requestId: string) => invoke<RequestExecution[]>("list_executions", { requestId });
+export const deleteExecution = (id: string) => invoke<void>("delete_execution", { id });
+export const getExecutionBody = (id: string) => invoke<string>("get_execution_body", { id });
+
+/**
+ * Returns the execution's response with its body populated. Execution lists
+ * arrive without bodies (they are lazy-loaded); this fetches the body on demand.
+ */
+export const getExecutionResponse = async (exec: RequestExecution): Promise<ResponseData> => {
+  if (exec.response.body || !exec.response.size_bytes) return exec.response;
+  const body = await getExecutionBody(exec.id);
+  return { ...exec.response, body };
+};
 
 // ── Environments ─────────────────────────────────────────────
 export const listEnvironments = () => invoke<Environment[]>("list_environments");
@@ -125,7 +137,22 @@ export const getDbStats = () => invoke<{ db_size_bytes: number; version_count: n
 export const cleanupOldData = (cutoffDate: string) => invoke<{ versions_deleted: number; executions_deleted: number }>("cleanup_old_data", { cutoffDate });
 
 // ── Search ────────────────────────────────────────────────────
-export const searchAll = (query: string) => invoke<import("./types").SearchHit[]>("search_all", { query });
+export interface SearchFilters {
+  /** "requests" = saved request definitions, "responses" = execution responses */
+  scope?: "requests" | "responses";
+  /** requests: name | url | params | headers | body — responses: body | headers */
+  field?: string;
+  /** Restrict results to a single request */
+  requestId?: string;
+}
+
+export const searchAll = (query: string, filters: SearchFilters = {}) =>
+  invoke<import("./types").SearchHit[]>("search_all", {
+    query,
+    scope: filters.scope ?? null,
+    field: filters.field ?? null,
+    requestId: filters.requestId ?? null,
+  });
 
 // ── File I/O ─────────────────────────────────────────────────
 export const saveFile = (path: string, data: string, isBase64: boolean) =>
@@ -152,30 +179,7 @@ export const emptyTrash = () => invoke<void>("empty_trash");
 export const cloneRequest = (id: string) => invoke<string>("clone_request", { id });
 export const cloneFolder = (id: string) => invoke<string>("clone_folder", { id });
 
-// ── Scripts ──────────────────────────────────────────────────
-export const listScriptsByCollection = (collectionId: string) =>
-  invoke<Script[]>("list_scripts_by_collection", { collectionId });
-export const listScriptsByFolder = (folderId: string) =>
-  invoke<Script[]>("list_scripts_by_folder", { folderId });
-export const insertScript = (script: Script) => invoke<void>("insert_script", { script });
-export const getScript = (id: string) => invoke<Script>("get_script", { id });
-export const renameScript = (id: string, name: string) => invoke<void>("rename_script", { id, name });
-export const deleteScript = (id: string) => invoke<void>("delete_script", { id });
-export const moveScript = (id: string, collectionId: string, folderId?: string | null) =>
-  invoke<void>("move_script", { id, collectionId, folderId });
-
-// ── Script Versions ──────────────────────────────────────────
-export const getScriptVersion = (id: string) => invoke<ScriptVersion>("get_script_version", { id });
-export const listScriptVersions = (scriptId: string) =>
-  invoke<ScriptVersion[]>("list_script_versions", { scriptId });
-export const saveScriptVersion = (scriptId: string, contentTs: string, contentJs: string) =>
-  invoke<ScriptVersion>("save_script_version", { scriptId, contentTs, contentJs });
-export const scriptVersionHasRuns = (versionId: string) =>
-  invoke<boolean>("script_version_has_runs", { versionId });
-
 // ── Script Runs ──────────────────────────────────────────────
-export const listScriptRuns = (scriptId: string) =>
-  invoke<ScriptRun[]>("list_script_runs", { scriptId });
 export const listScriptRunsByRequest = (requestId: string) =>
   invoke<ScriptRun[]>("list_script_runs_by_request", { requestId });
 
@@ -200,13 +204,6 @@ export const runPostScript = (
 ) => invoke<ScriptResult>("run_post_script", {
   requestId, executionId, requestData, responseData, latencyMs, variables, environment, scriptJs,
 });
-
-export const runScript = (
-  scriptId: string,
-  contentJs: string,
-  variables: Record<string, string>,
-  environment: string,
-) => invoke<ScriptResult>("run_script", { scriptId, contentJs, variables, environment });
 
 // ── Type Generation ──────────────────────────────────────────
 export const generateScriptTypes = () => invoke<string>("generate_script_types");

@@ -1,12 +1,13 @@
 import { useState, useMemo, useCallback, useRef } from "react";
-import { Download, Maximize2, Minimize2, Copy, Check, Search, X } from "lucide-react";
+import { Download, Maximize2, Minimize2, Copy, Check, Search, X, PictureInPicture2 } from "lucide-react";
 import type { ResponseData, ScriptResult } from "../../lib/types";
-import { statusColor } from "../../lib/types";
+import { statusColor, formatSize } from "../../lib/types";
 import { save as dialogSave } from "@tauri-apps/plugin-dialog";
 import * as api from "../../lib/api";
 import CodeMirror from "@uiw/react-codemirror";
 import { json } from "@codemirror/lang-json";
 import { EditorView } from "@codemirror/view";
+import { jsonBracketFolding } from "../../lib/jsonFolds";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { search as cmSearch } from "@codemirror/search";
@@ -17,6 +18,8 @@ interface ResponseViewProps {
   isLoading: boolean;
   isMaximized?: boolean;
   onMaximize?: () => void;
+  /** Opens the body in a floating always-on-top window */
+  onOpenFloating?: () => void;
   scriptResult?: ScriptResult | null;
 }
 
@@ -30,7 +33,7 @@ function statusDotColor(code: number): string {
   return "bg-gray-500";
 }
 
-export function ResponseView({ response, latency, isLoading, isMaximized, onMaximize, scriptResult }: ResponseViewProps) {
+export function ResponseView({ response, latency, isLoading, isMaximized, onMaximize, onOpenFloating, scriptResult }: ResponseViewProps) {
   const [tab, setTab] = useState<Tab>("body");
   const [copied, setCopied] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -114,8 +117,7 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
   }
 
   const headerCount = Object.keys(response.headers).length;
-  const bodySize = response.size_bytes;
-  const formattedSize = bodySize > 1024 ? `${(bodySize / 1024).toFixed(1)} KB` : `${bodySize} B`;
+  const formattedSize = formatSize(response.size_bytes);
 
   return (
     <div
@@ -143,6 +145,14 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
           </span>
           <span className="text-gray-500 font-mono text-xs">{latency}ms</span>
           <span className="text-gray-500 font-mono text-xs">{formattedSize}</span>
+          {response.truncated && (
+            <span
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400"
+              title="The response was larger than the 50 MB limit; only the first 50 MB were kept."
+            >
+              truncated
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-4 text-gray-400">
@@ -185,6 +195,15 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
           >
             <Download size={13} />
           </button>
+          {onOpenFloating && (
+            <button
+              onClick={onOpenFloating}
+              title="Open body in floating window"
+              className="p-1.5 rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700/50 transition-colors"
+            >
+              <PictureInPicture2 size={13} />
+            </button>
+          )}
           {onMaximize && (
             <button
               onClick={onMaximize}
@@ -298,12 +317,16 @@ const responseSyntax = HighlightStyle.define([
 const cmJsonExtensions = [
   responseViewerTheme,
   syntaxHighlighting(responseSyntax),
+  // Bracket-based folding computed from the text: the syntax tree is parsed
+  // lazily for large bodies, which leaves fold markers missing until the
+  // matching bracket scrolls into view.
+  jsonBracketFolding,
   json(),
   EditorView.lineWrapping,
   cmSearch({ top: true }),
 ];
 
-function ResponseBody({ body, isBinary, searchText }: {
+export function ResponseBody({ body, isBinary, searchText }: {
   body: string;
   isBinary: boolean;
   searchText: string;

@@ -202,16 +202,16 @@ export function AppSettings({ environments, onUpdate, variables = {} }: AppSetti
   // Load app-wide settings on mount
   useEffect(() => {
     api.getAppSetting("default_headers").then(v => {
-      if (v) { try { setDefaultHeaders(JSON.parse(v)); } catch {} }
+      if (v) { try { setDefaultHeaders(JSON.parse(v)); } catch { /* ignore malformed setting */ } }
     }).catch(() => {});
     api.getAppSetting("app_variables").then(v => {
-      if (v) { try { setAppWideVars(JSON.parse(v)); } catch {} }
+      if (v) { try { setAppWideVars(JSON.parse(v)); } catch { /* ignore malformed setting */ } }
     }).catch(() => {});
     api.getAppSetting("client_certs").then(v => {
-      if (v) { try { setClientCerts(JSON.parse(v)); } catch {} }
+      if (v) { try { setClientCerts(JSON.parse(v)); } catch { /* ignore malformed setting */ } }
     }).catch(() => {});
     api.getAppSetting("settings_open_sections").then(v => {
-      if (v) { try { setOpen(new Set(JSON.parse(v) as Section[])); } catch {} }
+      if (v) { try { setOpen(new Set(JSON.parse(v) as Section[])); } catch { /* ignore malformed setting */ } }
     }).catch(() => {});
   }, []);
 

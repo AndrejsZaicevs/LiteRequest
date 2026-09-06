@@ -12,9 +12,6 @@ const ScriptEditorLazy = lazy(() =>
 interface RequestEditorProps {
   data: RequestData;
   onChange: (data: RequestData) => void;
-  isLoading: boolean;
-  basePath: string;
-  requestName: string;
   variables?: Record<string, string>;
   isMaximized?: boolean;
   onMaximize?: () => void;
@@ -34,7 +31,7 @@ function bodyTypeToTab(bt: string): BodyTab {
   return "none";
 }
 
-export function RequestEditor({ data, onChange, isLoading, basePath, requestName, variables = {}, isMaximized, onMaximize, postScript, onPostScriptChange }: RequestEditorProps) {
+export function RequestEditor({ data, onChange, variables = {}, isMaximized, onMaximize, postScript, onPostScriptChange }: RequestEditorProps) {
   const [bodyTab, setBodyTab] = useState<BodyTab>(() => bodyTypeToTab(data.body_type));
   const [panel, setPanel] = useState<EditorPanel>("body");
   const hasScript = (postScript ?? "").trim().length > 0;
@@ -196,7 +193,7 @@ export function RequestEditor({ data, onChange, isLoading, basePath, requestName
             <ScriptEditorLazy
               value={postScript ?? ""}
               onChange={(v) => onPostScriptChange?.(v)}
-              mode="post-exec"
+              variables={variables}
             />
           </Suspense>
         )}

@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type {
   Collection, Folder, Request, RequestVersion, RequestExecution,
   Environment, EnvVariable, RequestData, ResponseData, HttpMethod,
-  VarRow, Script, ScriptVersion, ScriptResult,
+  VarRow, ScriptResult,
 } from "./lib/types";
 import { defaultRequestData, resolveVariableRefs, findUnresolvedVars } from "./lib/types";
 import { getDynamicVarPreviews } from "./lib/dynamicVars";
-import { buildResolvedVariables } from "./lib/variables";
+import { buildResolvedVariables, collectSecretKeys, mergeVariables, resolveParentName } from "./lib/variables";
 import { buildEffectiveData } from "./lib/request";
 import { useLayoutState } from "./hooks/useLayoutState";
 import * as api from "./lib/api";
@@ -19,13 +19,11 @@ import { ResponseView } from "./components/response/ResponseView";
 import { CollectionConfig } from "./components/settings/CollectionConfig";
 import { AppSettings } from "./components/settings/AppSettings";
 import { GlobalSearch } from "./components/search/GlobalSearch";
-import { ScriptView } from "./components/script/ScriptView";
 
 export type CenterView =
   | { type: "welcome" }
   | { type: "request"; requestId: string }
   | { type: "collection"; collectionId: string }
-  | { type: "script"; scriptId: string }
   | { type: "settings" };
 
 export default function App() {
@@ -33,7 +31,6 @@ export default function App() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
-  const [versions, setVersions] = useState<RequestVersion[]>([]);
   const [executions, setExecutions] = useState<RequestExecution[]>([]);
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [envVariables, setEnvVariables] = useState<EnvVariable[]>([]);
@@ -60,14 +57,6 @@ export default function App() {
   const [postScript, setPostScript] = useState<string>("");
   const [scriptResult, setScriptResult] = useState<ScriptResult | null>(null);
 
-  // ── Standalone script state ────────────────────────────
-  const [scripts, setScripts] = useState<Script[]>([]);
-  const [currentScript, setCurrentScript] = useState<Script | null>(null);
-  const [scriptVersions, setScriptVersions] = useState<ScriptVersion[]>([]);
-  const [scriptEditorContent, setScriptEditorContent] = useState<string>("");
-  const [scriptDirty, setScriptDirty] = useState(false);
-  const [scriptRunResult, setScriptRunResult] = useState<ScriptResult | null>(null);
-
   // ── Panel sizing ─────────────────────────────────────────
   const {
     sidebarWidth, inspectorWidth, splitRatio,
@@ -80,7 +69,6 @@ export default function App() {
 
   // ── Error/status ─────────────────────────────────────────
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // ── Variable map for display/highlighting ────────────────
   const [collectionDisplayVars, setCollectionDisplayVars] = useState<Record<string, string>>({});
@@ -116,18 +104,20 @@ export default function App() {
   }, [currentRequest?.collection_id, activeEnvId, envVariables]);
 
   const displayVariables = useMemo(() => {
-    const vars: Record<string, string> = { ...collectionDisplayVars };
-    for (const v of envVariables) vars[v.key] = v.value;
-    const colName = currentCollection?.name;
-    if (colName) vars["collectionName"] = colName;
-    if (currentRequest?.name) vars["requestName"] = currentRequest.name;
+    const vars = mergeVariables(envVariables, collectionDisplayVars, {
+      collectionName: currentCollection?.name,
+      requestName: currentRequest?.name,
+      parentName: currentRequest
+        ? resolveParentName(currentRequest, folders, currentCollection)
+        : undefined,
+    });
     // Add stable preview values for dynamic variables (tooltip display only)
     const previews = getDynamicVarPreviews();
     for (const [k, v] of Object.entries(previews)) {
       if (!(k in vars)) vars[k] = v;
     }
     return resolveVariableRefs(vars);
-  }, [envVariables, collectionDisplayVars, currentCollection, currentRequest?.name]);
+  }, [envVariables, collectionDisplayVars, currentCollection, currentRequest, folders]);
 
   // ── Effective split pane mode ────────────────────────────
   const noBody = editorData.body_type === "None";
@@ -155,11 +145,15 @@ export default function App() {
     const activeEnv = envs.find(e => e.is_active);
     if (activeEnv) {
       const rows = await api.loadEnvVarRows(activeEnv.id);
-      setEnvVariables(rows.map(r => ({
-        id: r.value_id ?? r.def_id,
-        environment_id: activeEnv.id,
-        key: r.key, value: r.value, is_secret: r.is_secret,
-      })));
+      // A def with no value row in this env is undefined (left as {{name}}
+      // and warned about), not an empty string — only keep defined values.
+      setEnvVariables(rows
+        .filter(r => r.value_id != null)
+        .map(r => ({
+          id: r.value_id!,
+          environment_id: activeEnv.id,
+          key: r.key, value: r.value, is_secret: r.is_secret,
+        })));
     } else {
       setEnvVariables([]);
     }
@@ -171,20 +165,16 @@ export default function App() {
     setCollections(colList);
     const allFolders: Folder[] = [];
     const allRequests: Request[] = [];
-    const allScripts: Script[] = [];
     for (const c of colList) {
-      const [f, r, s] = await Promise.all([
+      const [f, r] = await Promise.all([
         api.listFolders(c.id),
         api.listRequestsByCollection(c.id),
-        api.listScriptsByCollection(c.id),
       ]);
       allFolders.push(...f);
       allRequests.push(...r);
-      allScripts.push(...s);
     }
     setFolders(allFolders);
     setRequests(allRequests);
-    setScripts(allScripts);
 
     const metaMap = new Map<string, { method: HttpMethod; url: string }>();
     await Promise.all(
@@ -227,29 +217,46 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requests]);
 
+  // ── Save version ─────────────────────────────────────────
+  // All version logic (update-in-place vs create-new) lives in the backend.
+  const saveCurrentVersion = useCallback(async (): Promise<RequestVersion | null> => {
+    if (!currentRequest) return null;
+
+    try {
+      const version = await api.saveVersion(currentRequest.id, editorData, selectedVersionId);
+
+      // Update local state
+      const changed = version.id !== selectedVersionId;
+      setSelectedVersionId(version.id);
+      setDirty(false);
+      setRequestMeta(prev => new Map(prev).set(currentRequest.id, { method: editorData.method, url: editorData.url }));
+
+      if (changed) {
+        setCurrentRequest(prev => prev ? { ...prev, current_version_id: version.id } : prev);
+        setRequests(prev => prev.map(r => r.id === currentRequest.id ? { ...r, current_version_id: version.id } : r));
+      }
+
+      return version;
+    } catch (e) {
+      setErrorMessage(`Failed to save: ${e}`);
+      return null;
+    }
+  }, [currentRequest, selectedVersionId, editorData]);
+
   // ── Request selection ────────────────────────────────────
   const selectRequest = useCallback(async (req: Request) => {
     // Auto-save current if dirty
     if (dirty && currentRequest) {
       await saveCurrentVersion();
     }
-    // Auto-save current script if dirty
-    if (scriptDirty && currentScript) {
-      await saveCurrentScript();
-    }
 
-    setCurrentScript(null);
     setCurrentRequest(req);
     setCenterView({ type: "request", requestId: req.id });
     setSplitOverride("auto"); // reset pane layout for each new request
     try { localStorage.setItem("lr.selectedRequestId", req.id); } catch { /* ignore */ }
 
     try {
-      const [vers, execs] = await Promise.all([
-        api.listVersions(req.id),
-        api.listExecutions(req.id),
-      ]);
-      setVersions(vers);
+      const execs = await api.listExecutions(req.id);
       setExecutions(execs);
 
       // Load current version data
@@ -282,7 +289,7 @@ export default function App() {
       ) ?? null;
       if (matchingExec) {
         setSelectedExecutionId(matchingExec.id);
-        setCurrentResponse(matchingExec.response);
+        setCurrentResponse(await api.getExecutionResponse(matchingExec));
       } else {
         setSelectedExecutionId(null);
         setCurrentResponse(null);
@@ -290,80 +297,7 @@ export default function App() {
     } catch (e) {
       setErrorMessage(String(e));
     }
-  }, [dirty, currentRequest, scriptDirty, currentScript, environments]);
-
-  // ── Save version ─────────────────────────────────────────
-  // All version logic (update-in-place vs create-new) lives in the backend.
-  const saveCurrentVersion = useCallback(async () => {
-    if (!currentRequest) return;
-
-    try {
-      const version = await api.saveVersion(currentRequest.id, editorData);
-
-      // Update local state
-      const changed = version.id !== selectedVersionId;
-      setSelectedVersionId(version.id);
-      setDirty(false);
-      setRequestMeta(prev => new Map(prev).set(currentRequest.id, { method: editorData.method, url: editorData.url }));
-
-      if (changed) {
-        setCurrentRequest(prev => prev ? { ...prev, current_version_id: version.id } : prev);
-        setRequests(prev => prev.map(r => r.id === currentRequest.id ? { ...r, current_version_id: version.id } : r));
-      }
-
-      const vers = await api.listVersions(currentRequest.id);
-      setVersions(vers);
-    } catch (e) {
-      setErrorMessage(`Failed to save: ${e}`);
-    }
-  }, [currentRequest, selectedVersionId, editorData]);
-
-  // ── Save standalone script ──────────────────────────────
-  const saveCurrentScript = useCallback(async () => {
-    if (!currentScript || !scriptDirty) return;
-    try {
-      const { transpileTS } = await import("./components/editor/ScriptEditor");
-      const contentJs = await transpileTS(scriptEditorContent);
-      const version = await api.saveScriptVersion(currentScript.id, scriptEditorContent, contentJs);
-      setScriptVersions(prev => {
-        const idx = prev.findIndex(v => v.id === version.id);
-        return idx >= 0 ? prev.map((v, i) => (i === idx ? version : v)) : [version, ...prev];
-      });
-      setScriptDirty(false);
-    } catch (e) {
-      setErrorMessage(`Failed to save script: ${e}`);
-    }
-  }, [currentScript, scriptDirty, scriptEditorContent]);
-
-  // ── Select standalone script ────────────────────────────
-  const selectScript = useCallback(async (script: Script) => {
-    if (dirty && currentRequest) {
-      await saveCurrentVersion();
-    }
-    if (scriptDirty && currentScript) {
-      await saveCurrentScript();
-    }
-
-    setCurrentScript(script);
-    setCurrentRequest(null);
-    setCenterView({ type: "script", scriptId: script.id });
-
-    try {
-      const vers = await api.listScriptVersions(script.id);
-      setScriptVersions(vers);
-
-      if (script.current_version_id) {
-        const v = await api.getScriptVersion(script.current_version_id);
-        setScriptEditorContent(v.content_ts);
-      } else {
-        setScriptEditorContent("");
-      }
-      setScriptDirty(false);
-      setScriptRunResult(null);
-    } catch (e) {
-      setErrorMessage(String(e));
-    }
-  }, [dirty, currentRequest, scriptDirty, currentScript, saveCurrentVersion, saveCurrentScript]);
+  }, [dirty, currentRequest, environments, saveCurrentVersion, setSplitOverride]);
 
   const applyExecutionOperativeVariables = useCallback(async (exec: RequestExecution, collectionId: string) => {
     const vars = exec.operative_variables;
@@ -421,11 +355,7 @@ export default function App() {
     try { localStorage.setItem("lr.selectedRequestId", req.id); } catch { /* ignore */ }
 
     try {
-      const [vers, execs] = await Promise.all([
-        api.listVersions(req.id),
-        api.listExecutions(req.id),
-      ]);
-      setVersions(vers);
+      const execs = await api.listExecutions(req.id);
       setExecutions(execs);
 
       const targetVersionId = versionId ?? req.current_version_id;
@@ -444,7 +374,7 @@ export default function App() {
       if (executionId) {
         const exec = execs.find(e => e.id === executionId);
         if (exec) {
-          setCurrentResponse(exec.response);
+          setCurrentResponse(await api.getExecutionResponse(exec));
           setCurrentLatency(exec.latency_ms);
           if (exec.request_data) {
             setEditorData(exec.request_data);
@@ -469,15 +399,16 @@ export default function App() {
   const sendRequest = useCallback(async () => {
     if (!currentRequest) return;
 
-    // Save first
-    await saveCurrentVersion();
+    // Save first; the save may create or repoint the version, so use the
+    // returned id when attaching the execution below.
+    const savedVersion = await saveCurrentVersion();
 
     setIsLoading(true);
     setErrorMessage(null);
     setSplitOverride("auto"); // reset so response auto-shows after send
     try {
       const resolvedVariables = await buildResolvedVariables(
-        envVariables, currentCollection, currentRequest,
+        envVariables, currentCollection, currentRequest, folders,
       );
 
       const basePath = currentCollection?.base_path ?? "";
@@ -508,7 +439,7 @@ export default function App() {
       const activeEnv = environments.find(e => e.is_active);
       const execution: RequestExecution = {
         id: crypto.randomUUID(),
-        version_id: selectedVersionId ?? "",
+        version_id: savedVersion?.id ?? selectedVersionId ?? "",
         request_id: currentRequest.id,
         environment_id: activeEnv?.id ?? "",
         response,
@@ -529,7 +460,7 @@ export default function App() {
       // Run post-execution script if present
       if (postScript.trim()) {
         try {
-          const { transpileTS } = await import("./components/editor/ScriptEditor");
+          const { transpileTS } = await import("./lib/transpile");
           const scriptJs = await transpileTS(postScript);
           const result = await api.runPostScript(
             currentRequest.id,
@@ -553,14 +484,13 @@ export default function App() {
                 activeEnvId,
                 varsSet,
               );
-              // Refresh env variables to reflect changes
-              const rows = await api.loadVarRows(currentRequest.collection_id, activeEnvId);
-              setEnvVariables(rows.map(r => ({
-                id: r.value_id ?? r.def_id,
-                environment_id: activeEnvId,
-                key: r.key, value: r.value, is_secret: r.is_secret,
-              })));
-              const opRows = await api.loadOperativeVarRows(currentRequest.collection_id, activeEnvId);
+              // Script-set variables are persisted as collection vars —
+              // refresh those (not envVariables) to reflect the changes.
+              const [colVars, opRows] = await Promise.all([
+                api.getActiveCollectionVariables(currentRequest.collection_id),
+                api.loadOperativeVarRows(currentRequest.collection_id, activeEnvId),
+              ]);
+              setCollectionDisplayVars(Object.fromEntries(colVars));
               setOperativeVarRows(opRows);
             }
           }
@@ -571,7 +501,6 @@ export default function App() {
             variables_set: {},
             error: String(scriptErr),
             duration_ms: 0,
-            transformed_response: null,
           });
         }
       } else {
@@ -586,7 +515,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentRequest, editorData, envVariables, currentCollection, environments, selectedVersionId, postScript, saveCurrentVersion, getEffectiveData, operativeVarRows]);
+  }, [currentRequest, editorData, envVariables, currentCollection, folders, environments, selectedVersionId, postScript, saveCurrentVersion, getEffectiveData, operativeVarRows, setSplitOverride]);
 
   // ── Editor data change ───────────────────────────────────
   const onEditorChange = useCallback((data: RequestData) => {
@@ -595,26 +524,70 @@ export default function App() {
   }, []);
 
   // ── Post-script change (debounced save) ─────────────────
+  // The pending edit is kept in a ref so it can be flushed immediately when
+  // the window closes or the user switches request, not only by the timer.
   const postScriptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPostScript = useRef<{ requestId: string; script: string } | null>(null);
+  const flushPostScript = useCallback(async () => {
+    const pending = pendingPostScript.current;
+    if (!pending) return;
+    if (postScriptTimer.current) clearTimeout(postScriptTimer.current);
+    postScriptTimer.current = null;
+    pendingPostScript.current = null;
+    try {
+      await api.setPostScript(pending.requestId, pending.script);
+    } catch (e) {
+      console.error("Failed to save post-script:", e);
+    }
+  }, []);
   const onPostScriptChange = useCallback((script: string) => {
     setPostScript(script);
     if (!currentRequest) return;
+    pendingPostScript.current = { requestId: currentRequest.id, script };
     if (postScriptTimer.current) clearTimeout(postScriptTimer.current);
-    postScriptTimer.current = setTimeout(async () => {
-      try {
-        await api.setPostScript(currentRequest.id, script);
-      } catch (e) {
-        console.error("Failed to save post-script:", e);
-      }
-    }, 800);
-  }, [currentRequest]);
+    postScriptTimer.current = setTimeout(flushPostScript, 800);
+  }, [currentRequest, flushPostScript]);
+
+  // ── Floating response-body window ────────────────────────
+  const openFloatingBody = useCallback(async () => {
+    if (!selectedExecutionId || !currentResponse) return;
+    try {
+      const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+      const qs = new URLSearchParams({
+        bodyViewer: "1",
+        executionId: selectedExecutionId,
+        title: currentRequest?.name ?? "Response",
+        status: String(currentResponse.status),
+        binary: currentResponse.is_binary ? "1" : "0",
+      });
+      const label = `body-viewer-${Math.random().toString(36).slice(2, 10)}`;
+      const win = new WebviewWindow(label, {
+        url: `index.html?${qs.toString()}`,
+        title: `${currentRequest?.name ?? "Response"} — Body`,
+        width: 720,
+        height: 640,
+        alwaysOnTop: true,
+      });
+      win.once("tauri://error", (e) => {
+        setErrorMessage(`Failed to open floating window: ${JSON.stringify(e.payload ?? e)}`);
+      });
+    } catch (e) {
+      setErrorMessage(`Failed to open floating window: ${e}`);
+    }
+  }, [selectedExecutionId, currentResponse, currentRequest]);
 
   // ── Copy as cURL ─────────────────────────────────────────
   const copyCurl = useCallback(async () => {
     if (!currentRequest) return;
     try {
+      // Hidden/secret variables are masked in the exported cURL so the
+      // clipboard never carries real credentials.
+      const collectionRows = activeEnvId
+        ? await api.loadVarRows(currentRequest.collection_id, activeEnvId)
+        : [];
+      const secretKeys = collectSecretKeys(envVariables, collectionRows);
       const resolvedVariables = await buildResolvedVariables(
-        envVariables, currentCollection, currentRequest,
+        envVariables, currentCollection, currentRequest, folders, { secretKeys },
       );
       const basePath = currentCollection?.base_path ?? "";
       const effectiveData = getEffectiveData(editorData);
@@ -624,7 +597,7 @@ export default function App() {
     } catch (e) {
       setErrorMessage(`Copy cURL failed: ${e}`);
     }
-  }, [currentRequest, currentCollection, envVariables, editorData, getEffectiveData]);
+  }, [currentRequest, currentCollection, envVariables, folders, editorData, getEffectiveData, activeEnvId]);
 
   // ── Import from cURL ─────────────────────────────────────
   const importCurl = useCallback(async (curlStr: string) => {
@@ -639,25 +612,44 @@ export default function App() {
 
   // ── Auto-save on modification (debounced) ────────────────
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saveRetryTick, setSaveRetryTick] = useState(0);
   useEffect(() => {
     if (!dirty || !currentRequest) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      saveCurrentVersion();
+    saveTimer.current = setTimeout(async () => {
+      const saved = await saveCurrentVersion();
+      if (!saved) {
+        // Save failed — retry while the editor stays dirty
+        saveTimer.current = setTimeout(() => setSaveRetryTick(t => t + 1), 3000);
+      }
     }, 500);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [dirty, editorData, currentRequest, saveCurrentVersion]);
+  }, [dirty, editorData, currentRequest, saveCurrentVersion, saveRetryTick]);
 
-  // ── Script auto-save on modification (debounced) ─────────
-  const scriptSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ── Flush unsaved edits when the window is closed ────────
+  // The debounced auto-save can lose the last edits if the app closes
+  // within its delay; intercept close, save, then really close.
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty || pendingPostScript.current !== null;
+  const flushRef = useRef<() => Promise<unknown>>(async () => {});
+  flushRef.current = () => Promise.allSettled([saveCurrentVersion(), flushPostScript()]);
   useEffect(() => {
-    if (!scriptDirty || !currentScript) return;
-    if (scriptSaveTimer.current) clearTimeout(scriptSaveTimer.current);
-    scriptSaveTimer.current = setTimeout(() => {
-      saveCurrentScript();
-    }, 1500);
-    return () => { if (scriptSaveTimer.current) clearTimeout(scriptSaveTimer.current); };
-  }, [scriptDirty, currentScript, saveCurrentScript]);
+    let unlisten: (() => void) | undefined;
+    let closing = false;
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const win = getCurrentWindow();
+        unlisten = await win.onCloseRequested(async (event) => {
+          if (closing || !dirtyRef.current) return;
+          event.preventDefault();
+          closing = true;
+          try { await flushRef.current(); } finally { win.destroy(); }
+        });
+      } catch { /* window API unavailable (e.g. in tests) */ }
+    })();
+    return () => { unlisten?.(); };
+  }, []);
 
   // ── Keyboard shortcuts ───────────────────────────────────
   useEffect(() => {
@@ -677,7 +669,6 @@ export default function App() {
 
   // ── Render ───────────────────────────────────────────────
   const showInspector = centerView.type === "request";
-  const mainWidth = window.innerWidth - sidebarWidth - (showInspector ? inspectorWidth : 0);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#121212] text-gray-300 font-sans">
@@ -689,13 +680,10 @@ export default function App() {
             collections={collections}
             folders={folders}
             requests={requests}
-            scripts={scripts}
             selectedRequestId={centerView.type === "request" ? centerView.requestId : null}
             selectedCollectionId={centerView.type === "collection" ? centerView.collectionId : null}
-            selectedScriptId={centerView.type === "script" ? centerView.scriptId : null}
             requestMeta={requestMeta}
             onSelectRequest={(req) => selectRequest(req)}
-            onSelectScript={(script) => selectScript(script)}
             onSelectCollection={(id) => setCenterView({ type: "collection", collectionId: id })}
             onDataChange={() => refreshSidebarData()}
           />
@@ -815,9 +803,6 @@ export default function App() {
                       <RequestEditor
                         data={editorData}
                         onChange={onEditorChange}
-                        isLoading={isLoading}
-                        basePath={currentCollection?.base_path ?? ""}
-                        requestName={currentRequest?.name ?? ""}
                         variables={displayVariables}
                         isMaximized={effectivePane === "request"}
                         postScript={postScript}
@@ -846,6 +831,7 @@ export default function App() {
                         latency={currentLatency}
                         isLoading={isLoading}
                         scriptResult={scriptResult}
+                        onOpenFloating={selectedExecutionId && currentResponse ? openFloatingBody : undefined}
                         isMaximized={effectivePane === "response"}
                         onMaximize={() => {
                           if (splitOverride === "response") {
@@ -873,54 +859,6 @@ export default function App() {
                 />
               )}
 
-              {centerView.type === "script" && currentScript && (
-                <ScriptView
-                  script={currentScript}
-                  content={scriptEditorContent}
-                  versions={scriptVersions}
-                  dirty={scriptDirty}
-                  onContentChange={(content) => {
-                    setScriptEditorContent(content);
-                    setScriptDirty(true);
-                  }}
-                  onRun={async () => {
-                    await saveCurrentScript();
-                    try {
-                      const { transpileTS } = await import("./components/editor/ScriptEditor");
-                      const contentJs = await transpileTS(scriptEditorContent);
-                      const resolvedVariables = currentRequest
-                        ? await buildResolvedVariables(envVariables, currentCollection, currentRequest)
-                        : {};
-                      const activeEnv = environments.find(e => e.is_active);
-                      const result = await api.runScript(
-                        currentScript.id,
-                        contentJs,
-                        resolvedVariables,
-                        activeEnv?.name ?? "",
-                      );
-                      setScriptRunResult(result);
-
-                      if (result.variables_set && Object.keys(result.variables_set).length > 0) {
-                        const activeEnvId = activeEnv?.id ?? "";
-                        if (activeEnvId && currentScript.collection_id) {
-                          await api.applyScriptVariables(currentScript.collection_id, activeEnvId, result.variables_set);
-                        }
-                      }
-                    } catch (e) {
-                      setScriptRunResult({
-                        status: "error",
-                        logs: [],
-                        variables_set: {},
-                        error: String(e),
-                        duration_ms: 0,
-                        transformed_response: null,
-                      });
-                    }
-                  }}
-                  runResult={scriptRunResult}
-                />
-              )}
-
               {centerView.type === "settings" && (
                 <AppSettings
                   environments={environments}
@@ -944,25 +882,20 @@ export default function App() {
                 <Inspector
                   data={editorData}
                   onChange={onEditorChange}
-                  versions={versions}
                   executions={executions}
-                  selectedVersionId={selectedVersionId}
                   selectedExecutionId={selectedExecutionId}
-                  onSelectVersion={async (vid) => {
-                    try {
-                      setSelectedVersionId(vid);
-                      const v = await api.getVersion(vid);
-                      setEditorData(v.data);
-                      setDirty(false);
-                    } catch (e) {
-                      setErrorMessage(String(e));
-                    }
-                  }}
                   onSelectExecution={async (eid) => {
+                    // Flush pending edits before replacing the editor content
+                    if (dirty) await saveCurrentVersion();
                     setSelectedExecutionId(eid);
                     const exec = executions.find(e => e.id === eid);
                     if (exec) {
-                      setCurrentResponse(exec.response);
+                      try {
+                        setCurrentResponse(await api.getExecutionResponse(exec));
+                      } catch (e) {
+                        setErrorMessage(String(e));
+                        return;
+                      }
                       setCurrentLatency(exec.latency_ms);
                       if (exec.request_data) {
                         setEditorData(exec.request_data);
@@ -971,6 +904,15 @@ export default function App() {
                       if (currentRequest) {
                         await applyExecutionOperativeVariables(exec, currentRequest.collection_id);
                       }
+                    }
+                  }}
+                  onDeleteExecution={async (eid) => {
+                    try {
+                      await api.deleteExecution(eid);
+                      setExecutions(prev => prev.filter(e => e.id !== eid));
+                      if (selectedExecutionId === eid) setSelectedExecutionId(null);
+                    } catch (e) {
+                      setErrorMessage(String(e));
                     }
                   }}
                   environments={environments}
@@ -999,6 +941,8 @@ export default function App() {
             setSearchOpen(false);
             navigateToRequest(requestId, versionId, executionId, collectionId);
           }}
+          currentRequestId={currentRequest?.id}
+          currentRequestName={currentRequest?.name}
         />
       )}
     </div>

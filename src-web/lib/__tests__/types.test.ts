@@ -6,8 +6,10 @@ import {
   findUnresolvedVars,
   defaultRequestData,
   statusColor,
+  formatSize,
+  formatDate,
+  formatTime,
   type RequestData,
-  type KeyValuePair,
 } from "../types";
 
 // ── Fingerprint ──────────────────────────────────────────────
@@ -282,5 +284,27 @@ describe("defaultRequestData", () => {
     expect(d.query_params).toEqual([]);
     expect(d.path_params).toEqual([]);
     expect(d.multipart_fields).toEqual([]);
+  });
+});
+
+// ── Display formatting ───────────────────────────────────────
+
+describe("formatSize", () => {
+  it("formats bytes", () => expect(formatSize(512)).toBe("512 B"));
+  it("formats kilobytes", () => expect(formatSize(2048)).toBe("2.0 KB"));
+  it("formats megabytes", () => expect(formatSize(273447219)).toBe("260.8 MB"));
+});
+
+describe("formatDate / formatTime", () => {
+  // No timezone suffix → parsed as local time, keeps the tests TZ-agnostic.
+  it("formats the date as yyyy/mm/dd", () => {
+    expect(formatDate("2026-08-02T19:04:05")).toBe("2026/08/02");
+  });
+  it("formats the time as 24h HH:mm:ss", () => {
+    expect(formatTime("2026-08-02T19:04:05")).toBe("19:04:05");
+  });
+  it("zero-pads all components", () => {
+    expect(formatDate("2026-01-03T01:02:03")).toBe("2026/01/03");
+    expect(formatTime("2026-01-03T01:02:03")).toBe("01:02:03");
   });
 });

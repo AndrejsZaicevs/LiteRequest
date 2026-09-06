@@ -32,7 +32,6 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             db: Mutex::new(db),
@@ -75,6 +74,8 @@ pub fn run() {
             // Executions
             commands::insert_execution,
             commands::list_executions,
+            commands::delete_execution,
+            commands::get_execution_body,
             // Environments
             commands::list_environments,
             commands::insert_environment,
@@ -141,21 +142,7 @@ pub fn run() {
             // Clone
             commands::clone_request,
             commands::clone_folder,
-            // Scripts
-            commands::list_scripts_by_collection,
-            commands::list_scripts_by_folder,
-            commands::insert_script,
-            commands::get_script,
-            commands::rename_script,
-            commands::delete_script,
-            commands::move_script,
-            // Script Versions
-            commands::get_script_version,
-            commands::list_script_versions,
-            commands::save_script_version,
-            commands::script_version_has_runs,
             // Script Runs
-            commands::list_script_runs,
             commands::list_script_runs_by_request,
             // Post-Script
             commands::get_post_script,
@@ -163,7 +150,6 @@ pub fn run() {
             commands::apply_script_variables,
             // Script Execution
             commands::run_post_script,
-            commands::run_script,
             // Type Generation
             commands::generate_script_types,
         ])

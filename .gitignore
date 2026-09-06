@@ -1,6 +1,18 @@
-/target
+# Dependencies
 /node_modules
 /src-web/node_modules
+
+# Build output
 /dist
 /dist-types
 /src-tauri/target
+/target
+
+# Generated caches and reports
+*.tsbuildinfo
+**/.vite/
+/coverage
+
+# Local archives and OS files
+*.zip
+.DS_Store

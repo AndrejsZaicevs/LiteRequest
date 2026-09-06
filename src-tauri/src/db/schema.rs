@@ -49,10 +49,11 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
         );
 
         CREATE TABLE IF NOT EXISTS request_versions (
-            id         TEXT PRIMARY KEY,
-            request_id TEXT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
-            data_json  TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            id          TEXT PRIMARY KEY,
+            request_id  TEXT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+            data_json   TEXT NOT NULL,
+            created_at  TEXT NOT NULL,
+            fingerprint TEXT NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS response_bodies (
@@ -96,7 +97,6 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_env_vars_env ON env_variables(environment_id);
         CREATE INDEX IF NOT EXISTS idx_executions_env ON request_executions(environment_id);
         CREATE INDEX IF NOT EXISTS idx_executions_body_hash ON request_executions(body_hash);
-        CREATE INDEX IF NOT EXISTS idx_versions_request_fp ON request_versions(request_id, fingerprint);
         CREATE INDEX IF NOT EXISTS idx_executions_req_date ON request_executions(request_id, executed_at DESC);
 
         CREATE TABLE IF NOT EXISTS collection_variables (
@@ -135,6 +135,11 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
     if current_version < 1 {
         migrate_collection_variables(conn);
         migrate_add_version_fingerprint(conn);
+        // Created here (not in the base batch) because pre-migration DBs
+        // lack the fingerprint column until the line above adds it.
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_versions_request_fp ON request_versions(request_id, fingerprint);",
+        )?;
         migrate_add_execution_request_data(conn);
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS app_settings (
@@ -178,6 +183,11 @@ pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {
     if current_version < 3 {
         migrate_add_execution_operative_variables(conn);
         conn.execute("INSERT INTO schema_version (version) VALUES (3)", [])?;
+    }
+
+    if current_version < 4 {
+        migrate_drop_standalone_scripts(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (4)", [])?;
     }
 
     Ok(())
@@ -246,13 +256,13 @@ fn migrate_collection_variables(conn: &Connection) {
             continue;
         }
         let map_key = (cid.clone(), key.clone());
-        if !def_map.contains_key(&map_key) {
+        if let std::collections::hash_map::Entry::Vacant(slot) = def_map.entry(map_key) {
             let def_id = uuid::Uuid::new_v4().to_string();
             let _ = conn.execute(
                 "INSERT INTO collection_var_defs (id, collection_id, key, sort_order) VALUES (?1, ?2, ?3, ?4)",
                 rusqlite::params![def_id, cid, key, sort],
             );
-            def_map.insert(map_key, def_id);
+            slot.insert(def_id);
             sort += 1;
         }
     }
@@ -440,29 +450,6 @@ fn migrate_add_scripting(conn: &Connection) -> rusqlite::Result<()> {
 
     conn.execute_batch(
         "
-        CREATE TABLE IF NOT EXISTS scripts (
-            id                 TEXT PRIMARY KEY,
-            collection_id      TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
-            folder_id          TEXT REFERENCES folders(id) ON DELETE SET NULL,
-            name               TEXT NOT NULL,
-            current_version_id TEXT,
-            sort_order         INTEGER NOT NULL DEFAULT 0,
-            created_at         TEXT NOT NULL,
-            updated_at         TEXT NOT NULL,
-            deleted_at         TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_scripts_collection ON scripts(collection_id);
-        CREATE INDEX IF NOT EXISTS idx_scripts_deleted ON scripts(deleted_at, collection_id);
-
-        CREATE TABLE IF NOT EXISTS script_versions (
-            id          TEXT PRIMARY KEY,
-            script_id   TEXT NOT NULL REFERENCES scripts(id) ON DELETE CASCADE,
-            content_ts  TEXT NOT NULL DEFAULT '',
-            content_js  TEXT NOT NULL DEFAULT '',
-            created_at  TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_script_versions_script ON script_versions(script_id);
-
         CREATE TABLE IF NOT EXISTS script_runs (
             id             TEXT PRIMARY KEY,
             script_id      TEXT,
@@ -477,11 +464,24 @@ fn migrate_add_scripting(conn: &Connection) -> rusqlite::Result<()> {
             duration_ms    INTEGER NOT NULL DEFAULT 0,
             executed_at    TEXT NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_script_runs_script ON script_runs(script_id);
-        CREATE INDEX IF NOT EXISTS idx_script_runs_version ON script_runs(version_id);
         CREATE INDEX IF NOT EXISTS idx_script_runs_request ON script_runs(request_id);
         CREATE INDEX IF NOT EXISTS idx_script_runs_execution ON script_runs(execution_id);
         ",
     )?;
     Ok(())
+}
+
+/// Standalone scripts (sidebar-level script files) were removed; only
+/// post-execution scripts on requests remain. Drop their tables and the
+/// run history rows that pointed at them.
+fn migrate_drop_standalone_scripts(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "
+        DROP TABLE IF EXISTS script_versions;
+        DROP TABLE IF EXISTS scripts;
+        DELETE FROM script_runs WHERE request_id IS NULL;
+        DROP INDEX IF EXISTS idx_script_runs_script;
+        DROP INDEX IF EXISTS idx_script_runs_version;
+        ",
+    )
 }

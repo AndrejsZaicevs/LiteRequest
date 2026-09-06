@@ -198,7 +198,7 @@ Resolution happens in `http::interpolation::interpolate()` on the Rust side. The
 
 ### Secret Storage
 
-Variables marked `is_secret` store their values in the **OS keychain** (via the `keyring` crate), not in SQLite. The database stores an empty string; the actual value is fetched from the keychain at read time.
+Variables marked `is_secret` are stored in SQLite like any other value. The flag only affects presentation: the UI masks the value and the cURL export replaces it with `***` (see `maskSecretVariables` in `variables.ts`). There is no encryption at rest.
 
 ### Soft Delete
 
@@ -328,7 +328,7 @@ npx tsc --noEmit
 
 ### Key Dependencies
 
-**Rust**: `tauri 2`, `reqwest 0.12` (HTTP), `rusqlite 0.31` (SQLite, bundled), `keyring 3` (OS keychain), `serde/serde_json`, `chrono`, `uuid`, `sha2`
+**Rust**: `tauri 2`, `reqwest 0.12` (HTTP), `rusqlite 0.31` (SQLite, bundled), `serde/serde_json`, `chrono`, `uuid`, `sha2`
 
 **Frontend**: `react 19`, `@uiw/react-codemirror`, `@codemirror/*`, `@dnd-kit/*`, `lucide-react`, `tailwindcss 4`, `vite 8`, `typescript 6`
 
@@ -387,7 +387,7 @@ migrate_new_feature(conn);
 
 - **`auth_config` and `headers_config`** on collections are JSON blobs — they're opaque to the DB and parsed by the frontend/commands layer.
 
-- **Secrets** — When `is_secret` is true, the actual value lives in the OS keychain (key = `lr-secret-{value_id}`). The DB column stores an empty string. Read/write happens transparently in the operations layer.
+- **Secrets** — `is_secret` is a presentation flag only. The value is stored in SQLite in plaintext; the frontend masks it in the UI and in cURL export. Script runs and execution snapshots also persist resolved values, so treat the database file itself as sensitive.
 
 - **`deleted_at` filtering** — Every list query has `WHERE deleted_at IS NULL`. If you add a new list query, don't forget this filter.
 

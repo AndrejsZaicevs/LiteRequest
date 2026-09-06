@@ -75,8 +75,9 @@ impl Default for KeyValuePair {
 
 // ── Client certificate configuration ────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub enum CertType {
+    #[default]
     Pem,
     Pkcs12,
 }
@@ -90,12 +91,6 @@ impl CertType {
     }
     pub fn all() -> &'static [CertType] {
         &[CertType::Pem, CertType::Pkcs12]
-    }
-}
-
-impl Default for CertType {
-    fn default() -> Self {
-        CertType::Pem
     }
 }
 
@@ -276,6 +271,9 @@ pub struct ResponseData {
     /// True when the response body is base64-encoded binary data
     #[serde(default)]
     pub is_binary: bool,
+    /// True when the body was cut off at `MAX_BODY_BYTES`
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

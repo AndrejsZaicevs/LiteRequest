@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 pub struct ScriptSideEffects {
     pub logs: Vec<String>,
     pub variables_set: HashMap<String, String>,
-    pub transformed_response: Option<String>,
 }
 
 /// Shared mutable state that JS bridge functions write into.
@@ -24,12 +23,6 @@ pub struct PostExecContext {
     pub environment: String,
 }
 
-/// Context data injected as the `lr` global for standalone scripts.
-pub struct StandaloneContext {
-    pub variables: HashMap<String, String>,
-    pub environment: String,
-}
-
 fn make_log_fn(effects: SharedEffects) -> impl Fn(Rest<Coerced<String>>) + Clone {
     move |args: Rest<Coerced<String>>| {
         let line = args.0.iter().map(|s| s.0.as_str()).collect::<Vec<_>>().join(" ");
@@ -39,12 +32,46 @@ fn make_log_fn(effects: SharedEffects) -> impl Fn(Rest<Coerced<String>>) + Clone
     }
 }
 
-fn make_set_var_fn(effects: SharedEffects) -> impl Fn(String, String) + Clone {
-    move |name: String, value: String| {
+fn make_set_var_fn(effects: SharedEffects) -> impl Fn(String, Coerced<String>) + Clone {
+    move |name: String, value: Coerced<String>| {
         if let Ok(mut eff) = effects.lock() {
-            eff.variables_set.insert(name, value);
+            eff.variables_set.insert(name, value.0);
         }
     }
+}
+
+/// `lr.getVariable(name)`: values set earlier in the same script win over the
+/// resolved variables the script started with. Returns `undefined` when unset.
+fn make_get_var_fn(
+    effects: SharedEffects,
+    base: HashMap<String, String>,
+) -> impl Fn(String) -> Option<String> + Clone {
+    move |name: String| {
+        if let Ok(eff) = effects.lock() {
+            if let Some(v) = eff.variables_set.get(&name) {
+                return Some(v.clone());
+            }
+        }
+        base.get(&name).cloned()
+    }
+}
+
+fn install_variable_fns<'js>(
+    ctx: &Ctx<'js>,
+    lr: &Object<'js>,
+    effects: &SharedEffects,
+    base: &HashMap<String, String>,
+) -> Result<(), String> {
+    let set_var = Function::new(ctx.clone(), make_set_var_fn(effects.clone()))
+        .map_err(|e| format!("{e}"))?;
+    set_var.set_name("setVariable").map_err(|e| format!("{e}"))?;
+    lr.set("setVariable", set_var).map_err(|e| format!("{e}"))?;
+
+    let get_var = Function::new(ctx.clone(), make_get_var_fn(effects.clone(), base.clone()))
+        .map_err(|e| format!("{e}"))?;
+    get_var.set_name("getVariable").map_err(|e| format!("{e}"))?;
+    lr.set("getVariable", get_var).map_err(|e| format!("{e}"))?;
+    Ok(())
 }
 
 /// Inject the `lr` global for a post-execution script.
@@ -72,50 +99,10 @@ pub fn inject_post_exec_globals<'js>(
     // lr.environment
     lr.set("environment", post_ctx.environment.as_str()).map_err(|e| format!("{e}"))?;
 
-    // lr.setVariable(name, value)
-    let set_var = Function::new(ctx.clone(), make_set_var_fn(effects.clone()))
-        .map_err(|e| format!("{e}"))?;
-    set_var.set_name("setVariable").map_err(|e| format!("{e}"))?;
-    lr.set("setVariable", set_var).map_err(|e| format!("{e}"))?;
+    // lr.setVariable(name, value) / lr.getVariable(name)
+    install_variable_fns(ctx, &lr, &effects, &post_ctx.variables)?;
 
     // lr.log(...args)
-    let log_fn = Function::new(ctx.clone(), make_log_fn(effects.clone()))
-        .map_err(|e| format!("{e}"))?;
-    log_fn.set_name("log").map_err(|e| format!("{e}"))?;
-    lr.set("log", log_fn).map_err(|e| format!("{e}"))?;
-
-    globals.set("lr", lr).map_err(|e| format!("{e}"))?;
-
-    // console.log
-    install_console(ctx, effects)?;
-
-    Ok(())
-}
-
-/// Inject the `lr` global for a standalone script.
-pub fn inject_standalone_globals<'js>(
-    ctx: &Ctx<'js>,
-    standalone_ctx: &StandaloneContext,
-    effects: SharedEffects,
-) -> Result<(), String> {
-    let globals = ctx.globals();
-
-    let lr = Object::new(ctx.clone()).map_err(|e| format!("{e}"))?;
-
-    // lr.variables
-    let vars = standalone_ctx.variables.clone().into_js(ctx).map_err(|e| format!("{e}"))?;
-    lr.set("variables", vars).map_err(|e| format!("{e}"))?;
-
-    // lr.environment
-    lr.set("environment", standalone_ctx.environment.as_str()).map_err(|e| format!("{e}"))?;
-
-    // lr.setVariable
-    let set_var = Function::new(ctx.clone(), make_set_var_fn(effects.clone()))
-        .map_err(|e| format!("{e}"))?;
-    set_var.set_name("setVariable").map_err(|e| format!("{e}"))?;
-    lr.set("setVariable", set_var).map_err(|e| format!("{e}"))?;
-
-    // lr.log
     let log_fn = Function::new(ctx.clone(), make_log_fn(effects.clone()))
         .map_err(|e| format!("{e}"))?;
     log_fn.set_name("log").map_err(|e| format!("{e}"))?;
@@ -198,4 +185,108 @@ fn build_response_object<'js>(
     obj.set("json", json_fn).map_err(|e| format!("{e}"))?;
 
     Ok(obj)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scripting::runtime::{is_timeout_error, ScriptEngine};
+    use rquickjs::CatchResultExt;
+    use std::time::Duration;
+
+    fn post_exec_ctx(base: &[(&str, &str)]) -> PostExecContext {
+        PostExecContext {
+            request: RequestData::default(),
+            response: ResponseData {
+                status: 200,
+                status_text: "OK".into(),
+                headers: HashMap::new(),
+                body: r#"{"id": 7, "user": {"name": "ada"}}"#.into(),
+                size_bytes: 0,
+                is_binary: false,
+                truncated: false,
+            },
+            latency_ms: 1,
+            variables: base.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            environment: "dev".into(),
+        }
+    }
+
+    fn run_post_exec(script: &str, base: &[(&str, &str)]) -> Result<ScriptSideEffects, String> {
+        let engine = ScriptEngine::new().unwrap();
+        let ctx = engine.create_context().unwrap();
+        let effects: SharedEffects = Arc::new(Mutex::new(ScriptSideEffects::default()));
+        let post = post_exec_ctx(base);
+        let result = ctx.with(|js| {
+            inject_post_exec_globals(&js, &post, effects.clone()).unwrap();
+            js.eval::<(), _>(script).catch(&js).map_err(|e| format!("{e}"))
+        });
+        let eff = effects.lock().unwrap();
+        result.map(|_| ScriptSideEffects {
+            logs: eff.logs.clone(),
+            variables_set: eff.variables_set.clone(),
+        })
+    }
+
+    #[test]
+    fn extracts_from_response_and_sets_variables() {
+        let eff = run_post_exec(
+            r#"
+                const data = lr.response.json();
+                lr.setVariable("userId", data.id);
+                lr.setVariable("userName", data.user.name);
+                lr.log("status", lr.response.status, lr.environment);
+            "#,
+            &[],
+        ).unwrap();
+        assert_eq!(eff.variables_set.get("userId").map(String::as_str), Some("7"));
+        assert_eq!(eff.variables_set.get("userName").map(String::as_str), Some("ada"));
+        assert_eq!(eff.logs, vec!["status 200 dev"]);
+    }
+
+    #[test]
+    fn get_variable_reads_base_then_script_set_values() {
+        let eff = run_post_exec(
+            r#"
+                lr.log(lr.getVariable("token"));
+                lr.log(String(lr.getVariable("missing")));
+                lr.setVariable("token", "fresh");
+                lr.log(lr.getVariable("token"));
+            "#,
+            &[("token", "abc")],
+        ).unwrap();
+        assert_eq!(eff.logs, vec!["abc", "undefined", "fresh"]);
+        assert_eq!(eff.variables_set.get("token").map(String::as_str), Some("fresh"));
+    }
+
+    #[test]
+    fn set_variable_stringifies_non_string_values() {
+        let eff = run_post_exec(
+            r#"
+                lr.setVariable("count", 42);
+                lr.setVariable("flag", true);
+                lr.setVariable("obj", { toString() { return "custom"; } });
+            "#,
+            &[],
+        ).unwrap();
+        assert_eq!(eff.variables_set.get("count").map(String::as_str), Some("42"));
+        assert_eq!(eff.variables_set.get("flag").map(String::as_str), Some("true"));
+        assert_eq!(eff.variables_set.get("obj").map(String::as_str), Some("custom"));
+    }
+
+    #[test]
+    fn script_errors_are_reported_not_panicked() {
+        let err = run_post_exec("lr.response.json().nope.deeper;", &[]).unwrap_err();
+        assert!(err.contains("nope") || err.contains("undefined"), "{err}");
+    }
+
+    #[test]
+    fn runaway_script_is_interrupted() {
+        let engine = ScriptEngine::with_timeout(Duration::from_millis(200)).unwrap();
+        let ctx = engine.create_context().unwrap();
+        let err = ctx.with(|js| {
+            js.eval::<(), _>("while (true) {}").catch(&js).map_err(|e| format!("{e}")).unwrap_err()
+        });
+        assert!(is_timeout_error(&err), "unexpected error text: {err}");
+    }
 }

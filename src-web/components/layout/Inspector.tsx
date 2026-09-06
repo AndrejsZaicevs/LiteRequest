@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { ChevronDown, ChevronRight, Zap } from "lucide-react";
-import type { RequestData, RequestVersion, RequestExecution, Environment, KeyValuePair, VarRow } from "../../lib/types";
-import { statusColor } from "../../lib/types";
+import type { RequestData, RequestExecution, Environment, KeyValuePair, VarRow } from "../../lib/types";
+import { statusColor, formatSize, formatDate, formatTime } from "../../lib/types";
 import { KvTable } from "../inspector/KvTable";
 import { CollapsibleSection } from "../shared/CollapsibleSection";
 
@@ -14,19 +14,19 @@ function parsePathParamNames(url: string): string[] {
 interface InspectorProps {
   data: RequestData;
   onChange: (data: RequestData) => void;
-  versions: RequestVersion[];
   executions: RequestExecution[];
-  selectedVersionId: string | null;
   selectedExecutionId: string | null;
-  onSelectVersion: (id: string) => void;
   onSelectExecution: (id: string) => void;
+  onDeleteExecution?: (id: string) => void;
   environments: Environment[];
   variables?: Record<string, string>;
   operativeVarRows?: VarRow[];
   onOperativeVarChange?: (row: VarRow, value: string) => void;
 }
 
-type Section = "params" | "headers" | "pathParams" | "versions" | "executions" | "variables";
+type Section = "params" | "headers" | "pathParams" | "executions" | "variables";
+
+type ExecEnvFilter = "selected" | "all";
 
 function DateGroup({ label, isOpen, onToggle, children }: {
   label: string; isOpen: boolean; onToggle: () => void; children: React.ReactNode;
@@ -47,21 +47,35 @@ function DateGroup({ label, isOpen, onToggle, children }: {
 
 export function Inspector({
   data, onChange,
-  versions, executions,
-  selectedVersionId, selectedExecutionId,
-  onSelectVersion, onSelectExecution,
+  executions,
+  selectedExecutionId,
+  onSelectExecution, onDeleteExecution,
   environments, variables = {},
   operativeVarRows = [], onOperativeVarChange,
 }: InspectorProps) {
   const [openSections, setOpenSections] = useState<Set<Section>>(
     new Set(["params", "headers", "pathParams", "variables"])
   );
-  const [execEnvFilter, setExecEnvFilter] = useState<string>("selected");
-  const [execVersionFilter, setExecVersionFilter] = useState<string>("selected");
+  const [execEnvFilter, setExecEnvFilter] = useState<ExecEnvFilter>("selected");
+  const [execCtxMenu, setExecCtxMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  const execCtxMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the execution context menu on any mousedown outside it
+  useEffect(() => {
+    if (!execCtxMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (execCtxMenuRef.current && !execCtxMenuRef.current.contains(e.target as Node)) {
+        setExecCtxMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handler, { capture: true });
+    return () => document.removeEventListener("mousedown", handler, { capture: true });
+  }, [execCtxMenu]);
 
   // Auto-open executions section when a specific execution is selected.
-  // Only widen filters to "all" if the execution isn't visible under current filters
-  // (e.g. when navigating here from global search with a cross-env/version execution).
+  // Only widen the env filter to "all" if the execution isn't visible under
+  // the current filter (e.g. when navigating here from global search with a
+  // cross-env execution).
   useEffect(() => {
     if (!selectedExecutionId) return;
     setOpenSections(prev => new Set([...prev, "executions"]));
@@ -69,21 +83,13 @@ export function Inspector({
     const exec = executions.find(e => e.id === selectedExecutionId);
     if (!exec) return;
     const activeEnvId = environments.find(e => e.is_active)?.id ?? null;
-    const effectiveEnv = execEnvFilter === "selected" ? activeEnvId : execEnvFilter === "all" ? null : execEnvFilter;
-    const effectiveVer = execVersionFilter === "selected" ? selectedVersionId : execVersionFilter === "all" ? null : execVersionFilter;
-    const visibleUnderFilters =
-      (!effectiveEnv || exec.environment_id === effectiveEnv) &&
-      (!effectiveVer || exec.version_id === effectiveVer);
-    if (!visibleUnderFilters) {
+    const effectiveEnv = execEnvFilter === "selected" ? activeEnvId : null;
+    if (effectiveEnv && exec.environment_id !== effectiveEnv) {
       setExecEnvFilter("all");
-      setExecVersionFilter("all");
     }
   }, [selectedExecutionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Collapsed date groups — collapse all except "Today" by default
-  const [collapsedVersionGroups, setCollapsedVersionGroups] = useState<Set<string>>(
-    new Set(["Yesterday", "Older"])
-  );
   const [collapsedExecGroups, setCollapsedExecGroups] = useState<Set<string>>(
     new Set(["Yesterday", "Older"])
   );
@@ -106,14 +112,6 @@ export function Inspector({
     });
   };
 
-  const toggleVersionGroup = (label: string) => {
-    setCollapsedVersionGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label); else next.add(label);
-      return next;
-    });
-  };
-
   const toggleExecGroup = (label: string) => {
     setCollapsedExecGroups(prev => {
       const next = new Set(prev);
@@ -132,16 +130,14 @@ export function Inspector({
     onChange({ ...data, path_params: pp });
   };
 
-  const activeEnvId = environments.find(e => e.is_active)?.id ?? null;
+  const activeEnv = environments.find(e => e.is_active);
+  const activeEnvId = activeEnv?.id ?? null;
 
+  // Executions are shown across all versions — only the environment is filtered.
   const filteredExecutions = useMemo(() => {
-    let filtered = executions;
-    const effectiveEnv = execEnvFilter === "selected" ? activeEnvId : execEnvFilter === "all" ? null : execEnvFilter;
-    const effectiveVer = execVersionFilter === "selected" ? selectedVersionId : execVersionFilter === "all" ? null : execVersionFilter;
-    if (effectiveEnv) filtered = filtered.filter(e => e.environment_id === effectiveEnv);
-    if (effectiveVer) filtered = filtered.filter(e => e.version_id === effectiveVer);
-    return filtered;
-  }, [executions, execEnvFilter, execVersionFilter, activeEnvId, selectedVersionId]);
+    const effectiveEnv = execEnvFilter === "selected" ? activeEnvId : null;
+    return effectiveEnv ? executions.filter(e => e.environment_id === effectiveEnv) : executions;
+  }, [executions, execEnvFilter, activeEnvId]);
 
   const groupByDate = <T,>(items: T[], getDate: (item: T) => string) => {
     const groups: { label: string; items: T[] }[] = [];
@@ -161,7 +157,6 @@ export function Inspector({
     return groups;
   };
 
-  const groupedVersions = useMemo(() => groupByDate(versions, v => v.created_at), [versions]);
   const groupedExecutions = useMemo(() => groupByDate(filteredExecutions, e => e.executed_at), [filteredExecutions]);
 
   // Only show operative vars that are actually referenced in the current request
@@ -259,52 +254,6 @@ export function Inspector({
           <KvTable rows={data.headers} onChange={updateHeaders} placeholder={{ key: "header", value: "value" }} variables={variables} />
         </CollapsibleSection>
 
-        {/* Versions */}
-        <CollapsibleSection
-          title="Versions"
-          count={versions.length}
-          isOpen={openSections.has("versions")}
-          onToggle={() => toggleSection("versions")}
-        >
-          <div className="flex flex-col mt-1">
-            {groupedVersions.map((group, gi) => (
-              <DateGroup
-                key={group.label}
-                label={group.label}
-                isOpen={!collapsedVersionGroups.has(group.label)}
-                onToggle={() => toggleVersionGroup(group.label)}
-              >
-                {group.items.map(v => {
-                  const isSelected = v.id === selectedVersionId;
-                  const date = new Date(v.created_at);
-                  return (
-                    <button
-                      key={v.id}
-                      onClick={() => onSelectVersion(v.id)}
-                      className={`w-full rounded p-2 cursor-pointer mb-1 text-left transition-colors ${isSelected
-                          ? "bg-[#242424] border border-gray-700/50 border-l-2 border-l-blue-500"
-                          : "hover:bg-[#1a1a1a] border border-transparent"
-                        }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs font-semibold ${isSelected ? "text-blue-400" : "text-gray-400"}`}>
-                          {v.data.method}
-                        </span>
-                        <span className="text-xs font-mono text-gray-500 truncate ml-2 flex-1 text-right">
-                          {v.data.url || "(empty)"}
-                        </span>
-                      </div>
-                      <div className="text-gray-500 text-xs mt-1">
-                        {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </div>
-                    </button>
-                  );
-                })}
-              </DateGroup>
-            ))}
-          </div>
-        </CollapsibleSection>
-
         {/* Executions */}
         <CollapsibleSection
           title="Executions"
@@ -313,41 +262,28 @@ export function Inspector({
           onToggle={() => toggleSection("executions")}
         >
           <div>
-            {/* Filters */}
-            <div className="flex items-center gap-2 mb-3 mt-1">
-              {environments.length > 0 && (
-                <div className="flex-1 relative">
-                  <select
-                    value={execEnvFilter}
-                    onChange={(e) => setExecEnvFilter(e.target.value)}
-                    className="w-full bg-[#1a1a1a] border border-gray-700/60 text-gray-300 rounded text-[11px] pl-2 pr-6 py-1.5 cursor-pointer focus:border-gray-600 focus:outline-none"
-                    style={{ appearance: "none" }}
+            {/* Env filter */}
+            {environments.length > 0 && (
+              <div className="flex items-center gap-1.5 mb-3 mt-1">
+                {([
+                  { value: "selected", label: activeEnv ? activeEnv.name : "Selected env", title: "Only executions from the active environment" },
+                  { value: "all", label: "All envs", title: "Executions from every environment" },
+                ] as { value: ExecEnvFilter; label: string; title: string }[]).map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setExecEnvFilter(opt.value)}
+                    title={opt.title}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${
+                      execEnvFilter === opt.value
+                        ? "bg-blue-500 text-white border-blue-500"
+                        : "bg-transparent text-gray-500 border-gray-700 hover:border-gray-500 hover:text-gray-300"
+                    }`}
                   >
-                    <option value="selected">Env: selected</option>
-                    <option value="all">All envs</option>
-                    {environments.map(env => (
-                      <option key={env.id} value={env.id}>{env.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
-                </div>
-              )}
-              <div className="flex-1 relative">
-                <select
-                  value={execVersionFilter}
-                  onChange={(e) => setExecVersionFilter(e.target.value)}
-                  className="w-full bg-[#1a1a1a] border border-gray-700/60 text-gray-300 rounded text-[11px] pl-2 pr-6 py-1.5 cursor-pointer focus:border-gray-600 focus:outline-none"
-                  style={{ appearance: "none" }}
-                >
-                  <option value="selected">Ver: selected</option>
-                  <option value="all">All versions</option>
-                  {versions.map((v, i) => (
-                    <option key={v.id} value={v.id}>v{versions.length - i}</option>
-                  ))}
-                </select>
-                <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    {opt.label}
+                  </button>
+                ))}
               </div>
-            </div>
+            )}
 
             <div className="flex flex-col">
               {groupedExecutions.map(group => (
@@ -359,13 +295,17 @@ export function Inspector({
                 >
                   {group.items.map(exec => {
                     const isSelected = exec.id === selectedExecutionId;
-                    const date = new Date(exec.executed_at);
                     const status = exec.response.status;
                     const isSuccess = status >= 200 && status < 300;
                     return (
-                      <button
+                      <div
                         key={exec.id}
                         onClick={() => onSelectExecution(exec.id)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setExecCtxMenu({ x: e.clientX, y: e.clientY, id: exec.id });
+                        }}
                         className={`w-full rounded p-2 cursor-pointer mb-1 text-left transition-colors ${isSelected
                             ? `bg-[#242424] border border-gray-700/50 border-l-2 ${isSuccess ? "border-l-green-500" : "border-l-red-500"}`
                             : "hover:bg-[#1a1a1a] border border-transparent"
@@ -384,10 +324,14 @@ export function Inspector({
                           <span className="text-gray-300 text-xs font-mono">{exec.response.status_text}</span>
                           <span className="text-gray-500 text-xs ml-auto font-mono">{exec.latency_ms}ms</span>
                         </div>
-                        <div className="text-gray-500 text-xs mt-1">
-                          {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        <div className="flex items-baseline text-xs mt-1">
+                          <span className="text-gray-600">{formatDate(exec.executed_at)}</span>
+                          <span className="text-gray-400 ml-3">{formatTime(exec.executed_at)}</span>
+                          {exec.response.size_bytes != null && (
+                            <span className="font-mono text-gray-500 ml-auto">{formatSize(exec.response.size_bytes)}</span>
+                          )}
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </DateGroup>
@@ -396,12 +340,29 @@ export function Inspector({
 
             {filteredExecutions.length === 0 && (
               <div className="py-4 text-xs text-center text-gray-600">
-                No executions{execEnvFilter !== "all" || execVersionFilter !== "all" ? " matching filters" : ""}
+                No executions{execEnvFilter === "selected" && activeEnv ? ` in ${activeEnv.name}` : ""}
               </div>
             )}
           </div>
         </CollapsibleSection>
       </div>
+
+      {execCtxMenu && (
+        <div
+          ref={execCtxMenuRef}
+          className="fixed z-50 rounded-lg shadow-2xl overflow-hidden bg-[#1a1a1a] border border-gray-700 py-1"
+          style={{ left: execCtxMenu.x, top: execCtxMenu.y, minWidth: 160 }}
+        >
+          {onDeleteExecution && (
+            <button
+              className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-[#242424] hover:text-red-300"
+              onClick={() => { onDeleteExecution(execCtxMenu.id); setExecCtxMenu(null); }}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
