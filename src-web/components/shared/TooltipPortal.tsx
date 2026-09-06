@@ -59,7 +59,7 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
     if (above !== tip.above || alignRight !== tip.alignRight) {
       setTip(prev => prev ? { ...prev, above, alignRight } : null);
     }
-  });
+  }, [tip]);
 
   return (
     <TooltipContext.Provider value={{ show, hide }}>

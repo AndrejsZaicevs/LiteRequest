@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { TooltipProvider } from "./components/shared/TooltipPortal";
 import App from "./App";
+import { BodyViewer } from "./components/response/BodyViewer";
 import "./index.css";
 
 // macOS WKWebView converts typed " to smart quotes ("") in text inputs.
@@ -81,10 +82,17 @@ new MutationObserver(mutations => {
   }
 }).observe(document.documentElement, { subtree: true, childList: true });
 
+// Floating response-body viewer windows load the same bundle with a flag
+const isBodyViewer = new URLSearchParams(window.location.search).has("bodyViewer");
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <TooltipProvider>
-      <App />
-    </TooltipProvider>
+    {isBodyViewer ? (
+      <BodyViewer />
+    ) : (
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>
+    )}
   </React.StrictMode>,
 );

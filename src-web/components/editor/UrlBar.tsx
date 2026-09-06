@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Play, Terminal, Upload, Check, X } from "lucide-react";
+import { Play, Terminal, Upload, Check, X, ChevronRight, ChevronLeft } from "lucide-react";
 import type { RequestData, HttpMethod } from "../../lib/types";
 import { methodColor, HTTP_METHODS } from "../../lib/types";
 import { VariableInput } from "../shared/VariableInput";
@@ -16,10 +16,23 @@ interface UrlBarProps {
   variables?: Record<string, string>;
 }
 
+const BASE_EXPANDED_KEY = "lr.baseUrlExpanded";
+
 export function UrlBar({ data, onChange, onSend, onCancel, onCopyCurl, onImportCurl, isLoading, basePath, variables = {} }: UrlBarProps) {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [curlCopied, setCurlCopied] = useState(false);
+  const [baseExpanded, setBaseExpanded] = useState<boolean>(() => {
+    try { return localStorage.getItem(BASE_EXPANDED_KEY) === "1"; } catch { return false; }
+  });
+
+  const toggleBaseExpanded = () => {
+    setBaseExpanded(v => {
+      const next = !v;
+      try { localStorage.setItem(BASE_EXPANDED_KEY, next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   const updateField = <K extends keyof RequestData>(field: K, value: RequestData[K]) =>
     onChange({ ...data, [field]: value });
@@ -53,9 +66,26 @@ export function UrlBar({ data, onChange, onSend, onCancel, onCopyCurl, onImportC
             {/* Base path + URL input */}
             <div className="flex-1 flex items-center px-3 py-2 font-mono text-sm relative overflow-visible">
               {showBasePath && (
-                <span className="text-gray-500 shrink-0 select-none mr-px" title={basePath}>
-                  {resolvedBasePath}
-                </span>
+                <button
+                  type="button"
+                  onClick={toggleBaseExpanded}
+                  title={`${resolvedBasePath}\n\nClick to ${baseExpanded ? "collapse" : "expand"} base URL`}
+                  className={`shrink-0 select-none mr-1 -ml-1 inline-flex items-center gap-0.5 rounded font-mono leading-5 cursor-pointer transition-colors text-gray-500 hover:text-gray-300 hover:bg-gray-700/40 ${
+                    baseExpanded ? "px-1" : "px-1.5 border border-gray-700/60 bg-gray-800/40"
+                  }`}
+                >
+                  {baseExpanded ? (
+                    <>
+                      <ChevronLeft size={12} className="opacity-60" />
+                      <span>{resolvedBasePath}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs tracking-tight">[…]</span>
+                      <ChevronRight size={12} className="opacity-60" />
+                    </>
+                  )}
+                </button>
               )}
               <VariableInput
                 value={data.url}

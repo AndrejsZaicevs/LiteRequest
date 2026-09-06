@@ -116,6 +116,8 @@ export interface ResponseData {
   size_bytes: number;
   /** True when body is base64-encoded binary content */
   is_binary?: boolean;
+  /** True when the backend cut the body off at its size limit */
+  truncated?: boolean;
 }
 
 // ── Request Execution ────────────────────────────────────────
@@ -129,6 +131,8 @@ export interface RequestExecution {
   executed_at: string;
   /** Snapshot of the request data at send time (absent for legacy executions) */
   request_data?: RequestData;
+  /** Operative variable values used at send time (absent for legacy executions) */
+  operative_variables?: Record<string, string>;
 }
 
 // ── Collection ───────────────────────────────────────────────
@@ -216,6 +220,27 @@ export function statusColor(code: number): string {
   if (code >= 400 && code < 500) return "#f93e3e";
   if (code >= 500) return "#ff5757";
   return "#8c8c96";
+}
+
+// ── Display formatting helpers ───────────────────────────────
+export function formatSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes > 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** Formats an ISO timestamp as `yyyy/mm/dd` in local time. */
+export function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+}
+
+/** Formats an ISO timestamp as 24-hour `HH:mm:ss` in local time. */
+export function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
 // ── Version fingerprint ──────────────────────────────────────
@@ -330,4 +355,26 @@ export interface TrashedItem {
   name: string;
   parent_name: string;
   deleted_at: string;
+}
+
+// ── Post-execution scripts ───────────────────────────────────
+export interface ScriptRun {
+  id: string;
+  request_id: string;
+  execution_id: string;
+  status: string;
+  logs: string;
+  variables_set: string;
+  script_source: string;
+  error: string | null;
+  duration_ms: number;
+  executed_at: string;
+}
+
+export interface ScriptResult {
+  status: string;
+  logs: string[];
+  variables_set: Record<string, string>;
+  error: string | null;
+  duration_ms: number;
 }

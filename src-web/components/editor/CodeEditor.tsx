@@ -1,10 +1,10 @@
 import CodeMirror from "@uiw/react-codemirror";
-import { json } from "@codemirror/lang-json";
+import { jsonVars } from "../../lib/jsonvars";
 import { EditorView, ViewPlugin, Decoration } from "@codemirror/view";
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { tags } from "@lezer/highlight";
+import { syntaxHighlighting } from "@codemirror/language";
+import { liteEditorTheme, liteHighlightStyle } from "../../lib/editorTheme";
 import { autocompletion } from "@codemirror/autocomplete";
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
 import { useMemo, useRef } from "react";
@@ -39,57 +39,6 @@ function makeVarPlugin(variables: Record<string, string>) {
     { decorations: v => v.decorations }
   );
 }
-
-const liteTheme = EditorView.theme(
-  {
-    "&": {
-      height: "100%",
-      fontSize: "13px",
-      backgroundColor: "#0d0d0d",
-      color: "#d1d5db",
-    },
-    ".cm-scroller": {
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-      lineHeight: "1.6",
-      overflow: "auto",
-    },
-    ".cm-content": {
-      padding: "16px",
-      caretColor: "#60a5fa",
-    },
-    ".cm-focused": { outline: "none" },
-    ".cm-editor": { backgroundColor: "#0d0d0d" },
-    ".cm-gutters": {
-      backgroundColor: "#0d0d0d",
-      borderRight: "1px solid #1f2937",
-      color: "#4b5563",
-      paddingRight: "8px",
-    },
-    ".cm-activeLineGutter": { backgroundColor: "#1a1a1a" },
-    ".cm-activeLine": { backgroundColor: "#1a1a1a80" },
-    ".cm-selectionBackground": { backgroundColor: "#3b82f655 !important" },
-    ".cm-focused .cm-selectionBackground": { backgroundColor: "#3b82f655 !important" },
-    ".cm-matchingBracket": {
-      backgroundColor: "#3b82f640",
-      outline: "1px solid #3b82f660",
-    },
-    ".cm-cursor": { borderLeftColor: "#60a5fa" },
-    ".cm-lineNumbers .cm-gutterElement": { color: "#374151" },
-  },
-  { dark: true }
-);
-
-const liteSyntax = HighlightStyle.define([
-  { tag: tags.propertyName,       color: "#60a5fa" },   // JSON keys — blue-400
-  { tag: tags.string,             color: "#34d399" },   // strings — emerald-400
-  { tag: tags.number,             color: "#f59e0b" },   // numbers — amber-400
-  { tag: tags.bool,               color: "#f59e0b" },   // booleans — amber-400
-  { tag: tags.null,               color: "#9ca3af" },   // null — gray-400
-  { tag: tags.keyword,            color: "#c084fc" },   // keywords — purple-400
-  { tag: tags.comment,            color: "#6b7280", fontStyle: "italic" },
-  { tag: tags.punctuation,        color: "#6b7280" },
-  { tag: tags.bracket,            color: "#9ca3af" },
-]);
 
 function makeVarHoverPlugin(
   onHover: (name: string, rect: DOMRect) => void,
@@ -238,12 +187,12 @@ export function CodeEditor({ value, onChange, language = "json", placeholder, va
     };
 
     const exts = [
-      liteTheme, syntaxHighlighting(liteSyntax), EditorView.lineWrapping,
+      liteEditorTheme, syntaxHighlighting(liteHighlightStyle), EditorView.lineWrapping,
       varHighlightTheme, makeVarPlugin(variables),
       makeVarHoverPlugin(onHover, () => hideRef.current()),
       autocompletion({ override: [makeVarCompletionSource(variables)], activateOnTyping: true }),
     ];
-    if (language === "json") exts.push(json());
+    if (language === "json") exts.push(jsonVars());
     return exts;
   }, [language, variables]);
 

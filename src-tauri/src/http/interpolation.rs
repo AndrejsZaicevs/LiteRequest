@@ -1,13 +1,33 @@
 use std::collections::HashMap;
 
-/// Replace all {{variable}} patterns with their values
+/// Replace every `{{name}}` with its value. Whitespace inside the braces is
+/// ignored, matching how the frontend highlights and validates references.
+/// Unknown names are left as written. Values are inserted verbatim in a
+/// single pass: nested references are resolved by the frontend before the
+/// map reaches this function.
 pub fn interpolate(input: &str, variables: &HashMap<String, String>) -> String {
-    let mut result = input.to_string();
-    for (key, value) in variables {
-        let pattern = format!("{{{{{}}}}}", key); // {{key}}
-        result = result.replace(&pattern, value);
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(start) = rest.find("{{") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        match after.find("}}") {
+            Some(end) => {
+                let name = after[..end].trim();
+                match variables.get(name) {
+                    Some(value) => out.push_str(value),
+                    None => out.push_str(&rest[start..start + 2 + end + 2]),
+                }
+                rest = &after[end + 2..];
+            }
+            None => {
+                out.push_str(&rest[start..]);
+                rest = "";
+            }
+        }
     }
-    result
+    out.push_str(rest);
+    out
 }
 
 /// Resolve a full URL from base_path + request url
@@ -84,6 +104,32 @@ mod tests {
             interpolate("https://{{host}}/{{version}}/users", &vars),
             "https://api.example.com/v2/users"
         );
+    }
+
+    #[test]
+    fn interpolate_ignores_whitespace_inside_braces() {
+        let mut vars = HashMap::new();
+        vars.insert("host".to_string(), "api.example.com".to_string());
+        assert_eq!(interpolate("https://{{ host }}/x", &vars), "https://api.example.com/x");
+        assert_eq!(interpolate("{{host}}{{ host }}", &vars), "api.example.comapi.example.com");
+    }
+
+    #[test]
+    fn interpolate_leaves_unknown_and_malformed_references() {
+        let mut vars = HashMap::new();
+        vars.insert("a".to_string(), "1".to_string());
+        assert_eq!(interpolate("{{missing}}/{{a}}", &vars), "{{missing}}/1");
+        assert_eq!(interpolate("{{a", &vars), "{{a");
+        assert_eq!(interpolate("{{{a}}}", &vars), "{{{a}}}");
+        assert_eq!(interpolate("plain", &vars), "plain");
+    }
+
+    #[test]
+    fn interpolate_does_not_resubstitute_values() {
+        let mut vars = HashMap::new();
+        vars.insert("a".to_string(), "{{b}}".to_string());
+        vars.insert("b".to_string(), "x".to_string());
+        assert_eq!(interpolate("{{a}}", &vars), "{{b}}");
     }
 
     #[test]

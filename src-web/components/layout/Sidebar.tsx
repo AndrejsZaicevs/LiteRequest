@@ -284,7 +284,7 @@ export function Sidebar({
     const { active, over } = event;
     if (!over || over.id === active.id) { setDropState(null); return; }
 
-    const overData = over.data.current as any;
+    const overData = over.data.current as TreeItem | { type: "col-end"; collectionId: string } | undefined;
 
     // col-end drop zones
     if (overData?.type === "col-end") {

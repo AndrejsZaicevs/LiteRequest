@@ -53,8 +53,14 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
 
+      - name: Lint
+        run: npm run lint
+
       - name: Rust tests
         run: cd src-tauri && cargo test --lib
+
+      - name: Clippy
+        run: cd src-tauri && cargo clippy --all-targets -- -D warnings
 
   build-deb:
     runs-on: ubuntu-22.04
