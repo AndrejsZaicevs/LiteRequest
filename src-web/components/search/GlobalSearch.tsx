@@ -7,6 +7,41 @@ import * as api from "../../lib/api";
 interface GlobalSearchProps {
   onClose: () => void;
   onNavigate: (requestId: string, versionId?: string | null, executionId?: string | null, collectionId?: string | null) => void;
+  /** When set, offers a "This request" toggle to scope the search to it */
+  currentRequestId?: string | null;
+  currentRequestName?: string;
+}
+
+type SearchScope = "all" | "requests" | "responses";
+
+const FIELD_OPTIONS: Record<SearchScope, { value: string; label: string }[]> = {
+  all: [],
+  requests: [
+    { value: "name", label: "Name" },
+    { value: "url", label: "URL" },
+    { value: "params", label: "Params" },
+    { value: "headers", label: "Headers" },
+    { value: "body", label: "Body" },
+  ],
+  responses: [
+    { value: "body", label: "Body" },
+    { value: "headers", label: "Headers" },
+  ],
+};
+
+function FilterPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${
+        active
+          ? "bg-blue-500/15 border-blue-500/40 text-blue-300"
+          : "border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-600"
+      }`}
+    >
+      {children}
+    </button>
+  );
 }
 
 const GROUP_ORDER = ["request", "version", "version_old", "execution", "collection"] as const;
@@ -31,15 +66,23 @@ function formatDate(iso: string) {
   } catch { return iso; }
 }
 
-export function GlobalSearch({ onClose, onNavigate }: GlobalSearchProps) {
+export function GlobalSearch({ onClose, onNavigate, currentRequestId, currentRequestName }: GlobalSearchProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [scope, setScope] = useState<SearchScope>("all");
+  const [field, setField] = useState<string>("all");
+  const [onlyCurrent, setOnlyCurrent] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const setScopeAndResetField = (s: SearchScope) => {
+    setScope(s);
+    setField("all");
+  };
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -49,7 +92,11 @@ export function GlobalSearch({ onClose, onNavigate }: GlobalSearchProps) {
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const hits = await api.searchAll(q);
+        const hits = await api.searchAll(q, {
+          scope: scope === "all" ? undefined : scope,
+          field: field === "all" ? undefined : field,
+          requestId: onlyCurrent && currentRequestId ? currentRequestId : undefined,
+        });
         setResults(hits);
       } catch {
         setResults([]);
@@ -58,7 +105,7 @@ export function GlobalSearch({ onClose, onNavigate }: GlobalSearchProps) {
       }
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query]);
+  }, [query, scope, field, onlyCurrent, currentRequestId]);
 
   useEffect(() => { setSelectedIndex(0); }, [results]);
 
@@ -97,7 +144,7 @@ export function GlobalSearch({ onClose, onNavigate }: GlobalSearchProps) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl bg-[#161616] border border-gray-700 shadow-2xl rounded-xl overflow-hidden flex flex-col"
+        className="w-full max-w-4xl bg-[#161616] border border-gray-700 shadow-2xl rounded-xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search input */}
@@ -114,6 +161,33 @@ export function GlobalSearch({ onClose, onNavigate }: GlobalSearchProps) {
           />
           {loading && <span className="text-xs text-gray-500 ml-3 animate-pulse">searching…</span>}
           {!loading && <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700 ml-3">ESC</span>}
+        </div>
+
+        {/* Filters */}
+        <div className="flex items-center gap-1.5 flex-wrap px-4 py-2 border-b border-gray-800 bg-[#121212]">
+          <FilterPill active={scope === "all"} onClick={() => setScopeAndResetField("all")}>All</FilterPill>
+          <FilterPill active={scope === "requests"} onClick={() => setScopeAndResetField("requests")}>Requests</FilterPill>
+          <FilterPill active={scope === "responses"} onClick={() => setScopeAndResetField("responses")}>Responses</FilterPill>
+
+          {FIELD_OPTIONS[scope].length > 0 && (
+            <>
+              <div className="w-px h-4 bg-gray-800 mx-1" />
+              <FilterPill active={field === "all"} onClick={() => setField("all")}>Any field</FilterPill>
+              {FIELD_OPTIONS[scope].map(f => (
+                <FilterPill key={f.value} active={field === f.value} onClick={() => setField(f.value)}>
+                  {f.label}
+                </FilterPill>
+              ))}
+            </>
+          )}
+
+          {currentRequestId && (
+            <div className="ml-auto">
+              <FilterPill active={onlyCurrent} onClick={() => setOnlyCurrent(v => !v)}>
+                This request{currentRequestName ? `: ${currentRequestName.slice(0, 24)}` : ""}
+              </FilterPill>
+            </div>
+          )}
         </div>
 
         {/* Results */}

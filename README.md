@@ -31,7 +31,7 @@ Right-click any item in the tree for a **context menu** with rename, clone, dele
 
 ### Variables & Environments
 
-Create multiple **environments** per collection (e.g. `dev`, `staging`, `prod`) and switch between them without touching the request. Variables are defined once and can hold plain-text or **secret** values — secrets are stored in the platform keychain (via the OS secret service) rather than in the database. Global variables sit outside collections and are merged at send time.
+Create multiple **environments** per collection (e.g. `dev`, `staging`, `prod`) and switch between them without touching the request. Variables are defined once and can be flagged as **secret** — secret values are masked in the UI and in cURL exports. All values, secret or not, are stored locally in the app's SQLite database; nothing leaves your machine. Global variables sit outside collections and are merged at send time.
 
 **Operative variables** can be flagged at the collection level — these appear in the inspector panel of any request that references them, giving you one-click access to edit a shared value (like a `storeId` returned from one request) without digging into collection settings. A built-in `requestName` variable is also injected per request.
 
@@ -108,7 +108,7 @@ LiteRequest is built with **Tauri v2** (Rust backend, WebView frontend).
 | Backend language | Rust (stable) |
 | HTTP client | [reqwest](https://github.com/seanmonstar/reqwest) — brotli, HTTP/2, rustls, SOCKS proxy |
 | Database | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite) (bundled, file stored in app data dir) |
-| Secret storage | OS keychain via [keyring](https://github.com/hwchen/keyring-rs) |
+| Secret storage | Local SQLite database (secret values are masked in the UI and cURL export, not encrypted) |
 | Frontend | React 19 + TypeScript |
 | Styling | Tailwind CSS v4 |
 | Code editor | [CodeMirror 6](https://codemirror.net/) via `@uiw/react-codemirror` |

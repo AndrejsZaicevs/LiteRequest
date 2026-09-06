@@ -15,7 +15,7 @@ describe("DYNAMIC_VARS registry", () => {
   });
 
   it("every generator returns a string", () => {
-    for (const [name, gen] of Object.entries(DYNAMIC_VARS)) {
+    for (const gen of Object.values(DYNAMIC_VARS)) {
       const val = gen();
       expect(typeof val).toBe("string");
       expect(val.length).toBeGreaterThan(0);

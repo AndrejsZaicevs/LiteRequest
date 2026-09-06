@@ -288,17 +288,26 @@ impl Database {
     /// place, reuse a previous one, or create a new one.
     /// Returns the resulting version.
     ///
+    /// `base_version_id` is the version the editor started from (the user may
+    /// be editing an older version, not the current one); it defaults to the
+    /// request's current version.
+    ///
     /// Rules:
-    ///  1. No current version → create.
-    ///  2. Data identical to current version → no-op, return current.
-    ///  3. Current version has NO executions → overwrite in place (draft).
-    ///  4. Same fingerprint as current → overwrite in place (value-only).
-    ///  5. Different fingerprint → look for an older version with the same
-    ///     fingerprint and reuse it (update its data, make it current).
-    ///  6. No matching version at all → create new.
-    pub fn save_version(&self, request_id: &str, data: &RequestData) -> rusqlite::Result<RequestVersion> {
+    ///  1. No base version → create.
+    ///  2. Data identical to base → no-op, return base.
+    ///  3. Base has NO executions → overwrite it in place (draft) and make
+    ///     it current.
+    ///  4. Base has executions → NEVER overwrite it. Reuse the newest
+    ///     execution-free version with the same fingerprint if one exists
+    ///     (overwrite its data, make it current), else create a new version.
+    pub fn save_version(
+        &self,
+        request_id: &str,
+        data: &RequestData,
+        base_version_id: Option<&str>,
+    ) -> rusqlite::Result<RequestVersion> {
         self.conn.execute_batch("BEGIN IMMEDIATE")?;
-        match self.save_version_inner(request_id, data) {
+        match self.save_version_inner(request_id, data, base_version_id) {
             Ok(v) => {
                 self.conn.execute_batch("COMMIT")?;
                 Ok(v)
@@ -310,7 +319,12 @@ impl Database {
         }
     }
 
-    fn save_version_inner(&self, request_id: &str, data: &RequestData) -> rusqlite::Result<RequestVersion> {
+    fn save_version_inner(
+        &self,
+        request_id: &str,
+        data: &RequestData,
+        base_version_id: Option<&str>,
+    ) -> rusqlite::Result<RequestVersion> {
         let now = chrono::Utc::now().to_rfc3339();
         let new_fp = data.fingerprint();
 
@@ -321,47 +335,46 @@ impl Database {
             |row| row.get(0),
         )?;
 
-        if let Some(ref vid) = current_vid {
-            let current = self.get_version(vid)?;
-            let current_json = serde_json::to_string(&current.data).unwrap_or_default();
+        // The version the editor is based on. A stale/unknown base id
+        // (e.g. a version deleted by cleanup) falls back to current.
+        let base = base_version_id
+            .and_then(|vid| self.get_version(vid).ok())
+            .filter(|v| v.request_id == request_id)
+            .or_else(|| current_vid.as_ref().and_then(|vid| self.get_version(vid).ok()));
+
+        if let Some(base) = base {
+            let base_json = serde_json::to_string(&base.data).unwrap_or_default();
             let new_json = serde_json::to_string(data).unwrap_or_default();
 
             // Identical → no-op
-            if current_json == new_json {
-                return Ok(current);
+            if base_json == new_json {
+                return Ok(base);
             }
 
-            let has_exec = self.version_has_executions(vid);
-
-            if !has_exec {
-                // Draft — always overwrite
-                self.update_version_data(vid, data, &now)?;
-                return self.get_version(vid);
+            if !self.version_has_executions(&base.id) {
+                // Draft — overwrite in place and ensure it is current
+                self.update_version_data(&base.id, data, &now)?;
+                if current_vid.as_deref() != Some(base.id.as_str()) {
+                    self.conn.execute(
+                        "UPDATE requests SET current_version_id=?2 WHERE id=?1",
+                        params![request_id, base.id],
+                    )?;
+                }
+                return self.get_version(&base.id);
             }
 
-            let cur_fp = if current.fingerprint.is_empty() {
-                current.data.fingerprint()
-            } else {
-                current.fingerprint.clone()
-            };
-
-            if cur_fp == new_fp {
-                // Same structure, value-only change — overwrite
-                self.update_version_data(vid, data, &now)?;
-                return self.get_version(vid);
-            }
-
-            // Different fingerprint — try to reuse an older version
-            let existing: Option<String> = self.conn.query_row(
-                "SELECT id FROM request_versions
-                 WHERE request_id=?1 AND fingerprint=?2 AND id!=?3
-                 ORDER BY created_at DESC LIMIT 1",
-                params![request_id, new_fp, vid],
+            // Base has executions — never overwrite it. Reuse the newest
+            // execution-free version with the same fingerprint, if any.
+            let reuse: Option<String> = self.conn.query_row(
+                "SELECT v.id FROM request_versions v
+                 WHERE v.request_id=?1 AND v.fingerprint=?2
+                   AND NOT EXISTS (SELECT 1 FROM request_executions e WHERE e.version_id = v.id)
+                 ORDER BY v.created_at DESC LIMIT 1",
+                params![request_id, new_fp],
                 |row| row.get(0),
             ).optional()?;
 
-            if let Some(reuse_id) = existing {
-                // Update its data to latest values and make it current
+            if let Some(reuse_id) = reuse {
                 self.update_version_data(&reuse_id, data, &now)?;
                 self.conn.execute(
                     "UPDATE requests SET current_version_id=?2 WHERE id=?1",
@@ -409,17 +422,32 @@ impl Database {
             Some(rd) => serde_json::to_string(rd).unwrap_or_default(),
             None => String::new(),
         };
+        let operative_variables_json = match &e.operative_variables {
+            Some(vars) => serde_json::to_string(vars).unwrap_or_default(),
+            None => String::new(),
+        };
         self.conn.execute(
-            "INSERT INTO request_executions (id, version_id, request_id, environment_id, response_json, latency_ms, executed_at, body_hash, request_data_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![e.id, e.version_id, e.request_id, e.environment_id, response_json, e.latency_ms, e.executed_at, body_hash, request_data_json],
+            "INSERT INTO request_executions (id, version_id, request_id, environment_id, response_json, latency_ms, executed_at, body_hash, request_data_json, operative_variables_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                e.id,
+                e.version_id,
+                e.request_id,
+                e.environment_id,
+                response_json,
+                e.latency_ms,
+                e.executed_at,
+                body_hash,
+                request_data_json,
+                operative_variables_json
+            ],
         )?;
         Ok(())
     }
 
     pub fn list_executions_by_request(&self, request_id: &str) -> rusqlite::Result<Vec<RequestExecution>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, version_id, request_id, response_json, latency_ms, executed_at, environment_id, body_hash, request_data_json
+            "SELECT id, version_id, request_id, response_json, latency_ms, executed_at, environment_id, body_hash, request_data_json, operative_variables_json
              FROM request_executions WHERE request_id=?1 ORDER BY executed_at DESC",
         )?;
         let rows = stmt.query_map(params![request_id], |row| {
@@ -432,41 +460,73 @@ impl Database {
                     body: String::new(),
                     size_bytes: 0,
                     is_binary: false,
+                    truncated: false,
                 });
-            let body_hash: String = row.get(7)?;
             let request_data_json: String = row.get(8)?;
             let request_data: Option<RequestData> = if request_data_json.is_empty() {
                 None
             } else {
                 serde_json::from_str(&request_data_json).ok()
             };
-            Ok((
-                RequestExecution {
-                    id: row.get(0)?,
-                    version_id: row.get(1)?,
-                    request_id: row.get(2)?,
-                    environment_id: row.get(6)?,
-                    response,
-                    latency_ms: row.get(4)?,
-                    executed_at: row.get(5)?,
-                    request_data,
-                },
-                body_hash,
-            ))
+            let operative_variables_json: String = row.get(9)?;
+            let operative_variables: Option<std::collections::HashMap<String, String>> =
+                if operative_variables_json.is_empty() {
+                    None
+                } else {
+                    serde_json::from_str(&operative_variables_json).ok()
+                };
+            Ok(RequestExecution {
+                id: row.get(0)?,
+                version_id: row.get(1)?,
+                request_id: row.get(2)?,
+                environment_id: row.get(6)?,
+                response,
+                latency_ms: row.get(4)?,
+                executed_at: row.get(5)?,
+                request_data,
+                operative_variables,
+            })
         })?;
-        let pairs: Vec<(RequestExecution, String)> = rows.collect::<rusqlite::Result<_>>()?;
-        let mut result = Vec::with_capacity(pairs.len());
-        for (mut exec, hash) in pairs {
-            if let Ok(body) = self.conn.query_row(
-                "SELECT body FROM response_bodies WHERE hash=?1",
+        rows.collect()
+    }
+
+    /// Fetch the (potentially large) response body for a single execution.
+    /// Bodies are excluded from `list_executions_by_request` so the list
+    /// stays cheap; the UI loads a body only when an execution is opened.
+    pub fn get_execution_body(&self, execution_id: &str) -> rusqlite::Result<String> {
+        let body: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT rb.body FROM request_executions e
+                 JOIN response_bodies rb ON rb.hash = e.body_hash
+                 WHERE e.id=?1",
+                params![execution_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(body.unwrap_or_default())
+    }
+
+    pub fn delete_execution(&self, id: &str) -> rusqlite::Result<()> {
+        let body_hash: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT body_hash FROM request_executions WHERE id=?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        self.conn
+            .execute("DELETE FROM request_executions WHERE id=?1", params![id])?;
+        if let Some(hash) = body_hash {
+            // Bodies are deduplicated by hash — only GC when unreferenced.
+            self.conn.execute(
+                "DELETE FROM response_bodies WHERE hash=?1
+                 AND NOT EXISTS (SELECT 1 FROM request_executions WHERE body_hash=?1)",
                 params![hash],
-                |r| r.get::<_, String>(0),
-            ) {
-                exec.response.body = body;
-            }
-            result.push(exec);
+            )?;
         }
-        Ok(result)
+        Ok(())
     }
 
     // ── Environments ─────────────────────────────────────────────
@@ -569,10 +629,10 @@ impl Database {
     /// Get all variables for the currently active environment (from new split tables)
     pub fn get_active_variables(&self) -> rusqlite::Result<Vec<EnvVariable>> {
         let mut stmt = self.conn.prepare(
-            "SELECT d.id, e.id, d.key, COALESCE(v.value, '') as value, COALESCE(v.is_secret, 0) as is_secret
+            "SELECT d.id, e.id, d.key, v.value, v.is_secret
              FROM env_var_defs d
              CROSS JOIN environments e
-             LEFT JOIN env_var_values v ON v.def_id = d.id AND v.environment_id = e.id
+             JOIN env_var_values v ON v.def_id = d.id AND v.environment_id = e.id
              WHERE e.is_active = 1
              ORDER BY d.sort_order, d.key",
         )?;
@@ -888,9 +948,20 @@ impl Database {
     pub fn prune_old_executions(&self, days: i64) -> rusqlite::Result<usize> {
         let cutoff = chrono::Utc::now() - chrono::Duration::days(days);
         let cutoff_str = cutoff.to_rfc3339();
-        self.conn.execute(
+        let deleted = self.conn.execute(
             "DELETE FROM request_executions WHERE executed_at < ?1",
             params![cutoff_str],
+        )?;
+        self.gc_orphaned_response_bodies()?;
+        Ok(deleted)
+    }
+
+    /// Remove response bodies no longer referenced by any execution.
+    fn gc_orphaned_response_bodies(&self) -> rusqlite::Result<usize> {
+        self.conn.execute(
+            "DELETE FROM response_bodies
+             WHERE NOT EXISTS (SELECT 1 FROM request_executions e WHERE e.body_hash = response_bodies.hash)",
+            [],
         )
     }
 
@@ -928,6 +999,7 @@ impl Database {
                AND id NOT IN (SELECT current_version_id FROM requests WHERE current_version_id IS NOT NULL)",
             params![cutoff_date],
         )?;
+        self.gc_orphaned_response_bodies()?;
         self.conn.execute_batch("VACUUM")?;
         Ok(CleanupResult { versions_deleted, executions_deleted })
     }
@@ -980,34 +1052,45 @@ impl Database {
 
     /// Find the first field in `RequestData` that matches `query` and return
     /// (match_field_label, context_snippet).
-    fn find_match_in_data(data: &RequestData, query: &str) -> (String, String) {
+    /// Find the first field in request data that matches `query`.
+    /// `field` restricts the search to one field group
+    /// (name handled by the caller; url | params | headers | body here).
+    fn find_match_in_data(data: &RequestData, query: &str, field: Option<&str>) -> (String, String) {
         let q = query.to_lowercase();
+        let want = |f: &str| field.is_none() || field == Some(f);
 
-        if data.url.to_lowercase().contains(&q) {
+        if want("url") && data.url.to_lowercase().contains(&q) {
             return ("URL".to_string(), Self::extract_snippet(&data.url, query, 60));
         }
-        for h in &data.headers {
-            if h.key.to_lowercase().contains(&q) || h.value.to_lowercase().contains(&q) {
-                let val_preview: String = h.value.chars().take(40).collect();
-                return ("Header".to_string(), format!("{}: {}", h.key, val_preview));
+        if want("headers") {
+            for h in &data.headers {
+                if h.key.to_lowercase().contains(&q) || h.value.to_lowercase().contains(&q) {
+                    let val_preview: String = h.value.chars().take(40).collect();
+                    return ("Header".to_string(), format!("{}: {}", h.key, val_preview));
+                }
             }
         }
-        for p in &data.query_params {
-            if p.key.to_lowercase().contains(&q) || p.value.to_lowercase().contains(&q) {
-                return ("Query Param".to_string(), format!("{}={}", p.key, p.value));
+        if want("params") {
+            for p in &data.query_params {
+                if p.key.to_lowercase().contains(&q) || p.value.to_lowercase().contains(&q) {
+                    return ("Query Param".to_string(), format!("{}={}", p.key, p.value));
+                }
+            }
+            for p in &data.path_params {
+                if p.key.to_lowercase().contains(&q) || p.value.to_lowercase().contains(&q) {
+                    return ("Path Param".to_string(), format!(":{}={}", p.key, p.value));
+                }
             }
         }
-        for p in &data.path_params {
-            if p.key.to_lowercase().contains(&q) || p.value.to_lowercase().contains(&q) {
-                return ("Path Param".to_string(), format!(":{}={}", p.key, p.value));
-            }
+        if !want("body") {
+            return (String::new(), String::new());
         }
         if !data.body.is_empty() && data.body.to_lowercase().contains(&q) {
             return ("Body".to_string(), Self::extract_snippet(&data.body, query, 60));
         }
         for f in &data.multipart_fields {
             if f.key.to_lowercase().contains(&q) {
-                return ("Multipart".to_string(), format!("{}", f.key));
+                return ("Multipart".to_string(), f.key.clone());
             }
             if !f.is_file && f.value.to_lowercase().contains(&q) {
                 return ("Multipart".to_string(), format!("{}={}", f.key, f.value));
@@ -1031,44 +1114,78 @@ impl Database {
     }
 
     /// Find the first field in a response that matches `query`.
-    fn find_match_in_response(response: &ResponseData, body: &str, query: &str) -> (String, String) {
+    /// `field` restricts the search to one field group (body | headers).
+    fn find_match_in_response(
+        response: &ResponseData,
+        body: &str,
+        query: &str,
+        field: Option<&str>,
+    ) -> (String, String) {
         let q = query.to_lowercase();
-        let status_str = format!("{} {}", response.status, response.status_text);
-        if status_str.to_lowercase().contains(&q) {
-            return ("Status".to_string(), status_str);
-        }
-        for (k, v) in &response.headers {
-            if k.to_lowercase().contains(&q) || v.to_lowercase().contains(&q) {
-                let val_preview: String = v.chars().take(40).collect();
-                return ("Response Header".to_string(), format!("{}: {}", k, val_preview));
+        let want = |f: &str| field.is_none() || field == Some(f);
+
+        if field.is_none() {
+            let status_str = format!("{} {}", response.status, response.status_text);
+            if status_str.to_lowercase().contains(&q) {
+                return ("Status".to_string(), status_str);
             }
         }
-        if !body.is_empty() && body.to_lowercase().contains(&q) {
+        if want("headers") {
+            for (k, v) in &response.headers {
+                if k.to_lowercase().contains(&q) || v.to_lowercase().contains(&q) {
+                    let val_preview: String = v.chars().take(40).collect();
+                    return ("Response Header".to_string(), format!("{}: {}", k, val_preview));
+                }
+            }
+        }
+        if want("body") && !body.is_empty() && body.to_lowercase().contains(&q) {
             return ("Response Body".to_string(), Self::extract_snippet(body, query, 60));
         }
         (String::new(), String::new())
     }
 
     /// Full-text search across requests, all versions, and execution history.
-    pub fn search_all(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<SearchHit>> {
+    ///
+    /// Optional filters:
+    /// - `scope`: "requests" (saved request definitions) or "responses"
+    ///   (execution responses); `None` searches everything.
+    /// - `field`: restricts matching to one field group. For requests:
+    ///   name | url | params | headers | body. For responses: body | headers.
+    /// - `request_id`: restricts results to a single request.
+    pub fn search_all(
+        &self,
+        query: &str,
+        limit: usize,
+        scope: Option<&str>,
+        field: Option<&str>,
+        request_id: Option<&str>,
+    ) -> rusqlite::Result<Vec<SearchHit>> {
         if query.trim().is_empty() {
             return Ok(vec![]);
         }
+        let scope_requests = scope == Some("requests");
+        let scope_responses = scope == Some("responses");
         let q_pat = format!("%{}%", query.to_lowercase());
         let mut hits: Vec<SearchHit> = Vec::new();
 
         // ── 1. Request names ──────────────────────────────────────
-        {
-            let mut stmt = self.conn.prepare(
+        if !scope_responses && matches!(field, None | Some("name")) {
+            let sql = format!(
                 "SELECT r.id, r.name, r.collection_id, c.name, r.current_version_id, v.data_json
                  FROM requests r
                  JOIN collections c ON r.collection_id = c.id
                  LEFT JOIN request_versions v ON r.current_version_id = v.id
                  WHERE r.deleted_at IS NULL AND c.deleted_at IS NULL
-                   AND LOWER(r.name) LIKE ?1
+                   AND LOWER(r.name) LIKE ?1{}
                  LIMIT 20",
-            )?;
-            let rows = stmt.query_map(params![q_pat], |row| {
+                if request_id.is_some() { " AND r.id = ?2" } else { "" }
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let mut binds: Vec<&dyn rusqlite::ToSql> = vec![&q_pat];
+            if let Some(rid) = &request_id {
+                binds.push(rid);
+            }
+            let rows = stmt.query_map(&binds[..], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
@@ -1102,7 +1219,7 @@ impl Database {
         }
 
         // ── 2. Collection names ───────────────────────────────────
-        {
+        if scope.is_none() && field.is_none() && request_id.is_none() {
             let mut stmt = self.conn.prepare(
                 "SELECT id, name, base_path FROM collections
                  WHERE LOWER(name) LIKE ?1 OR LOWER(base_path) LIKE ?1
@@ -1136,19 +1253,25 @@ impl Database {
         }
 
         // ── 3. Version data (URL, headers, params, body) ──────────
-        {
-            let mut stmt = self.conn.prepare(
+        if !scope_responses && field != Some("name") {
+            let sql = format!(
                 "SELECT v.id, v.request_id, v.data_json,
                         r.name, r.current_version_id, r.collection_id, c.name
                  FROM request_versions v
                  JOIN requests r ON v.request_id = r.id
                  JOIN collections c ON r.collection_id = c.id
-                 WHERE LOWER(v.data_json) LIKE ?1
+                 WHERE LOWER(v.data_json) LIKE ?1{}
                  ORDER BY (CASE WHEN v.id = r.current_version_id THEN 0 ELSE 1 END),
                           v.created_at DESC
                  LIMIT 60",
-            )?;
-            let rows = stmt.query_map(params![q_pat], |row| {
+                if request_id.is_some() { " AND r.id = ?2" } else { "" }
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let mut binds: Vec<&dyn rusqlite::ToSql> = vec![&q_pat];
+            if let Some(rid) = &request_id {
+                binds.push(rid);
+            }
+            let rows = stmt.query_map(&binds[..], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
@@ -1174,7 +1297,7 @@ impl Database {
                     Err(_) => continue,
                 };
 
-                let (match_field, match_context) = Self::find_match_in_data(&data, query);
+                let (match_field, match_context) = Self::find_match_in_data(&data, query, field);
                 if match_context.is_empty() { continue; }
 
                 *cnt += 1;
@@ -1198,8 +1321,8 @@ impl Database {
         }
 
         // ── 4. Execution responses + request data ──────────────────
-        {
-            let mut stmt = self.conn.prepare(
+        if !scope_requests {
+            let sql = format!(
                 "SELECT e.id, e.version_id, e.request_id, e.response_json, e.executed_at,
                         COALESCE(rb.body, '') as body,
                         r.name, r.collection_id, c.name,
@@ -1208,13 +1331,19 @@ impl Database {
                  JOIN requests r ON e.request_id = r.id
                  JOIN collections c ON r.collection_id = c.id
                  LEFT JOIN response_bodies rb ON e.body_hash = rb.hash
-                 WHERE LOWER(e.response_json) LIKE ?1
+                 WHERE (LOWER(e.response_json) LIKE ?1
                     OR LOWER(COALESCE(rb.body, '')) LIKE ?1
-                    OR LOWER(e.request_data_json) LIKE ?1
+                    OR LOWER(e.request_data_json) LIKE ?1){}
                  ORDER BY e.executed_at DESC
                  LIMIT 60",
-            )?;
-            let rows = stmt.query_map(params![q_pat], |row| {
+                if request_id.is_some() { " AND e.request_id = ?2" } else { "" }
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let mut binds: Vec<&dyn rusqlite::ToSql> = vec![&q_pat];
+            if let Some(rid) = &request_id {
+                binds.push(rid);
+            }
+            let rows = stmt.query_map(&binds[..], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
@@ -1245,16 +1374,23 @@ impl Database {
                         body: String::new(),
                         size_bytes: 0,
                         is_binary: false,
+                        truncated: false,
                     });
 
-                // Check response match
+                // Check response match; the field filter only applies to
+                // responses when that scope is selected.
+                let response_field = if scope_responses { field } else { None };
                 let (match_field, match_context) =
-                    Self::find_match_in_response(&response, &body, query);
+                    Self::find_match_in_response(&response, &body, query, response_field);
 
-                // If no response match, check execution request data
-                let (match_field, match_context) = if match_context.is_empty() && !request_data_json.is_empty() {
+                // If no response match, check execution request data —
+                // but not when the search is scoped to responses only.
+                let (match_field, match_context) = if match_context.is_empty()
+                    && !scope_responses
+                    && !request_data_json.is_empty()
+                {
                     if let Ok(req_data) = serde_json::from_str::<RequestData>(&request_data_json) {
-                        let (mf, mc) = Self::find_match_in_data(&req_data, query);
+                        let (mf, mc) = Self::find_match_in_data(&req_data, query, None);
                         if mc.is_empty() { continue; }
                         (format!("Exec {}", mf), mc)
                     } else {
@@ -1495,5 +1631,369 @@ impl Database {
         }
 
         Ok(new_folder_id)
+    }
+
+    // ── Script Runs (post-execution history) ───────────────────
+
+    pub fn insert_script_run(&self, r: &ScriptRun) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO script_runs (id, request_id, execution_id, status, logs, variables_set, script_source, error, duration_ms, executed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                r.id, r.request_id, r.execution_id, r.status, r.logs, r.variables_set,
+                r.script_source, r.error, r.duration_ms as i64, r.executed_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_script_runs_by_request(&self, request_id: &str) -> rusqlite::Result<Vec<ScriptRun>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, request_id, execution_id, status, logs, variables_set, script_source, error, duration_ms, executed_at
+             FROM script_runs WHERE request_id=?1 ORDER BY executed_at DESC",
+        )?;
+        let rows = stmt.query_map(params![request_id], |row| {
+            Ok(ScriptRun {
+                id: row.get(0)?,
+                request_id: row.get(1)?,
+                execution_id: row.get(2)?,
+                status: row.get(3)?,
+                logs: row.get(4)?,
+                variables_set: row.get(5)?,
+                script_source: row.get(6)?,
+                error: row.get(7)?,
+                duration_ms: row.get::<_, i64>(8)? as u64,
+                executed_at: row.get(9)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    // ── Post-Script on Requests ─────────────────────────────────
+
+    pub fn get_post_script(&self, request_id: &str) -> rusqlite::Result<String> {
+        self.conn.query_row(
+            "SELECT COALESCE(post_script, '') FROM requests WHERE id=?1",
+            params![request_id],
+            |row| row.get(0),
+        )
+    }
+
+    pub fn set_post_script(&self, request_id: &str, script: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE requests SET post_script=?2 WHERE id=?1",
+            params![request_id, script],
+        )?;
+        Ok(())
+    }
+
+    /// Apply script variable side-effects: for each key→value pair, find the var def
+    /// by key in the collection and upsert its value for the given environment.
+    /// Creates new var defs (as operative) if they don't exist yet.
+    pub fn apply_script_variables(
+        &self,
+        collection_id: &str,
+        environment_id: &str,
+        variables: &std::collections::HashMap<String, String>,
+    ) -> rusqlite::Result<()> {
+        for (key, value) in variables {
+            // Look up existing var def by key + collection
+            let def_id: Option<String> = self.conn.query_row(
+                "SELECT id FROM collection_var_defs WHERE collection_id=?1 AND key=?2",
+                params![collection_id, key],
+                |row| row.get(0),
+            ).optional()?;
+
+            let def_id = match def_id {
+                Some(id) => id,
+                None => {
+                    // Create a new operative var def
+                    let new_id = uuid::Uuid::new_v4().to_string();
+                    let max_sort: i64 = self.conn.query_row(
+                        "SELECT COALESCE(MAX(sort_order), 0) FROM collection_var_defs WHERE collection_id=?1",
+                        params![collection_id],
+                        |row| row.get(0),
+                    )?;
+                    self.conn.execute(
+                        "INSERT INTO collection_var_defs (id, collection_id, key, var_type, sort_order)
+                         VALUES (?1, ?2, ?3, 'operative', ?4)",
+                        params![new_id, collection_id, key, max_sort + 1],
+                    )?;
+                    new_id
+                }
+            };
+
+            // Upsert the value
+            let val_id = uuid::Uuid::new_v4().to_string();
+            self.upsert_var_value(&val_id, &def_id, environment_id, value, false)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn db_with_request() -> Database {
+        let db = Database::open_in_memory().unwrap();
+        db.insert_collection(&Collection {
+            id: "c1".into(),
+            name: "col".into(),
+            base_path: String::new(),
+            auth_config: None,
+            headers_config: None,
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        })
+        .unwrap();
+        db.insert_request(&Request {
+            id: "r1".into(),
+            collection_id: "c1".into(),
+            folder_id: None,
+            name: "req".into(),
+            current_version_id: None,
+            sort_order: 0,
+        })
+        .unwrap();
+        db.insert_version(&RequestVersion {
+            id: "v1".into(),
+            request_id: "r1".into(),
+            data: RequestData::default(),
+            fingerprint: String::new(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+        })
+        .unwrap();
+        db
+    }
+
+    fn execution(id: &str, body: &str) -> RequestExecution {
+        RequestExecution {
+            id: id.into(),
+            version_id: "v1".into(),
+            request_id: "r1".into(),
+            environment_id: String::new(),
+            response: ResponseData {
+                status: 200,
+                status_text: "OK".into(),
+                headers: Default::default(),
+                body: body.into(),
+                size_bytes: body.len() as u64,
+                is_binary: false,
+                truncated: false,
+            },
+            latency_ms: 10,
+            executed_at: "2026-01-01T00:00:00Z".into(),
+            request_data: None,
+            operative_variables: None,
+        }
+    }
+
+    fn body_count(db: &Database) -> i64 {
+        db.conn
+            .query_row("SELECT COUNT(*) FROM response_bodies", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn test_delete_execution_removes_row_and_orphaned_body() {
+        let db = db_with_request();
+        db.insert_execution(&execution("e1", "unique-body")).unwrap();
+        assert_eq!(body_count(&db), 1);
+
+        db.delete_execution("e1").unwrap();
+        assert!(db.list_executions_by_request("r1").unwrap().is_empty());
+        assert_eq!(body_count(&db), 0);
+    }
+
+    #[test]
+    fn test_delete_execution_keeps_body_shared_with_other_executions() {
+        let db = db_with_request();
+        db.insert_execution(&execution("e1", "shared-body")).unwrap();
+        db.insert_execution(&execution("e2", "shared-body")).unwrap();
+        assert_eq!(body_count(&db), 1); // deduplicated by hash
+
+        db.delete_execution("e1").unwrap();
+        let remaining = db.list_executions_by_request("r1").unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, "e2");
+        assert_eq!(db.get_execution_body("e2").unwrap(), "shared-body");
+        assert_eq!(body_count(&db), 1);
+
+        db.delete_execution("e2").unwrap();
+        assert_eq!(body_count(&db), 0);
+    }
+
+    #[test]
+    fn test_list_executions_excludes_bodies_but_keeps_metadata() {
+        let db = db_with_request();
+        db.insert_execution(&execution("e1", "a-large-body")).unwrap();
+
+        let execs = db.list_executions_by_request("r1").unwrap();
+        assert_eq!(execs.len(), 1);
+        assert_eq!(execs[0].response.body, ""); // body is lazy-loaded
+        assert_eq!(execs[0].response.status, 200);
+        assert_eq!(execs[0].response.size_bytes, "a-large-body".len() as u64);
+        assert_eq!(db.get_execution_body("e1").unwrap(), "a-large-body");
+    }
+
+    fn version_count(db: &Database) -> i64 {
+        db.conn
+            .query_row("SELECT COUNT(*) FROM request_versions", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    fn data_with(url: &str, body: &str) -> RequestData {
+        RequestData { url: url.into(), body: body.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn test_save_version_overwrites_execution_free_draft() {
+        let db = db_with_request(); // v1 current, no executions
+        let saved = db.save_version("r1", &data_with("https://a", "one"), None).unwrap();
+        assert_eq!(saved.id, "v1");
+        let again = db.save_version("r1", &data_with("https://b", "two"), None).unwrap();
+        assert_eq!(again.id, "v1"); // still overwriting the draft
+        assert_eq!(version_count(&db), 1);
+        assert_eq!(db.get_version("v1").unwrap().data.url, "https://b");
+    }
+
+    #[test]
+    fn test_save_version_identical_is_noop() {
+        let db = db_with_request();
+        let d = data_with("https://a", "one");
+        db.save_version("r1", &d, None).unwrap();
+        let v = db.save_version("r1", &d, None).unwrap();
+        assert_eq!(v.id, "v1");
+        assert_eq!(version_count(&db), 1);
+    }
+
+    #[test]
+    fn test_save_version_never_overwrites_executed_version() {
+        let db = db_with_request();
+        let d1 = data_with("https://a", "one");
+        db.save_version("r1", &d1, None).unwrap();
+        db.insert_execution(&execution("e1", "resp")).unwrap(); // v1 now executed
+
+        // Value-only change (same fingerprint) must create a new version
+        let v2 = db.save_version("r1", &data_with("https://a", "two"), None).unwrap();
+        assert_ne!(v2.id, "v1");
+        assert_eq!(db.get_version("v1").unwrap().data.body, "one"); // untouched
+        assert_eq!(version_count(&db), 2);
+
+        // Further edits keep overwriting the new draft
+        let v2b = db.save_version("r1", &data_with("https://a", "three"), Some(&v2.id)).unwrap();
+        assert_eq!(v2b.id, v2.id);
+        assert_eq!(version_count(&db), 2);
+    }
+
+    #[test]
+    fn test_save_version_reuse_skips_executed_versions() {
+        let db = db_with_request();
+        let fp_a = data_with("https://a", "one");
+        db.save_version("r1", &fp_a, None).unwrap();
+        db.insert_execution(&execution("e1", "resp")).unwrap(); // v1 (fp A) executed
+
+        // Structural change → new draft with fp B
+        let v2 = db.save_version("r1", &data_with("https://b", "one"), None).unwrap();
+        assert_ne!(v2.id, "v1");
+        // v2 gets executed too
+        let mut e2 = execution("e2", "resp2");
+        e2.version_id = v2.id.clone();
+        db.insert_execution(&e2).unwrap();
+
+        // Back to structure A: v1 matches the fingerprint but has executions,
+        // so it must NOT be reused/overwritten — a new version is created.
+        let v3 = db.save_version("r1", &data_with("https://a", "changed"), Some(&v2.id)).unwrap();
+        assert_ne!(v3.id, "v1");
+        assert_ne!(v3.id, v2.id);
+        assert_eq!(db.get_version("v1").unwrap().data.body, "one"); // preserved
+        assert_eq!(version_count(&db), 3);
+    }
+
+    #[test]
+    fn test_save_version_editing_old_version_preserves_current_draft() {
+        let db = db_with_request();
+        let d1 = data_with("https://a", "one");
+        db.save_version("r1", &d1, None).unwrap();
+        db.insert_execution(&execution("e1", "resp")).unwrap(); // v1 executed
+
+        // Structural edit → draft v2 becomes current
+        let v2 = db.save_version("r1", &data_with("https://b", "draft"), None).unwrap();
+
+        // User views executed v1 and edits it (base = v1): the draft v2
+        // must not be clobbered — a new version is created instead.
+        let v3 = db.save_version("r1", &data_with("https://a", "edited"), Some("v1")).unwrap();
+        assert_ne!(v3.id, v2.id);
+        assert_ne!(v3.id, "v1");
+        assert_eq!(db.get_version(&v2.id).unwrap().data.body, "draft"); // preserved
+        assert_eq!(db.get_version("v1").unwrap().data.body, "one");     // preserved
+    }
+
+    #[test]
+    fn test_save_version_stale_base_falls_back_to_current() {
+        let db = db_with_request();
+        let saved = db
+            .save_version("r1", &data_with("https://a", "one"), Some("deleted-version-id"))
+            .unwrap();
+        assert_eq!(saved.id, "v1"); // fell back to current draft
+    }
+
+    #[test]
+    fn test_search_scope_field_and_request_filters() {
+        let db = db_with_request();
+        db.insert_version(&RequestVersion {
+            id: "v2".into(),
+            request_id: "r1".into(),
+            data: RequestData {
+                url: "https://api.example.com/findme/path".into(),
+                body: "{\"token\":\"findme\"}".into(),
+                ..Default::default()
+            },
+            fingerprint: String::new(),
+            created_at: "2026-01-02T00:00:00Z".into(),
+        })
+        .unwrap();
+        db.insert_execution(&execution("e1", "response with findme inside")).unwrap();
+
+        // Unfiltered: both the version and the execution match
+        let all = db.search_all("findme", 80, None, None, None).unwrap();
+        assert!(all.iter().any(|h| h.result_type == "version"));
+        assert!(all.iter().any(|h| h.result_type == "execution"));
+
+        // scope=requests: no execution hits
+        let reqs = db.search_all("findme", 80, Some("requests"), None, None).unwrap();
+        assert!(!reqs.is_empty());
+        assert!(reqs.iter().all(|h| h.result_type != "execution"));
+
+        // scope=responses: only execution hits, matched in the response
+        let resps = db.search_all("findme", 80, Some("responses"), None, None).unwrap();
+        assert!(!resps.is_empty());
+        assert!(resps.iter().all(|h| h.result_type == "execution"));
+        assert!(resps.iter().all(|h| h.match_field.starts_with("Response")));
+
+        // field filter picks the field group to match in
+        let by_url = db.search_all("findme", 80, Some("requests"), Some("url"), None).unwrap();
+        assert!(by_url.iter().all(|h| h.match_field == "URL"));
+        let by_body = db.search_all("findme", 80, Some("requests"), Some("body"), None).unwrap();
+        assert!(by_body.iter().all(|h| h.match_field == "Body"));
+
+        // request_id restricts results to that request
+        let mine = db.search_all("findme", 80, None, None, Some("r1")).unwrap();
+        assert!(!mine.is_empty());
+        assert!(mine.iter().all(|h| h.request_id == "r1"));
+        let other = db.search_all("findme", 80, None, None, Some("nope")).unwrap();
+        assert!(other.is_empty());
+    }
+
+    #[test]
+    fn test_cleanup_old_data_gcs_orphaned_bodies() {
+        let db = db_with_request();
+        db.insert_execution(&execution("e1", "old-body")).unwrap();
+        assert_eq!(body_count(&db), 1);
+
+        let result = db.cleanup_old_data("9999-01-01T00:00:00Z").unwrap();
+        assert_eq!(result.executions_deleted, 1);
+        assert_eq!(body_count(&db), 0);
     }
 }

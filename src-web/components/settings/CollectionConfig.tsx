@@ -71,7 +71,7 @@ export function CollectionConfig({ collectionId, collections, environments, onUp
 
   useEffect(() => {
     api.getAppSetting("collection_config_open_sections").then(v => {
-      if (v) { try { setOpen(new Set(JSON.parse(v) as Section[])); } catch {} }
+      if (v) { try { setOpen(new Set(JSON.parse(v) as Section[])); } catch { /* ignore malformed setting */ } }
     }).catch(() => {});
   }, []);
 

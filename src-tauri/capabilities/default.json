@@ -2,10 +2,15 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "LiteRequest default capabilities",
-  "windows": ["main"],
+  "windows": [
+    "main",
+    "body-viewer-*"
+  ],
   "permissions": [
     "core:default",
-    "shell:allow-open",
+    "core:window:allow-destroy",
+    "core:window:allow-close",
+    "core:webview:allow-create-webview-window",
     "dialog:allow-open",
     "dialog:allow-save",
     "window-state:allow-filename",

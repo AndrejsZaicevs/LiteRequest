@@ -7,6 +7,10 @@ use tauri::State;
 
 type CmdResult<T> = Result<T, LiteRequestError>;
 
+// Commands that touch the database are marked `#[tauri::command(async)]` so
+// they run on the async runtime instead of the main (UI) thread. Without it a
+// slow query, import, or VACUUM freezes the window while it runs.
+
 fn map_err(e: impl std::fmt::Display) -> LiteRequestError {
     LiteRequestError::Internal(e.to_string())
 }
@@ -17,34 +21,34 @@ fn db<'a>(state: &'a State<'a, AppState>) -> CmdResult<std::sync::MutexGuard<'a,
 
 // ── Collections ──────────────────────────────────────────────
 
-#[tauri::command]
-pub fn list_collections(state: State<AppState>) -> CmdResult<Vec<Collection>> {
+#[tauri::command(async)]
+pub fn list_collections(state: State<'_, AppState>) -> CmdResult<Vec<Collection>> {
     db(&state)?.list_collections().map_err(map_err)
 }
 
-#[tauri::command]
-pub fn insert_collection(state: State<AppState>, collection: Collection) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn insert_collection(state: State<'_, AppState>, collection: Collection) -> CmdResult<()> {
     db(&state)?
         .insert_collection(&collection)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn update_collection(state: State<AppState>, collection: Collection) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn update_collection(state: State<'_, AppState>, collection: Collection) -> CmdResult<()> {
     db(&state)?
         .update_collection(&collection)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn delete_collection(state: State<AppState>, id: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn delete_collection(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     db(&state)?
         .delete_collection(&id)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn rename_collection(state: State<AppState>, id: String, name: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn rename_collection(state: State<'_, AppState>, id: String, name: String) -> CmdResult<()> {
     db(&state)?
         .rename_collection(&id, &name)
         .map_err(map_err)
@@ -52,35 +56,35 @@ pub fn rename_collection(state: State<AppState>, id: String, name: String) -> Cm
 
 // ── Folders ──────────────────────────────────────────────────
 
-#[tauri::command]
-pub fn list_folders(state: State<AppState>, collection_id: String) -> CmdResult<Vec<Folder>> {
+#[tauri::command(async)]
+pub fn list_folders(state: State<'_, AppState>, collection_id: String) -> CmdResult<Vec<Folder>> {
     db(&state)?
         .list_folders_by_collection(&collection_id)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn insert_folder(state: State<AppState>, folder: Folder) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn insert_folder(state: State<'_, AppState>, folder: Folder) -> CmdResult<()> {
     db(&state)?
         .insert_folder(&folder)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn delete_folder(state: State<AppState>, id: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn delete_folder(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     db(&state)?.delete_folder(&id).map_err(map_err)
 }
 
-#[tauri::command]
-pub fn rename_folder(state: State<AppState>, id: String, name: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn rename_folder(state: State<'_, AppState>, id: String, name: String) -> CmdResult<()> {
     db(&state)?
         .rename_folder(&id, &name)
         .map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn move_folder(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     id: String,
     collection_id: String,
     parent_folder_id: Option<String>,
@@ -92,9 +96,9 @@ pub fn move_folder(
 
 // ── Requests ─────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_requests_by_collection(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     collection_id: String,
 ) -> CmdResult<Vec<Request>> {
     db(&state)?
@@ -102,9 +106,9 @@ pub fn list_requests_by_collection(
         .map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_requests_by_folder(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     folder_id: String,
 ) -> CmdResult<Vec<Request>> {
     db(&state)?
@@ -112,9 +116,9 @@ pub fn list_requests_by_folder(
         .map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_orphan_requests(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     collection_id: String,
 ) -> CmdResult<Vec<Request>> {
     db(&state)?
@@ -122,30 +126,30 @@ pub fn list_orphan_requests(
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn insert_request(state: State<AppState>, request: Request) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn insert_request(state: State<'_, AppState>, request: Request) -> CmdResult<()> {
     db(&state)?
         .insert_request(&request)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn rename_request(state: State<AppState>, id: String, name: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn rename_request(state: State<'_, AppState>, id: String, name: String) -> CmdResult<()> {
     db(&state)?
         .rename_request(&id, &name)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn delete_request(state: State<AppState>, id: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn delete_request(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     db(&state)?
         .delete_request(&id)
         .map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn move_request(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     id: String,
     collection_id: String,
     folder_id: Option<String>,
@@ -155,30 +159,30 @@ pub fn move_request(
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn reorder_environments(state: State<AppState>, ordered_ids: Vec<String>) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn reorder_environments(state: State<'_, AppState>, ordered_ids: Vec<String>) -> CmdResult<()> {
     db(&state)?
         .reorder_environments(&ordered_ids)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn reorder_requests(state: State<AppState>, ordered_ids: Vec<String>) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn reorder_requests(state: State<'_, AppState>, ordered_ids: Vec<String>) -> CmdResult<()> {
     db(&state)?
         .reorder_requests(&ordered_ids)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn reorder_folders(state: State<AppState>, ordered_ids: Vec<String>) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn reorder_folders(state: State<'_, AppState>, ordered_ids: Vec<String>) -> CmdResult<()> {
     db(&state)?
         .reorder_folders(&ordered_ids)
         .map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_request_version(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     request_id: String,
     version_id: String,
 ) -> CmdResult<()> {
@@ -189,28 +193,28 @@ pub fn update_request_version(
 
 // ── Versions ─────────────────────────────────────────────────
 
-#[tauri::command]
-pub fn insert_version(state: State<AppState>, version: RequestVersion) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn insert_version(state: State<'_, AppState>, version: RequestVersion) -> CmdResult<()> {
     db(&state)?
         .insert_version(&version)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn get_version(state: State<AppState>, id: String) -> CmdResult<RequestVersion> {
+#[tauri::command(async)]
+pub fn get_version(state: State<'_, AppState>, id: String) -> CmdResult<RequestVersion> {
     db(&state)?.get_version(&id).map_err(map_err)
 }
 
-#[tauri::command]
-pub fn list_versions(state: State<AppState>, request_id: String) -> CmdResult<Vec<RequestVersion>> {
+#[tauri::command(async)]
+pub fn list_versions(state: State<'_, AppState>, request_id: String) -> CmdResult<Vec<RequestVersion>> {
     db(&state)?
         .list_versions_by_request(&request_id)
         .map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_version_data(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     version_id: String,
     data: RequestData,
     created_at: String,
@@ -220,44 +224,45 @@ pub fn update_version_data(
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn delete_version(state: State<AppState>, version_id: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn delete_version(state: State<'_, AppState>, version_id: String) -> CmdResult<()> {
     db(&state)?
         .delete_version(&version_id)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn version_has_executions(state: State<AppState>, version_id: String) -> CmdResult<bool> {
+#[tauri::command(async)]
+pub fn version_has_executions(state: State<'_, AppState>, version_id: String) -> CmdResult<bool> {
     Ok(db(&state)?
         .version_has_executions(&version_id))
 }
 
 /// Single entry-point: the backend decides whether to update in place or
 /// create a new version.  Returns the resulting version.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_version(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     request_id: String,
     data: RequestData,
+    base_version_id: Option<String>,
 ) -> CmdResult<RequestVersion> {
     db(&state)?
-        .save_version(&request_id, &data)
+        .save_version(&request_id, &data, base_version_id.as_deref())
         .map_err(map_err)
 }
 
 // ── Executions ───────────────────────────────────────────────
 
-#[tauri::command]
-pub fn insert_execution(state: State<AppState>, execution: RequestExecution) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn insert_execution(state: State<'_, AppState>, execution: RequestExecution) -> CmdResult<()> {
     db(&state)?
         .insert_execution(&execution)
         .map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_executions(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     request_id: String,
 ) -> CmdResult<Vec<RequestExecution>> {
     db(&state)?
@@ -265,36 +270,46 @@ pub fn list_executions(
         .map_err(map_err)
 }
 
+#[tauri::command(async)]
+pub fn delete_execution(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    db(&state)?.delete_execution(&id).map_err(map_err)
+}
+
+#[tauri::command(async)]
+pub fn get_execution_body(state: State<'_, AppState>, id: String) -> CmdResult<String> {
+    db(&state)?.get_execution_body(&id).map_err(map_err)
+}
+
 // ── Environments ─────────────────────────────────────────────
 
-#[tauri::command]
-pub fn list_environments(state: State<AppState>) -> CmdResult<Vec<Environment>> {
+#[tauri::command(async)]
+pub fn list_environments(state: State<'_, AppState>) -> CmdResult<Vec<Environment>> {
     db(&state)?.list_environments().map_err(map_err)
 }
 
-#[tauri::command]
-pub fn insert_environment(state: State<AppState>, environment: Environment) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn insert_environment(state: State<'_, AppState>, environment: Environment) -> CmdResult<()> {
     db(&state)?
         .insert_environment(&environment)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn set_active_environment(state: State<AppState>, id: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn set_active_environment(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     db(&state)?
         .set_active_environment(&id)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn rename_environment(state: State<AppState>, id: String, name: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn rename_environment(state: State<'_, AppState>, id: String, name: String) -> CmdResult<()> {
     db(&state)?
         .rename_environment(&id, &name)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn delete_environment(state: State<AppState>, id: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn delete_environment(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     db(&state)?
         .delete_environment(&id)
         .map_err(map_err)
@@ -302,9 +317,9 @@ pub fn delete_environment(state: State<AppState>, id: String) -> CmdResult<()> {
 
 // ── Environment Variables ────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_env_variables(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     environment_id: String,
 ) -> CmdResult<Vec<EnvVariable>> {
     db(&state)?
@@ -312,29 +327,29 @@ pub fn list_env_variables(
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn insert_env_variable(state: State<AppState>, variable: EnvVariable) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn insert_env_variable(state: State<'_, AppState>, variable: EnvVariable) -> CmdResult<()> {
     db(&state)?
         .insert_env_variable(&variable)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn update_env_variable(state: State<AppState>, variable: EnvVariable) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn update_env_variable(state: State<'_, AppState>, variable: EnvVariable) -> CmdResult<()> {
     db(&state)?
         .update_env_variable(&variable)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn delete_env_variable(state: State<AppState>, id: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn delete_env_variable(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     db(&state)?
         .delete_env_variable(&id)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn get_active_variables(state: State<AppState>) -> CmdResult<Vec<EnvVariable>> {
+#[tauri::command(async)]
+pub fn get_active_variables(state: State<'_, AppState>) -> CmdResult<Vec<EnvVariable>> {
     db(&state)?
         .get_active_variables()
         .map_err(map_err)
@@ -342,29 +357,29 @@ pub fn get_active_variables(state: State<AppState>) -> CmdResult<Vec<EnvVariable
 
 // ── Env Variable Defs (split model) ─────────────────────────
 
-#[tauri::command]
-pub fn list_env_var_defs(state: State<AppState>) -> CmdResult<Vec<EnvVarDef>> {
+#[tauri::command(async)]
+pub fn list_env_var_defs(state: State<'_, AppState>) -> CmdResult<Vec<EnvVarDef>> {
     db(&state)?.list_env_var_defs().map_err(map_err)
 }
 
-#[tauri::command]
-pub fn insert_env_var_def(state: State<AppState>, def: EnvVarDef) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn insert_env_var_def(state: State<'_, AppState>, def: EnvVarDef) -> CmdResult<()> {
     db(&state)?.insert_env_var_def(&def).map_err(map_err)
 }
 
-#[tauri::command]
-pub fn update_env_var_def_key(state: State<AppState>, def_id: String, key: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn update_env_var_def_key(state: State<'_, AppState>, def_id: String, key: String) -> CmdResult<()> {
     db(&state)?.update_env_var_def_key(&def_id, &key).map_err(map_err)
 }
 
-#[tauri::command]
-pub fn delete_env_var_def(state: State<AppState>, def_id: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn delete_env_var_def(state: State<'_, AppState>, def_id: String) -> CmdResult<()> {
     db(&state)?.delete_env_var_def(&def_id).map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn upsert_env_var_value(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     val_id: String,
     def_id: String,
     environment_id: String,
@@ -376,44 +391,44 @@ pub fn upsert_env_var_value(
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn load_env_var_rows(state: State<AppState>, environment_id: String) -> CmdResult<Vec<VarRow>> {
+#[tauri::command(async)]
+pub fn load_env_var_rows(state: State<'_, AppState>, environment_id: String) -> CmdResult<Vec<VarRow>> {
     db(&state)?.load_env_var_rows(&environment_id).map_err(map_err)
 }
 
 // ── Collection Variables ─────────────────────────────────────
 
-#[tauri::command]
-pub fn insert_var_def(state: State<AppState>, def: VarDef) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn insert_var_def(state: State<'_, AppState>, def: VarDef) -> CmdResult<()> {
     db(&state)?
         .insert_var_def(&def)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn update_var_def_key(state: State<AppState>, def_id: String, key: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn update_var_def_key(state: State<'_, AppState>, def_id: String, key: String) -> CmdResult<()> {
     db(&state)?
         .update_var_def_key(&def_id, &key)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn delete_var_def(state: State<AppState>, def_id: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn delete_var_def(state: State<'_, AppState>, def_id: String) -> CmdResult<()> {
     db(&state)?
         .delete_var_def(&def_id)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn list_var_defs(state: State<AppState>, collection_id: String) -> CmdResult<Vec<VarDef>> {
+#[tauri::command(async)]
+pub fn list_var_defs(state: State<'_, AppState>, collection_id: String) -> CmdResult<Vec<VarDef>> {
     db(&state)?
         .list_var_defs(&collection_id)
         .map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn upsert_var_value(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     val_id: String,
     def_id: String,
     environment_id: String,
@@ -425,16 +440,16 @@ pub fn upsert_var_value(
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn update_var_def_type(state: State<AppState>, def_id: String, var_type: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn update_var_def_type(state: State<'_, AppState>, def_id: String, var_type: String) -> CmdResult<()> {
     db(&state)?
         .update_var_def_type(&def_id, &var_type)
         .map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_operative_var_rows(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     collection_id: String,
     environment_id: String,
 ) -> CmdResult<Vec<VarRow>> {
@@ -443,9 +458,9 @@ pub fn load_operative_var_rows(
         .map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_var_rows(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     collection_id: String,
     environment_id: String,
 ) -> CmdResult<Vec<VarRow>> {
@@ -454,9 +469,9 @@ pub fn load_var_rows(
         .map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_active_collection_variables(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     collection_id: String,
 ) -> CmdResult<Vec<(String, String)>> {
     db(&state)?
@@ -466,15 +481,15 @@ pub fn get_active_collection_variables(
 
 // ── App Settings ─────────────────────────────────────────────
 
-#[tauri::command]
-pub fn get_app_setting(state: State<AppState>, key: String) -> CmdResult<Option<String>> {
+#[tauri::command(async)]
+pub fn get_app_setting(state: State<'_, AppState>, key: String) -> CmdResult<Option<String>> {
     db(&state)?
         .get_app_setting(&key)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn set_app_setting(state: State<AppState>, key: String, value: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn set_app_setting(state: State<'_, AppState>, key: String, value: String) -> CmdResult<()> {
     db(&state)?
         .set_app_setting(&key, &value)
         .map_err(map_err)
@@ -562,15 +577,15 @@ pub fn extract_path_params(url: String) -> Vec<String> {
 
 // ── Maintenance ──────────────────────────────────────────────
 
-#[tauri::command]
-pub fn prune_old_executions(state: State<AppState>, days: i64) -> CmdResult<usize> {
+#[tauri::command(async)]
+pub fn prune_old_executions(state: State<'_, AppState>, days: i64) -> CmdResult<usize> {
     db(&state)?
         .prune_old_executions(days)
         .map_err(map_err)
 }
 
-#[tauri::command]
-pub fn get_db_stats(state: State<AppState>) -> CmdResult<DbStats> {
+#[tauri::command(async)]
+pub fn get_db_stats(state: State<'_, AppState>) -> CmdResult<DbStats> {
     let stats = db(&state)?.get_db_stats().map_err(map_err)?;
     // Supplement with actual file size if available (more accurate than page_count * page_size)
     let file_size = std::fs::metadata(&state.db_path)
@@ -579,8 +594,8 @@ pub fn get_db_stats(state: State<AppState>) -> CmdResult<DbStats> {
     Ok(DbStats { db_size_bytes: file_size, ..stats })
 }
 
-#[tauri::command]
-pub fn cleanup_old_data(state: State<AppState>, cutoff_date: String) -> CmdResult<CleanupResult> {
+#[tauri::command(async)]
+pub fn cleanup_old_data(state: State<'_, AppState>, cutoff_date: String) -> CmdResult<CleanupResult> {
     db(&state)?
         .cleanup_old_data(&cutoff_date)
         .map_err(map_err)
@@ -588,10 +603,22 @@ pub fn cleanup_old_data(state: State<AppState>, cutoff_date: String) -> CmdResul
 
 // ── Search ───────────────────────────────────────────────────
 
-#[tauri::command]
-pub fn search_all(state: State<AppState>, query: String) -> CmdResult<Vec<crate::models::SearchHit>> {
+#[tauri::command(async)]
+pub fn search_all(
+    state: State<'_, AppState>,
+    query: String,
+    scope: Option<String>,
+    field: Option<String>,
+    request_id: Option<String>,
+) -> CmdResult<Vec<crate::models::SearchHit>> {
     db(&state)?
-        .search_all(&query, 80)
+        .search_all(
+            &query,
+            80,
+            scope.as_deref(),
+            field.as_deref(),
+            request_id.as_deref(),
+        )
         .map_err(map_err)
 }
 
@@ -617,18 +644,18 @@ pub fn save_file(path: String, data: String, is_base64: bool) -> CmdResult<()> {
 
 // ── Import ────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_postman_collection(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     path: String,
 ) -> CmdResult<crate::import::postman::ImportSummary> {
     let db = db(&state)?;
     crate::import::postman::import_from_path(&path, &db).map_err(map_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_collection_to_postman(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     collection_id: String,
 ) -> CmdResult<String> {
     let db = db(&state)?;
@@ -637,34 +664,170 @@ pub fn export_collection_to_postman(
 
 // ── Trash ─────────────────────────────────────────────────────
 
-#[tauri::command]
-pub fn list_trash(state: State<AppState>) -> CmdResult<Vec<crate::models::TrashedItem>> {
+#[tauri::command(async)]
+pub fn list_trash(state: State<'_, AppState>) -> CmdResult<Vec<crate::models::TrashedItem>> {
     db(&state)?.list_trash().map_err(map_err)
 }
 
-#[tauri::command]
-pub fn restore_item(state: State<AppState>, item_type: String, id: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn restore_item(state: State<'_, AppState>, item_type: String, id: String) -> CmdResult<()> {
     db(&state)?.restore_item(&item_type, &id).map_err(map_err)
 }
 
-#[tauri::command]
-pub fn purge_item(state: State<AppState>, item_type: String, id: String) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn purge_item(state: State<'_, AppState>, item_type: String, id: String) -> CmdResult<()> {
     db(&state)?.purge_item(&item_type, &id).map_err(map_err)
 }
 
-#[tauri::command]
-pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
+#[tauri::command(async)]
+pub fn empty_trash(state: State<'_, AppState>) -> CmdResult<()> {
     db(&state)?.empty_trash().map_err(map_err)
 }
 
 // ── Clone ─────────────────────────────────────────────────────
 
-#[tauri::command]
-pub fn clone_request(state: State<AppState>, id: String) -> CmdResult<String> {
+#[tauri::command(async)]
+pub fn clone_request(state: State<'_, AppState>, id: String) -> CmdResult<String> {
     db(&state)?.clone_request(&id).map_err(map_err)
 }
 
-#[tauri::command]
-pub fn clone_folder(state: State<AppState>, id: String) -> CmdResult<String> {
+#[tauri::command(async)]
+pub fn clone_folder(state: State<'_, AppState>, id: String) -> CmdResult<String> {
     db(&state)?.clone_folder(&id).map_err(map_err)
+}
+
+// ── Script Runs ──────────────────────────────────────────────
+
+#[tauri::command(async)]
+pub fn list_script_runs_by_request(state: State<'_, AppState>, request_id: String) -> CmdResult<Vec<ScriptRun>> {
+    db(&state)?.list_script_runs_by_request(&request_id).map_err(map_err)
+}
+
+// ── Post-Script ──────────────────────────────────────────────
+
+#[tauri::command(async)]
+pub fn get_post_script(state: State<'_, AppState>, request_id: String) -> CmdResult<String> {
+    db(&state)?.get_post_script(&request_id).map_err(map_err)
+}
+
+#[tauri::command(async)]
+pub fn set_post_script(state: State<'_, AppState>, request_id: String, script: String) -> CmdResult<()> {
+    db(&state)?.set_post_script(&request_id, &script).map_err(map_err)
+}
+
+#[tauri::command(async)]
+pub fn apply_script_variables(
+    state: State<'_, AppState>,
+    collection_id: String,
+    environment_id: String,
+    variables: std::collections::HashMap<String, String>,
+) -> CmdResult<()> {
+    db(&state)?.apply_script_variables(&collection_id, &environment_id, &variables).map_err(map_err)
+}
+
+// ── Script Execution ─────────────────────────────────────────
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri command signature mirrors the IPC payload
+pub async fn run_post_script(
+    state: State<'_, AppState>,
+    request_id: String,
+    execution_id: String,
+    request_data: RequestData,
+    response_data: ResponseData,
+    latency_ms: u64,
+    variables: HashMap<String, String>,
+    environment: String,
+    script_js: String,
+) -> CmdResult<ScriptResult> {
+    let post_script = db(&state)?.get_post_script(&request_id).map_err(map_err)?;
+    if post_script.is_empty() && script_js.is_empty() {
+        return Ok(ScriptResult {
+            status: "success".to_string(),
+            logs: vec![],
+            variables_set: HashMap::new(),
+            error: None,
+            duration_ms: 0,
+        });
+    }
+
+    let js_code = if script_js.is_empty() { post_script.clone() } else { script_js };
+    let script_source = post_script;
+
+    // Run QuickJS on a blocking thread (not Send-safe)
+    let result = tokio::task::spawn_blocking(move || {
+        use crate::scripting::context::{PostExecContext, ScriptSideEffects, SharedEffects};
+        use std::sync::Arc;
+
+        let effects: SharedEffects = Arc::new(std::sync::Mutex::new(ScriptSideEffects::default()));
+        let start = std::time::Instant::now();
+
+        let engine = crate::scripting::runtime::ScriptEngine::new()?;
+        let ctx = engine.create_context()?;
+
+        let effects_clone = effects.clone();
+        let post_ctx = PostExecContext {
+            request: request_data,
+            response: response_data,
+            latency_ms,
+            variables,
+            environment,
+        };
+
+        let exec_result = ctx.with(|js_ctx| {
+            use rquickjs::CatchResultExt;
+            crate::scripting::context::inject_post_exec_globals(&js_ctx, &post_ctx, effects_clone)?;
+            js_ctx.eval::<(), String>(js_code)
+                .catch(&js_ctx)
+                .map_err(|e| format!("{e}"))
+        });
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let eff = effects.lock().unwrap_or_else(|e| e.into_inner());
+
+        let (status, error) = match exec_result {
+            Ok(()) => ("success".to_string(), None),
+            Err(e) if crate::scripting::runtime::is_timeout_error(&e) => (
+                "timeout".to_string(),
+                Some(format!(
+                    "Script timed out after {}s",
+                    crate::scripting::runtime::SCRIPT_TIMEOUT.as_secs()
+                )),
+            ),
+            Err(e) => ("error".to_string(), Some(e)),
+        };
+
+        Ok::<(ScriptResult, ScriptRun), String>((
+            ScriptResult {
+                status: status.clone(),
+                logs: eff.logs.clone(),
+                variables_set: eff.variables_set.clone(),
+                error: error.clone(),
+                duration_ms,
+            },
+            ScriptRun {
+                id: uuid::Uuid::new_v4().to_string(),
+                request_id,
+                execution_id,
+                status,
+                logs: serde_json::to_string(&eff.logs).unwrap_or_else(|_| "[]".to_string()),
+                variables_set: serde_json::to_string(&eff.variables_set).unwrap_or_else(|_| "{}".to_string()),
+                script_source,
+                error,
+                duration_ms,
+                executed_at: chrono::Utc::now().to_rfc3339(),
+            },
+        ))
+    }).await.map_err(|e| LiteRequestError::Internal(format!("Script task failed: {e}")))?
+      .map_err(map_err)?;
+
+    let _ = db(&state)?.insert_script_run(&result.1);
+    Ok(result.0)
+}
+
+// ── Type Generation ──────────────────────────────────────────
+
+#[tauri::command]
+pub fn generate_script_types() -> String {
+    crate::scripting::typegen::generate_all_types()
 }

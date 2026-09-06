@@ -536,7 +536,7 @@ fn map_request_data(req: &PostmanRequest) -> RequestData {
                 .as_deref()
                 .unwrap_or(&[])
                 .iter()
-                .filter(|q| !q.disabled && q.key.as_deref().unwrap_or("") != "")
+                .filter(|q| !q.disabled && !q.key.as_deref().unwrap_or("").is_empty())
                 .map(|q| KeyValuePair {
                     key: q.key.clone().unwrap_or_default(),
                     value: q.value.clone().unwrap_or_default(),
@@ -645,7 +645,7 @@ fn map_body(body: &PostmanBody) -> (BodyType, String, Vec<MultipartField>) {
                 .as_deref()
                 .unwrap_or(&[])
                 .iter()
-                .filter(|f| !f.disabled && f.key.as_deref().unwrap_or("") != "")
+                .filter(|f| !f.disabled && !f.key.as_deref().unwrap_or("").is_empty())
                 .map(|f| KeyValuePair {
                     key: f.key.clone().unwrap_or_default(),
                     value: f.value.clone().unwrap_or_default(),
@@ -665,7 +665,7 @@ fn map_body(body: &PostmanBody) -> (BodyType, String, Vec<MultipartField>) {
                 .as_deref()
                 .unwrap_or(&[])
                 .iter()
-                .filter(|f| !f.disabled && f.key.as_deref().unwrap_or("") != "")
+                .filter(|f| !f.disabled && !f.key.as_deref().unwrap_or("").is_empty())
                 .map(|f| MultipartField {
                     key: f.key.clone().unwrap_or_default(),
                     value: if f.field_type.as_deref() == Some("file") {

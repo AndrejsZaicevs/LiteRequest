@@ -14,7 +14,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # Tauri
 tauri = { version = "2", features = [] }
-tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 
 # HTTP
@@ -38,9 +37,6 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 sha2 = "0.10"
 
-# Secrets
-keyring = { version = "3", features = ["linux-native"] }
-
 # Clipboard
 arboard = "3"
 
@@ -48,6 +44,9 @@ tauri-plugin-window-state = "2"
 
 tracing = "0.1"
 tracing-subscriber = "0.3"
+
+# Scripting
+rquickjs = { version = "0.11" }
 
 # URL parsing
 url = "2"
