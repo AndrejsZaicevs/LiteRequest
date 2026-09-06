@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Download, Maximize2, Minimize2, Copy, Check, Search, X, PictureInPicture2 } from "lucide-react";
 import type { ResponseData, ScriptResult } from "../../lib/types";
 import { statusColor, formatSize } from "../../lib/types";
@@ -232,7 +232,7 @@ export function ResponseView({ response, latency, isLoading, isMaximized, onMaxi
           </div>
         )}
         <div className="flex-1 overflow-auto">
-          {tab === "body" && <ResponseBody body={response.body} isBinary={response.is_binary ?? false} searchText={showSearch ? searchText : ""} />}
+          {tab === "body" && <ResponseBody body={response.body} isBinary={response.is_binary ?? false} contentType={(response.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase()} searchText={showSearch ? searchText : ""} />}
           {tab === "headers" && <ResponseHeaders headers={response.headers} searchText={showSearch ? searchText : ""} />}
           {tab === "script" && scriptResult && <ScriptOutput result={scriptResult} />}
         </div>
@@ -326,9 +326,11 @@ const cmJsonExtensions = [
   cmSearch({ top: true }),
 ];
 
-export function ResponseBody({ body, isBinary, searchText }: {
+export function ResponseBody({ body, isBinary, contentType = "", searchText }: {
   body: string;
   isBinary: boolean;
+  /** Lower-cased content-type without parameters; drives the image/PDF preview. */
+  contentType?: string;
   searchText: string;
 }) {
   const { isJson, formatted } = useMemo(() => {
@@ -341,10 +343,47 @@ export function ResponseBody({ body, isBinary, searchText }: {
     }
   }, [body, isBinary]);
 
+  const isImage = isBinary && !!body && contentType.startsWith("image/");
+  const isPdf = isBinary && !!body && contentType === "application/pdf";
+
+  // PDF preview: decode base64 → Blob → object URL, revoked on change/unmount
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isPdf) {
+      setPdfUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([base64ToBytes(body)], { type: "application/pdf" }));
+    setPdfUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [isPdf, body]);
+
   if (!body) {
     return (
       <div className="flex items-center justify-center h-full text-xs text-gray-600">
         Empty response body
+      </div>
+    );
+  }
+
+  if (isImage) {
+    return (
+      <div className="flex items-center justify-center h-full p-4 overflow-auto bg-[#0d0d0d]">
+        <img
+          src={`data:${contentType};base64,${body}`}
+          alt="Response preview"
+          className="max-w-full max-h-full object-contain"
+        />
+      </div>
+    );
+  }
+
+  if (isPdf) {
+    return pdfUrl ? (
+      <iframe title="PDF preview" src={pdfUrl} className="w-full h-full border-0" />
+    ) : (
+      <div className="flex items-center justify-center h-full text-xs text-gray-600">
+        Loading PDF…
       </div>
     );
   }
@@ -354,6 +393,7 @@ export function ResponseBody({ body, isBinary, searchText }: {
       <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500">
         <span className="text-2xl">📦</span>
         <span className="text-sm">Binary response — use the download button to save it</span>
+        {contentType && <span className="text-xs font-mono text-gray-600">{contentType}</span>}
       </div>
     );
   }
@@ -400,6 +440,14 @@ export function ResponseBody({ body, isBinary, searchText }: {
       {formatted}
     </pre>
   );
+}
+
+/** Decode a base64 string (backend STANDARD engine, no line breaks) into bytes. */
+function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(new ArrayBuffer(bin.length));
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
 }
 
 /** Split text into alternating match/non-match segments for inline highlighting. */
